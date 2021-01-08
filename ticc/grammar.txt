@@ -1,0 +1,35 @@
+Item ::= TypeItem | ValueItem
+
+TypeItem ::= "type" Ident TypeParams "=" "|"? TypeCase ("|" TypeCase)*
+
+TypeParams ::= Ident*
+
+TypeCase ::= Ident Type*
+
+Type ::= IntType | BoolType | FnType | NamedType | RecType | ParenType
+IntType ::= "int"
+BoolType ::= "bool"
+FnType ::= Type "->" Type
+NamedType ::= Ident Type*
+RecType ::= "rec"
+ParenType ::= "(" Type ")"
+
+ValueItem = "export"? "let" Ident (":" Type)? "=" Expr ";"
+
+Expr ::= NameExpr | ApplyExpr | BinaryExpr | LetExpr | MatchExpr
+       | IfExpr | BoolExpr | NumberExpr | LambdaExpr | ParenExpr
+NameExpr ::= Ident
+ApplyExpr ::= Expr Expr
+BinaryExpr ::= Expr BinaryOp Expr
+LetExpr ::= "let" Ident (":" Type)? "=" Expr ";" Expr
+MatchExpr ::= "match" Expr "with" MatchCase* "end"
+IfExpr ::= "if" Expr "then" Expr "else" Expr
+BoolExpr ::= "true" | "false"
+NumberExpr ::= Number
+LambdaExpr ::= "\" "fold"? Ident "->" Expr
+ParenExpr ::= "(" Expr ")"
+
+MatchCase ::= "|" Ident MatchVars "-> Expr
+MatchVars ::= Ident*
+
+BinaryOp ::= "+" | "-" | "*" | "<" | "<=" | ">" | ">=" | "==" | "!=" | "|>"

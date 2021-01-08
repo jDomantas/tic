@@ -6,3 +6,6 @@ edition = "2018"
 
 [dependencies]
 logos = "0.11.4"
+rowan = "0.10.0"
+smol_str = "0.1.17"
+codespan-reporting = "0.11.0"

@@ -1,0 +1,8 @@
+type List a = Nil | Cons a rec;
+
+let map : (a -> b) -> List a -> List b =
+    \f -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs -> Cons (f x) xs
+        end;

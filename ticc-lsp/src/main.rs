@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             work_done_progress: Some(false),
         },
         legend: SemanticTokensLegend {
-            token_types: ["keyword", "type", "variable", "function", "operator", "punctuation", "number", "comment"]
+            token_types: semantic_tokens::DEFINED_TYPES
                 .iter()
                 .copied()
                 .map(Into::into)
@@ -64,7 +64,7 @@ fn main_loop(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
     eprintln!("starting example main loop");
-    let mut compilation = ticc::Compilation::from_source(String::new());
+    let mut compilation = ticc::Compilation::from_source("");
     for msg in &connection.receiver {
         eprintln!("got msg: {:?}", msg);
         match msg {
@@ -95,13 +95,13 @@ fn main_loop(
                 eprintln!("got notification: {:?}", not);
                 match recognize_notification(not) {
                     NotificationKind::DidOpenTextDocument(open) => {
-                        compilation = ticc::Compilation::from_source(open.text_document.text);
+                        compilation = ticc::Compilation::from_source(&open.text_document.text);
                     }
                     NotificationKind::DidCloseTextDocument(_close) => {
-                        compilation = ticc::Compilation::from_source(String::new());
+                        compilation = ticc::Compilation::from_source("");
                     }
                     NotificationKind::DidChangeTextDocument(mut change) => {
-                        compilation = ticc::Compilation::from_source(change.content_changes.swap_remove(0).text);
+                        compilation = ticc::Compilation::from_source(&change.content_changes.swap_remove(0).text);
                     }
                     NotificationKind::Unknown(n) => {
                         eprintln!("unknown notification: {:?}", n);
