@@ -3,7 +3,7 @@ use logos::{Logos, SpannedIter};
 use crate::Span;
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Copy, Clone, Logos)]
-pub enum TokenKind {
+pub(crate) enum TokenKind {
     #[token("export")]
     Export,
     #[token("let")]
@@ -92,6 +92,53 @@ pub enum TokenKind {
     Error,
 }
 
+#[cfg(test)]
+pub(crate) const ALL_TOKEN_KINDS: &[TokenKind] = &[
+    TokenKind::Export,
+    TokenKind::Let,
+    TokenKind::Match,
+    TokenKind::With,
+    TokenKind::End,
+    TokenKind::If,
+    TokenKind::Then,
+    TokenKind::Else,
+    TokenKind::Type,
+    TokenKind::Int,
+    TokenKind::Bool,
+    TokenKind::True,
+    TokenKind::False,
+    TokenKind::Fold,
+    TokenKind::Rec,
+    TokenKind::Colon,
+    TokenKind::Equals,
+    TokenKind::Plus,
+    TokenKind::Minus,
+    TokenKind::Star,
+    TokenKind::Less,
+    TokenKind::LessEq,
+    TokenKind::Greater,
+    TokenKind::GreaterEq,
+    TokenKind::EqEq,
+    TokenKind::NotEq,
+    TokenKind::Cons,
+    TokenKind::ArgPipe,
+    TokenKind::LeftParen,
+    TokenKind::RightParen,
+    TokenKind::LeftBracket,
+    TokenKind::RightBracket,
+    TokenKind::Backslash,
+    TokenKind::Arrow,
+    TokenKind::Pipe,
+    TokenKind::Comma,
+    TokenKind::Semicolon,
+    TokenKind::Name,
+    TokenKind::Number,
+    TokenKind::Space,
+    TokenKind::Newline,
+    TokenKind::Comment,
+    TokenKind::Error,
+];
+
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.to_str())
@@ -153,12 +200,12 @@ impl TokenKind {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub span: Span,
+pub(crate) struct Token {
+    pub(crate) kind: TokenKind,
+    pub(crate) span: Span,
 }
 
-pub struct Lexer<'a> {
+pub(crate) struct Lexer<'a> {
     lexer: SpannedIter<'a, TokenKind>,
 }
 
@@ -176,7 +223,7 @@ impl<'a> Iterator for Lexer<'a> {
     }
 }
 
-pub fn lex(source: &str) -> Lexer<'_> {
+pub(crate) fn lex(source: &str) -> Lexer<'_> {
     Lexer {
         lexer: TokenKind::lexer(source).spanned()
     }

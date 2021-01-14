@@ -1,23 +1,25 @@
 #![allow(unused)]
 
-pub(crate) mod compiler;
+#[cfg(test)]
+mod tests;
 
-mod tokens;
+pub(crate) mod compiler;
+pub(crate) mod api;
 
 use std::sync::Arc;
-pub use tokens::{Token, TokenKind};
-use compiler::parser;
+pub use api::tokens::{Token, TokenKind};
+use compiler::{ir, parser};
 
 pub struct Compilation {
     src: Arc<str>,
-    parsed: Option<parser::ParsedItem>,
+    items: Vec<ir::Item>,
 }
 
 impl Compilation {
     pub fn from_source(src: &str) -> Compilation {
         Compilation {
             src: src.into(),
-            parsed: None,
+            items: Vec::new(),
         }
     }
 
@@ -26,17 +28,45 @@ impl Compilation {
     }
 
     pub fn tokens(&mut self) -> impl Iterator<Item = Token> + '_ {
-        tokens::tokens(self)
+        api::tokens::tokens(self)
     }
 
-    pub fn syntax_tree(&mut self) -> rowan::GreenNode {
-        let src = &self.src;
-        self.parsed.get_or_insert_with(|| parser::parse_file(src)).syntax.clone()
+    pub fn errors(&mut self) -> impl Iterator<Item = &Error> + '_ {
+        api::errors::errors(self)
     }
 
-    pub fn errors(&mut self) -> &[Error] {
-        let src = &self.src;
-        &self.parsed.get_or_insert_with(|| parser::parse_file(src)).errors
+    fn compile_to_end(&mut self) {
+        self.compile_up_to(self.src.len());
+    }
+
+    fn compile_up_to(&mut self, offset: usize) {
+        loop {
+            let compiled = self.items.last().map(|i| i.span.end as usize).unwrap_or(0);
+            if compiled >= offset {
+                break;
+            }
+
+            let tail = &self.src[compiled..];
+            let item = parser::parse_one_item(tail);
+            let length: u32 = item.syntax.text_len().into();
+            let ir = ir::Item {
+                syntax: item.syntax,
+                span: Span {
+                    start: compiled as u32,
+                    end: compiled as u32 + length,
+                },
+                errors: item.errors,
+            };
+            self.add_item(ir);
+        }
+    }
+
+    fn add_item(&mut self, mut item: ir::Item) {
+        for error in &mut item.errors {
+            error.span.start += item.span.start;
+            error.span.end += item.span.start;
+        }
+        self.items.push(item);
     }
 }
 

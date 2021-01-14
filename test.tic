@@ -6,3 +6,15 @@ let map : (a -> b) -> List a -> List b =
         | Nil -> Nil
         | Cons x xs -> Cons (f x) xs
         end;
+
+let append : a -> List a -> List a =
+    \x -> \fold list ->
+        match list with
+        | Nil -> Cons x Nil
+        | Cons x xs -> Cons x xs
+        end;
+
+let list : List int = Nil
+    |> append 1
+    |> append 2
+    |> append 3;

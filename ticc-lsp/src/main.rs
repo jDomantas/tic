@@ -1,3 +1,4 @@
+mod diagnostics;
 mod semantic_tokens;
 
 use std::error::Error;
@@ -7,6 +8,7 @@ use lsp_types::{
     DidCloseTextDocumentParams,
     DidOpenTextDocumentParams,
     InitializeParams,
+    PublishDiagnosticsParams,
     SemanticTokens,
     SemanticTokensFullOptions,
     SemanticTokensLegend,
@@ -16,6 +18,7 @@ use lsp_types::{
     ServerCapabilities,
     TextDocumentSyncCapability,
     WorkDoneProgressOptions,
+    notification::Notification as _,
     request::SemanticTokensFullRequest,
 };
 
@@ -50,7 +53,9 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     let server_capabilities = serde_json::to_value(&server_capabilities).unwrap();
     eprintln!("capabilities: {}", serde_json::to_string(&server_capabilities).unwrap());
     let initialization_params = connection.initialize(server_capabilities)?;
-    main_loop(&connection, initialization_params)?;
+    if let Err(e) = main_loop(&connection, initialization_params) {
+        eprintln!("error, aborting: {}", e);
+    }
     io_threads.join()?;
 
     // Shut down gracefully.
@@ -63,16 +68,14 @@ fn main_loop(
     params: serde_json::Value,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
-    eprintln!("starting example main loop");
     let mut compilation = ticc::Compilation::from_source("");
     for msg in &connection.receiver {
-        eprintln!("got msg: {:?}", msg);
         match msg {
             Message::Request(req) => {
+                eprintln!("got request {:?} (id: {})", req.method, req.id);
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                eprintln!("got request: {:?}", req);
                 match cast::<SemanticTokensFullRequest>(req) {
                     Ok((id, params)) => {
                         eprintln!("got semantic tokens request #{}: {:?}", id, params);
@@ -92,7 +95,7 @@ fn main_loop(
                 eprintln!("got response: {:?}", resp);
             }
             Message::Notification(not) => {
-                eprintln!("got notification: {:?}", not);
+                eprintln!("got notification: {:?}", not.method);
                 match recognize_notification(not) {
                     NotificationKind::DidOpenTextDocument(open) => {
                         compilation = ticc::Compilation::from_source(&open.text_document.text);
@@ -102,6 +105,17 @@ fn main_loop(
                     }
                     NotificationKind::DidChangeTextDocument(mut change) => {
                         compilation = ticc::Compilation::from_source(&change.content_changes.swap_remove(0).text);
+
+                        let diagnostics = diagnostics::get_diagnostics(&mut compilation);
+                        let params = PublishDiagnosticsParams {
+                            uri: change.text_document.uri,
+                            diagnostics,
+                            version: None,
+                        };
+                        connection.sender.send(Message::Notification(Notification {
+                            method: lsp_types::notification::PublishDiagnostics::METHOD.into(),
+                            params: serde_json::to_value(&params).unwrap(),
+                        }))?;
                     }
                     NotificationKind::Unknown(n) => {
                         eprintln!("unknown notification: {:?}", n);

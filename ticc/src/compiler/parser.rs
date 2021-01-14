@@ -28,13 +28,24 @@ pub(crate) fn parse_file(source: &str) -> ParsedItem {
         item::item(&mut parser);
     }
     let events = parser.finish();
-    events_to_node(events, source)
+    events_to_node(events, source, true)
 }
 
 pub(crate) fn parse_one_item(source: &str) -> ParsedItem {
-    // let parser = Parser::new(source);
-    // parser.parse_item();
-    todo!("parse_one_item")
+    let mut parser = Parser {
+        at_start_of_line: true,
+        tokens: lex(source).peekable(),
+        current_pos: Span { start: 0, end: 0 },
+        events: Vec::new(),
+        hints: Vec::new(),
+        expected_tokens: Vec::new(),
+    };
+    if !parser.at_eof() {
+        item::item(&mut parser);
+    }
+    let eat_all = parser.at_eof();
+    let events = parser.finish();
+    events_to_node(events, source, eat_all)
 }
 
 #[derive(Debug)]
@@ -287,7 +298,7 @@ fn reorder_forward_parents(mut events: Vec<Event>) -> Vec<Event> {
     final_events
 }
 
-fn events_to_node(events: Vec<Event>, source: &str) -> ParsedItem {
+fn events_to_node(events: Vec<Event>, source: &str, eat_all: bool) -> ParsedItem {
     let mut lexer = lex(source).peekable();
     let mut errors = Vec::new();
     let mut builder = rowan::GreenNodeBuilder::new();
@@ -342,9 +353,16 @@ fn events_to_node(events: Vec<Event>, source: &str) -> ParsedItem {
             }
         }
     }
-    for trivia in trivia.drain(..) {
-        let trivia_source = &source[(trivia.span.start as usize)..(trivia.span.end as usize)];
-        builder.token(TicLanguage::kind_to_raw(trivia.kind.into()), trivia_source.into());
+    if eat_all {
+        for trivia in trivia.drain(..) {
+            let trivia_source = &source[(trivia.span.start as usize)..(trivia.span.end as usize)];
+            builder.token(TicLanguage::kind_to_raw(trivia.kind.into()), trivia_source.into());
+        }
+        for token in lexer {
+            assert!(token.kind.is_trivia(), "non-trivia trailing token");
+            let trivia_source = &source[(token.span.start as usize)..(token.span.end as usize)];
+            builder.token(TicLanguage::kind_to_raw(token.kind.into()), trivia_source.into());
+        }
     }
     builder.finish_node();
     ParsedItem {
@@ -397,6 +415,92 @@ impl ParseHint {
                 TokenKind::ArgPipe => true,
                 _ => false,
             },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_item_length(source: &str) -> u32 {
+        let parsed = parse_one_item(source);
+        parsed.syntax.text_len().into()
+    }
+
+    #[test]
+    fn parses_one_item() {
+        let source = "let x = 1; type X = X;";
+        assert_eq!(11, parse_item_length(source));
+    }
+
+    #[test]
+    fn parses_up_to_newline_item() {
+        let source = "let x = 1; \n  type X = X;";
+        assert_eq!(12, parse_item_length(source));
+    }
+
+    #[test]
+    fn parses_last_until_end() {
+        let source = "let x = 1; \n  -- what";
+        assert_eq!(21, parse_item_length(source));
+    }
+
+    fn syntax_tree_source(syntax: rowan::GreenNode) -> String {
+        let node = rowan::SyntaxNode::<TicLanguage>::new_root(syntax);
+        let tokens = node
+            .descendants_with_tokens()
+            .filter_map(|e| e.into_token())
+            .collect::<Vec<_>>();
+        tokens
+            .iter()
+            .flat_map(|t| t.text().chars())
+            .collect::<String>()        
+    }
+
+    #[test]
+    fn roundtrip() {
+        let source = r#"
+        let x : int = --
+            1 + 2;
+        
+        type X = X rec;
+        "#;
+
+        let parse = parse_file(source);
+        let parsed = syntax_tree_source(parse.syntax);
+        assert_eq!(source, parsed);
+    }
+
+    #[test]
+    fn roundtrip_large() {
+        let source = r#"
+        type List a =
+            -- empty list
+            | Nil
+            -- non empty
+            | Cons a rec;
+        
+        let map : (a -> b) -> List a -> List b =
+            \f -> \fold list ->
+                match list with
+                | Nil -> Nil
+                | Cons x xs -> Cons (f x) xs
+                end;       
+        -- end of test source
+        "#;
+
+        let parse = parse_file(source);
+        assert!(parse.errors.is_empty(), "should have no errors in unmodified source");
+        assert_eq!(source, syntax_tree_source(parse.syntax));
+
+        let tokens = lex(source).collect::<Vec<_>>();
+        for token in tokens {
+            let before = &source[..(token.span.start as usize)];
+            let after = &source[(token.span.end as usize)..];
+            let source = String::from(before) + after;
+            let parse = parse_file(&source);
+            assert_eq!(source, syntax_tree_source(parse.syntax));
         }
     }
 }

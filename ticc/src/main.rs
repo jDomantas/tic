@@ -20,15 +20,14 @@ fn main() -> Result<()> {
 
     let mut compilation = ticc::Compilation::from_source(&source);
 
-    let errors = compilation.errors();
-    if !errors.is_empty() {
-        print_errors(file, &source, errors)?;
+    if compilation.errors().next().is_some() {
+        print_errors(file, &source, compilation.errors())?;
     }
 
     Ok(())
 }
 
-fn print_errors(file: &str, source: &str, errors: &[ticc::Error]) -> Result<()> {
+fn print_errors<'a>(file: &str, source: &str, errors: impl Iterator<Item = &'a ticc::Error>) -> Result<()> {
     let stream = cr::term::termcolor::StandardStream::stdout(cr::term::termcolor::ColorChoice::Auto);
     let mut stream = stream.lock();
     
@@ -52,7 +51,7 @@ fn print_errors(file: &str, source: &str, errors: &[ticc::Error]) -> Result<()> 
         pointer_left: '|',
     };
 
-    let config = codespan_reporting::term::Config{
+    let config = codespan_reporting::term::Config {
         chars,
         .. codespan_reporting::term::Config::default()
     };
