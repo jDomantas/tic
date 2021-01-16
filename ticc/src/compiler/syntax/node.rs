@@ -201,6 +201,8 @@ impl BinaryExpr {
 impl LetExpr {
     pub(crate) fn let_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::LetToken) }
     pub(crate) fn name_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
+    pub(crate) fn colon_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ColonToken) }
+    pub(crate) fn type_(&self) -> Option<Type> { child(&self.syntax) }
     pub(crate) fn eq_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::EqualsToken) }
     pub(crate) fn value(&self) -> Option<Expr> { child(&self.syntax) }
     pub(crate) fn semi_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::SemicolonToken) }

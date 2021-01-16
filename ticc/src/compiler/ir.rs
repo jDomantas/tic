@@ -18,11 +18,19 @@ impl Item {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
 pub(crate) struct Symbol(pub(crate) u32);
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum DefKind {
-    Value,
-    Ctor,
-    Type,
+    Value {
+        ty: Type,
+    },
+    Ctor {
+        type_symbol: Symbol,
+        type_params: Vec<Symbol>,
+        fields: Vec<Type>,
+    },
+    Type {
+        param_count: usize,
+    },
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -35,6 +43,7 @@ pub(crate) enum Visibility {
     Export,
 }
 
+#[derive(Clone)]
 pub(crate) struct Def {
     pub(crate) symbol: Symbol,
     pub(crate) kind: DefKind,
@@ -45,4 +54,16 @@ pub(crate) struct Def {
 pub(crate) struct Ref {
     pub(crate) symbol: Symbol,
     pub(crate) span: Span,
+}
+
+#[derive(Clone)]
+pub(crate) enum Type {
+    Int,
+    Bool,
+    Named(Symbol, Vec<Type>),
+    Fn(Box<Type>, Box<Type>),
+    Rec,
+    Error,
+    Infer,
+    Folded(Box<Type>, Box<Type>),
 }

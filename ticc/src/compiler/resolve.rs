@@ -37,85 +37,180 @@ impl<'a> Resolver<'a> {
     }
     
     fn resolve_type_item(&mut self, item: node::TypeItem, scope: &Scope<'_>) {
-        if let Some(token) = item.name_token() {
-            let symbol = self.symbols.gen();
-            self.item.defs.push(ir::Def {
-                symbol,
-                kind: ir::DefKind::Type,
-                vis: ir::Visibility::Module,
-                span: token.text_range().into(),
-            });
-        }
+        let symbol = self.symbols.gen();
         let mut scope = Scope::with_parent(scope);
+        let mut param_symbols = Vec::new();
         if let Some(params) = item.params() {
             for param in params.params() {
                 let symbol = self.symbols.gen();
+                param_symbols.push(symbol);
                 self.item.defs.push(ir::Def {
                     symbol,
-                    kind: ir::DefKind::Type,
+                    kind: ir::DefKind::Type {
+                        param_count: 0,
+                    },
                     vis: ir::Visibility::Local,
                     span: param.text_range().into(),
                 });
                 scope.types.insert(param.text().clone(), symbol);
             }
         }
+        if let Some(token) = item.name_token() {
+            self.item.defs.push(ir::Def {
+                symbol,
+                kind: ir::DefKind::Type {
+                    param_count: param_symbols.len(),
+                },
+                vis: ir::Visibility::Module,
+                span: token.text_range().into(),
+            });
+        }
         for case in item.cases() {
-            self.resolve_type_case(case, &scope);
+            self.resolve_type_case(case, &scope, symbol, &param_symbols);
         }
     }
 
-    fn resolve_type_case(&mut self, case: node::TypeCase, scope: &Scope<'_>) {
+    fn resolve_type_case(&mut self, case: node::TypeCase, scope: &Scope<'_>, type_symbol: ir::Symbol, param_symbols: &[ir::Symbol]) {
+        let symbol = self.symbols.gen();
+        let mut fields = Vec::new();
+        for ty in case.types() {
+            fields.push(self.resolve_type(ty, scope));
+        }
         if let Some(ident) = case.name_token() {
-            let symbol = self.symbols.gen();
             self.item.defs.push(ir::Def {
                 symbol,
-                kind: ir::DefKind::Ctor,
+                kind: ir::DefKind::Ctor {
+                    type_symbol,
+                    type_params: param_symbols.to_vec(),
+                    fields,
+                },
                 vis: ir::Visibility::Module,
                 span: ident.text_range().into(),
             });
         }
-        for ty in case.types() {
-            self.resolve_type(ty, scope);
-        }
     }
 
-    fn resolve_type(&mut self, ty: node::Type, scope: &Scope<'_>) {
+    fn resolve_type(&mut self, ty: node::Type, scope: &Scope<'_>) -> ir::Type {
         match ty {
-            node::Type::Int(_) => {}
-            node::Type::Bool(_) => {}
+            node::Type::Int(_) => ir::Type::Int,
+            node::Type::Bool(_) => ir::Type::Bool,
             node::Type::Fn(ty) => {
-                if let Some(ty) = ty.from() {
-                    self.resolve_type(ty, scope);
-                }
-                if let Some(ty) = ty.to() {
-                    self.resolve_type(ty, scope);
-                }
+                let from = if let Some(ty) = ty.from() {
+                    self.resolve_type(ty, scope)
+                } else {
+                    ir::Type::Error
+                };
+                let to = if let Some(ty) = ty.to() {
+                    self.resolve_type(ty, scope)
+                } else {
+                    ir::Type::Error
+                };
+                ir::Type::Fn(Box::new(from), Box::new(to))
             }
             node::Type::Named(ty) => {
-                if let Some(name) = ty.name_token() {
+                let symbol = if let Some(name) = ty.name_token() {
                     if let Some(symbol) = scope.lookup_type(name.text()) {
                         self.item.refs.push(ir::Ref {
                             symbol,
                             span: name.text_range().into(),
                         });
+                        Some(symbol)
                     } else {
                         self.emit_error(name.text_range().into(), "undefined type");
+                        None
                     }
-                }
+                } else {
+                    None
+                };
+                let mut args = Vec::new();
                 for ty in ty.type_args() {
-                    self.resolve_type(ty, scope);
+                    args.push(self.resolve_type(ty, scope));
                 }
+                symbol.map(|s| ir::Type::Named(s, args)).unwrap_or(ir::Type::Error)
             }
-            node::Type::Rec(_) => {}
+            node::Type::Rec(_) => ir::Type::Rec,
             node::Type::Paren(ty) => {
                 if let Some(ty) = ty.inner() {
-                    self.resolve_type(ty, scope);
+                    self.resolve_type(ty, scope)
+                } else {
+                    ir::Type::Error
+                }
+            }
+        }
+    }
+
+    fn resolve_type_with_vars(&mut self, ty: node::Type, scope: &mut Scope<'_>) -> ir::Type {
+        match ty {
+            node::Type::Int(_) => ir::Type::Int,
+            node::Type::Bool(_) => ir::Type::Bool,
+            node::Type::Fn(ty) => {
+                let from = if let Some(ty) = ty.from() {
+                    self.resolve_type_with_vars(ty, scope)
+                } else {
+                    ir::Type::Error
+                };
+                let to = if let Some(ty) = ty.to() {
+                    self.resolve_type_with_vars(ty, scope)
+                } else {
+                    ir::Type::Error
+                };
+                ir::Type::Fn(Box::new(from), Box::new(to))
+            }
+            node::Type::Named(ty) => {
+                let symbol = if let Some(name) = ty.name_token() {
+                    if let Some(symbol) = scope.lookup_type(name.text()) {
+                        self.item.refs.push(ir::Ref {
+                            symbol,
+                            span: name.text_range().into(),
+                        });
+                        Some(symbol)
+                    } else if name.text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
+                        let symbol = self.symbols.gen();
+                        self.item.defs.push(ir::Def {
+                            symbol,
+                            kind: ir::DefKind::Type {
+                                param_count: 0,
+                            },
+                            vis: ir::Visibility::Local,
+                            span: name.text_range().into(),
+                        });
+                        self.item.refs.push(ir::Ref {
+                            symbol,
+                            span: name.text_range().into(),
+                        });
+                        scope.types.insert(name.text().clone(), symbol);
+                        Some(symbol)
+                    } else {
+                        self.emit_error(name.text_range().into(), "undefined type");
+                        None
+                    }
+                } else {
+                    None
+                };
+                let mut args = Vec::new();
+                for ty in ty.type_args() {
+                    args.push(self.resolve_type_with_vars(ty, scope));
+                }
+                symbol.map(|s| ir::Type::Named(s, args)).unwrap_or(ir::Type::Error)
+            }
+            node::Type::Rec(_) => ir::Type::Rec,
+            node::Type::Paren(ty) => {
+                if let Some(ty) = ty.inner() {
+                    self.resolve_type_with_vars(ty, scope)
+                } else {
+                    ir::Type::Error
                 }
             }
         }
     }
 
     fn resolve_value_item(&mut self, item: node::ValueItem, scope: &Scope<'_>) {
+        let mut scope = Scope::with_parent(scope);
+        let ty = if let Some(ty) = item.type_() {
+            self.resolve_type_with_vars(ty, &mut scope)
+        } else {
+            ir::Type::Infer
+        };
         if let Some(token) = item.name_token() {
             let vis = if item.export_token().is_some() {
                 ir::Visibility::Export
@@ -124,13 +219,15 @@ impl<'a> Resolver<'a> {
             };
             self.item.defs.push(ir::Def {
                 symbol: self.symbols.gen(),
-                kind: ir::DefKind::Value,
+                kind: ir::DefKind::Value {
+                    ty,
+                },
                 vis,
                 span: token.text_range().into(),  
             });
         }
         if let Some(expr) = item.expr() {
-            self.resolve_expr(expr, scope);
+            self.resolve_expr(expr, &scope);
         }
     }
 
@@ -169,16 +266,23 @@ impl<'a> Resolver<'a> {
                 }
             }
             node::Expr::Let(expr) => {
+                let mut scope = Scope::with_parent(scope);
+                let ty = if let Some(ty) = expr.type_() {
+                    self.resolve_type_with_vars(ty, &mut scope)
+                } else {
+                    ir::Type::Infer
+                };
                 if let Some(expr) = expr.value() {
                     self.resolve_expr(expr, &scope);
                 }
-                let mut scope = Scope::with_parent(scope);
                 if let Some(ident) = expr.name_token() {
                     let span = ident.text_range().into();
                     let symbol = self.symbols.gen();
                     self.item.defs.push(ir::Def {
                         symbol,
-                        kind: ir::DefKind::Value,
+                        kind: ir::DefKind::Value {
+                            ty,
+                        },
                         vis: ir::Visibility::Local,
                         span,
                     });
@@ -216,7 +320,9 @@ impl<'a> Resolver<'a> {
                     let symbol = self.symbols.gen();
                     self.item.defs.push(ir::Def {
                         symbol,
-                        kind: ir::DefKind::Value,
+                        kind: ir::DefKind::Value {
+                            ty: ir::Type::Infer,
+                        },
                         vis: ir::Visibility::Local,
                         span,
                     });
@@ -252,7 +358,9 @@ impl<'a> Resolver<'a> {
                 let symbol = self.symbols.gen();
                 self.item.defs.push(ir::Def {
                     symbol,
-                    kind: ir::DefKind::Value,
+                    kind: ir::DefKind::Value {
+                        ty: ir::Type::Infer,
+                    },
                     vis: ir::Visibility::Local,
                     span,
                 });

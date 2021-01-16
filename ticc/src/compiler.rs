@@ -33,22 +33,23 @@ impl<'a> Scope<'a> {
         }
     }
 
-    pub(crate) fn add_item(&mut self, source: &str, item: &ir::Item) {
+    pub(crate) fn add_item(&mut self, source: &str, item: &ir::Item, include_local: bool) {
         for def in &item.defs {
-            if def.vis == ir::Visibility::Local {
+            if def.vis == ir::Visibility::Local && !include_local {
                 continue;
             }
-            let span = def.span.offset(item.span.start);
+            self.defs.insert(def.symbol, def.clone());
+            let span = def.span;
             let name = &source[(span.start as usize)..(span.end as usize)];
             match def.kind {
-                ir::DefKind::Value => {
+                ir::DefKind::Value { .. } => {
                     self.values.insert(name.into(), def.symbol);
                 }
-                ir::DefKind::Ctor => {
+                ir::DefKind::Ctor { ..  }=> {
                     self.ctors.insert(name.into(), def.symbol);
                     self.values.insert(name.into(), def.symbol);
                 }
-                ir::DefKind::Type => {
+                ir::DefKind::Type { .. } => {
                     self.types.insert(name.into(), def.symbol);
                 }
             }
@@ -89,6 +90,9 @@ impl<'a> Scope<'a> {
         if let Some(def) = self.defs.get(&symbol) {
             def
         } else {
+            if self.parent.is_none() {
+                panic!("undefined symbol: {:?}", symbol);
+            }
             self.parent.unwrap().lookup_def(symbol)
         }
     }

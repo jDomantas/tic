@@ -48,7 +48,7 @@ impl Compilation {
 
         let mut scope = Scope::new();
         for item in &self.items {
-            scope.add_item(&self.src, item);
+            scope.add_item(&self.src, item, false);
         }
 
         loop {
@@ -62,10 +62,23 @@ impl Compilation {
             let next_symbol = self.next_symbol.last().copied().unwrap_or(ir::Symbol(0));
             let mut symbols = compiler::SymbolGen { next: next_symbol };
             compiler::resolve::resolve(&mut item, &scope, &mut symbols);
-            scope.add_item(&self.src, &item);
-            self.items.push(item);
+            self.add_item(item);
             self.next_symbol.push(symbols.next);
+            scope.add_item(&self.src, self.items.last().unwrap(), false);
         }
+    }
+
+    fn add_item(&mut self, mut item: ir::Item) {
+        for error in &mut item.errors {
+            error.span = error.span.offset(item.span.start);
+        }
+        for def in &mut item.defs {
+            def.span = def.span.offset(item.span.start);
+        }
+        for r in &mut item.refs {
+            r.span = r.span.offset(item.span.start);
+        }
+        self.items.push(item);
     }
 
     fn compiled_length(&self) -> usize {
@@ -73,7 +86,7 @@ impl Compilation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Error {
     pub span: Span,
     pub message: String,

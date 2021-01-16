@@ -5,10 +5,5 @@ pub(crate) fn errors<'a>(compilation: &'a mut Compilation) -> impl Iterator<Item
     compilation.compile_to_end();
     compilation.items
         .iter()
-        .flat_map(|ir::Item { span, errors, .. }| errors
-            .iter()
-            .map(move |err| Error {
-                span: err.span.offset(span.start),
-                message: err.message.clone(),
-            }))
+        .flat_map(|item| item.errors.iter().cloned())
 }
