@@ -6,32 +6,12 @@ use std::iter::Peekable;
 use rowan::{GreenNode, Language};
 use crate::{Error, Span};
 use crate::compiler::{
+    ir,
     lexer::{Lexer, TokenKind, lex},
     syntax::{SyntaxKind, TicLanguage}
 };
 
-pub(crate) struct ParsedItem {
-    pub(crate) syntax: GreenNode,
-    pub(crate) errors: Vec<Error>,
-}
-
-pub(crate) fn parse_file(source: &str) -> ParsedItem {
-    let mut parser = Parser {
-        at_start_of_line: true,
-        tokens: lex(source).peekable(),
-        current_pos: Span { start: 0, end: 0 },
-        events: Vec::new(),
-        hints: Vec::new(),
-        expected_tokens: Vec::new(),
-    };
-    while !parser.at_eof() {
-        item::item(&mut parser);
-    }
-    let events = parser.finish();
-    events_to_node(events, source, true)
-}
-
-pub(crate) fn parse_one_item(source: &str) -> ParsedItem {
+pub(crate) fn parse_one_item(source: &str, start_offset: u32) -> ir::Item {
     let mut parser = Parser {
         at_start_of_line: true,
         tokens: lex(source).peekable(),
@@ -45,7 +25,15 @@ pub(crate) fn parse_one_item(source: &str) -> ParsedItem {
     }
     let eat_all = parser.at_eof();
     let events = parser.finish();
-    events_to_node(events, source, eat_all)
+    let (green, errors) = events_to_node(events, source, eat_all);
+    let span = Span { start: 0, end: green.text_len().into() }.offset(start_offset);
+    ir::Item {
+        syntax: green,
+        span,
+        errors,
+        defs: Vec::new(),
+        refs: Vec::new(),
+    }
 }
 
 #[derive(Debug)]
@@ -157,7 +145,7 @@ impl Parser<'_> {
         }
     }
 
-    fn finish(mut self) -> Vec<Event> {
+    fn finish(self) -> Vec<Event> {
         reorder_forward_parents(self.events)
     }
 
@@ -298,7 +286,7 @@ fn reorder_forward_parents(mut events: Vec<Event>) -> Vec<Event> {
     final_events
 }
 
-fn events_to_node(events: Vec<Event>, source: &str, eat_all: bool) -> ParsedItem {
+fn events_to_node(events: Vec<Event>, source: &str, eat_all: bool) -> (GreenNode, Vec<Error>) {
     let mut lexer = lex(source).peekable();
     let mut errors = Vec::new();
     let mut builder = rowan::GreenNodeBuilder::new();
@@ -365,10 +353,7 @@ fn events_to_node(events: Vec<Event>, source: &str, eat_all: bool) -> ParsedItem
         }
     }
     builder.finish_node();
-    ParsedItem {
-        syntax: builder.finish(),
-        errors,
-    }
+    (builder.finish(), errors)
 }
 
 impl ParseHint {
@@ -423,8 +408,21 @@ impl ParseHint {
 mod tests {
     use super::*;
 
+    fn parse_file(mut source: &str) -> Vec<ir::Item> {
+        let mut offset = 0;
+        let mut items = Vec::new();
+        while source.len() > 0 {
+            let item = parse_one_item(source, offset);
+            let length = item.span.end - item.span.start;
+            offset = item.span.end;
+            source = &source[(length as usize)..];
+            items.push(item);
+        }
+        items
+    }
+
     fn parse_item_length(source: &str) -> u32 {
-        let parsed = parse_one_item(source);
+        let parsed = parse_one_item(source, 0);
         parsed.syntax.text_len().into()
     }
 
@@ -458,6 +456,14 @@ mod tests {
             .collect::<String>()        
     }
 
+    fn parse_roundtrip(source: &str) -> String {
+        let items = parse_file(source);
+        items
+            .into_iter()
+            .map(|i| syntax_tree_source(i.syntax))
+            .collect()
+    }
+
     #[test]
     fn roundtrip() {
         let source = r#"
@@ -467,9 +473,7 @@ mod tests {
         type X = X rec;
         "#;
 
-        let parse = parse_file(source);
-        let parsed = syntax_tree_source(parse.syntax);
-        assert_eq!(source, parsed);
+        assert_eq!(source, parse_roundtrip(source));
     }
 
     #[test]
@@ -490,17 +494,19 @@ mod tests {
         -- end of test source
         "#;
 
-        let parse = parse_file(source);
-        assert!(parse.errors.is_empty(), "should have no errors in unmodified source");
-        assert_eq!(source, syntax_tree_source(parse.syntax));
+        let items = parse_file(source);
+        assert!(
+            items.iter().all(|i| i.errors.is_empty()),
+            "should have no errors in unmodified source",
+        );
+        assert_eq!(source, parse_roundtrip(source));
 
         let tokens = lex(source).collect::<Vec<_>>();
         for token in tokens {
             let before = &source[..(token.span.start as usize)];
             let after = &source[(token.span.end as usize)..];
             let source = String::from(before) + after;
-            let parse = parse_file(&source);
-            assert_eq!(source, syntax_tree_source(parse.syntax));
+            assert_eq!(source, parse_roundtrip(&source));
         }
     }
 }

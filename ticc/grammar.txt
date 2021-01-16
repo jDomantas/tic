@@ -29,7 +29,7 @@ NumberExpr ::= Number
 LambdaExpr ::= "\" "fold"? Ident "->" Expr
 ParenExpr ::= "(" Expr ")"
 
-MatchCase ::= "|" Ident MatchVars "-> Expr
+MatchCase ::= "|" Ident MatchVars "->" Expr
 MatchVars ::= Ident*
 
 BinaryOp ::= "+" | "-" | "*" | "<" | "<=" | ">" | ">=" | "==" | "!=" | "|>"

@@ -1,4 +1,6 @@
-use rowan::SmolStr;
+pub(crate) mod node;
+
+use rowan::{GreenNode, SmolStr};
 use crate::compiler::lexer::TokenKind;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
@@ -158,8 +160,20 @@ pub(crate) trait AstToken: Sized {
     }
 }
 
+fn children<T: AstNode>(node: &SyntaxNode) -> impl Iterator<Item = T> {
+    node.children().filter_map(|c| T::cast(c))
+}
+
 fn child<T: AstNode>(node: &SyntaxNode) -> Option<T> {
-    node.children().find_map(|c| T::cast(c))
+    children(node).next()
+}
+
+fn child2<T: AstNode>(node: &SyntaxNode) -> Option<T> {
+    children(node).nth(1)
+}
+
+fn child3<T: AstNode>(node: &SyntaxNode) -> Option<T> {
+    children(node).nth(2)
 }
 
 fn child_token(node: &SyntaxNode, kind: SyntaxKind) -> Option<SyntaxToken> {
@@ -168,54 +182,18 @@ fn child_token(node: &SyntaxNode, kind: SyntaxKind) -> Option<SyntaxToken> {
         .find(|t| t.kind() == kind)
 }
 
-struct ValueItem {
-    syntax: SyntaxNode,
+pub(crate) struct ItemSyntax {
+    pub(crate) syntax: SyntaxNode,
 }
 
-impl AstNode for ValueItem {
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        if syntax.kind() == SyntaxKind::ValueItem {
-            Some(ValueItem { syntax })
-        } else {
-            None
+impl ItemSyntax {
+    pub(crate) fn new(node: GreenNode) -> ItemSyntax {
+        ItemSyntax {
+            syntax: SyntaxNode::new_root(node),
         }
     }
 
-    fn syntax(&self) -> &SyntaxNode {
-        &self.syntax
-    }
-}
-
-impl ValueItem {
-    pub(crate) fn let_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::LetToken) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
-    pub(crate) fn colon_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ColonToken) }
-    pub(crate) fn type_(&self) -> Option<Type> { child(&self.syntax) }
-    pub(crate) fn eq_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::EqualsToken) }
-    pub(crate) fn expr(&self) -> Option<Expr> { child(&self.syntax) }
-    pub(crate) fn semi_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::SemicolonToken) }
-}
-
-enum Type {}
-
-impl AstNode for Type {
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        todo!()
-    }
-
-    fn syntax(&self) -> &SyntaxNode {
-        todo!()
-    }
-}
-
-enum Expr {}
-
-impl AstNode for Expr {
-    fn cast(syntax: SyntaxNode) -> Option<Self> {
-        todo!()
-    }
-
-    fn syntax(&self) -> &SyntaxNode {
-        todo!()
+    pub(crate) fn item(&self) -> Option<node::Item> {
+        child(&self.syntax)
     }
 }

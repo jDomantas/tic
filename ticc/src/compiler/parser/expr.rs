@@ -7,10 +7,10 @@ pub(super) fn expr(p: &mut Parser<'_>) {
         let m = p.start();
         p.bump(TokenKind::Let);
         p.expect(TokenKind::Name);
-        // if p.at(TokenKind::Colon) {
-        //     p.bump(TokenKind::Colon);
-        //     super::type_::type_(p);
-        // }
+        if p.at(TokenKind::Colon) {
+            p.bump(TokenKind::Colon);
+            super::type_::type_(p);
+        }
         p.expect(TokenKind::Equals);
         expr(p);
         p.expect(TokenKind::Semicolon);

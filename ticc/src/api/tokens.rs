@@ -1,5 +1,5 @@
 use rowan::{NodeOrToken, SyntaxNode, WalkEvent};
-use crate::{Compilation, Span, compiler::lexer};
+use crate::{Compilation, Span};
 use crate::compiler::syntax::{SyntaxKind, TicLanguage};
 
 #[derive(Debug, Clone, Copy)]
@@ -37,7 +37,7 @@ pub(crate) fn tokens(compilation: &mut Compilation) -> impl Iterator<Item = Toke
                     node_stack.push(n.kind());
                     None
                 }
-                WalkEvent::Leave(NodeOrToken::Node(n)) => {
+                WalkEvent::Leave(NodeOrToken::Node(_)) => {
                     node_stack.pop();
                     None
                 }

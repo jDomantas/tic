@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_errors<'a>(file: &str, source: &str, errors: impl Iterator<Item = &'a ticc::Error>) -> Result<()> {
+fn print_errors(file: &str, source: &str, errors: impl Iterator<Item = ticc::Error>) -> Result<()> {
     let stream = cr::term::termcolor::StandardStream::stdout(cr::term::termcolor::ColorChoice::Auto);
     let mut stream = stream.lock();
     
@@ -59,7 +59,7 @@ fn print_errors<'a>(file: &str, source: &str, errors: impl Iterator<Item = &'a t
     let file = files.add(file, source);
     for error in errors {
         let diagnostic = cr::diagnostic::Diagnostic::error()
-            .with_message(&error.message)
+            .with_message(error.message)
             .with_labels(vec![
                 cr::diagnostic::Label::primary(file, (error.span.start as usize)..(error.span.end as usize)),
             ]);

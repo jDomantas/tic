@@ -2,7 +2,7 @@
 
 * semantic highlighting: names colored by kind (type, value, function, ...)
 * show type on hover
-* live diagnostics
+* ~~live diagnostics~~
 * autocomplete types and values
 * nice to have: search by type
 * nice to have: generate match arms

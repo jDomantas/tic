@@ -1,4 +1,4 @@
-use super::{CompletedMarker, ParseHint, Parser, SyntaxKind, TokenKind};
+use super::{ParseHint, Parser, SyntaxKind, TokenKind};
 
 pub(super) fn item(p: &mut Parser<'_>) -> bool {
     p.hint(ParseHint::Item);
