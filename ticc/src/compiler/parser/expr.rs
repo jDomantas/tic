@@ -109,7 +109,9 @@ fn atom_expr(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         p.expect(TokenKind::RightParen);
         Some(m.complete(p, SyntaxKind::ParenExpr))
     } else if p.at(TokenKind::LeftBracket) {
-        todo!("list literal")
+        p.emit_error();
+        None
+        // todo!("list literal")
     } else if p.at(TokenKind::True) || p.at(TokenKind::False) {
         let m = p.start();
         p.bump_any();
