@@ -37,6 +37,10 @@ impl Compilation {
         api::errors::errors(self)
     }
 
+    pub fn find_definition(&mut self, pos: u32) -> Option<Span> {
+        api::navigation::find_definition(self, pos)
+    }
+
     fn compile_to_end(&mut self) {
         self.compile_up_to(self.src.len());
     }

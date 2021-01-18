@@ -1,41 +1,195 @@
 mod diagnostics;
+mod go_to_definition;
+mod handlers;
 mod semantic_tokens;
 
-use std::error::Error;
-
+use std::collections::HashMap;
+use crossbeam_channel::Sender;
 use lsp_types::{
-    DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams,
+    DeclarationCapability,
     InitializeParams,
-    PublishDiagnosticsParams,
-    SemanticTokens,
+    OneOf,
     SemanticTokensFullOptions,
     SemanticTokensLegend,
     SemanticTokensOptions,
-    SemanticTokensResult,
     SemanticTokensServerCapabilities,
     ServerCapabilities,
     TextDocumentSyncCapability,
     WorkDoneProgressOptions,
-    notification::Notification as _,
-    request::SemanticTokensFullRequest,
 };
+use lsp_server::{Connection, Message};
+use ticc::Compilation;
 
-use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
+type Error = Box<dyn std::error::Error>;
+type Result<T, E = Error> = std::result::Result<T, E>;
 
-fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
-    // Note that  we must have our logging only write out to stderr.
-    eprintln!("starting generic LSP server");
+#[derive(PartialEq, Eq, Debug, Hash, Clone)]
+struct FileKey(lsp_types::Url);
 
-    // Create the transport. Includes the stdio (stdin and stdout) versions but this could
-    // also be implemented to use sockets or HTTP.
+impl From<lsp_types::Url> for FileKey {
+    fn from(url: lsp_types::Url) -> FileKey {
+        FileKey(url)
+    }
+}
+
+#[derive(Default)]
+struct CompilationSet {
+    compilations: HashMap<FileKey, Compilation>,
+}
+
+impl CompilationSet {
+    fn get_mut(&mut self, file: &FileKey) -> Option<&mut Compilation> {
+        self.compilations.get_mut(file)
+    }
+
+    fn add_file(&mut self, file: FileKey, source: &str) {
+        let compilation = Compilation::from_source(source);
+        self.compilations.insert(file, compilation);
+    }
+
+    fn set_source(&mut self, file: FileKey, source: &str) {
+        self.add_file(file, source);
+    }
+
+    fn remove_file(&mut self, file: &FileKey) {
+        self.compilations.remove(file);
+    }
+}
+
+struct TicServer {
+    sender: Sender<Message>,
+    compilations: CompilationSet,
+}
+
+struct RequestHandler {
+    handler: Box<dyn FnMut(&mut TicServer, lsp_server::Request) -> Result<lsp_server::Response, lsp_server::Request>>,
+}
+
+impl RequestHandler {
+    fn new<R>(handler: fn(&mut TicServer, R::Params) -> R::Result) -> Self
+    where
+        R: lsp_types::request::Request,
+        R::Params: 'static,
+        R::Result: 'static,
+    {
+        RequestHandler {
+            handler: Box::new(move |server, request| {
+                match request.extract::<R::Params>(R::METHOD) {
+                    Ok((id, params)) => {
+                        let result = handler(server, params);
+                        let response = lsp_server::Response {
+                            id,
+                            result: Some(serde_json::to_value(&result).unwrap()),
+                            error: None,
+                        };
+                        Ok(response)
+                    }
+                    Err(req) => Err(req),
+                }
+            }),
+        }
+    }
+}
+
+struct NotificationHandler {
+    handler: Box<dyn FnMut(&mut TicServer, lsp_server::Notification) -> Result<(), lsp_server::Notification>>,
+}
+
+impl NotificationHandler {
+    fn new<N>(handler: fn(&mut TicServer, N::Params)) -> Self
+    where
+        N: lsp_types::notification::Notification,
+        N::Params: 'static,
+    {
+        NotificationHandler {
+            handler: Box::new(move |server, notification| {
+                match notification.extract::<N::Params>(N::METHOD) {
+                    Ok(params) => {
+                        handler(server, params);
+                        Ok(())
+                    }
+                    Err(n) => Err(n),
+                }
+            }),
+        }
+    }
+}
+
+#[derive(Default)]
+struct Handlers {
+    requests: Vec<RequestHandler>,
+    notifications: Vec<NotificationHandler>,
+}
+
+impl Handlers {
+    fn add_for_request<R>(&mut self, handler: fn(&mut TicServer, R::Params) -> R::Result)
+    where
+        R: lsp_types::request::Request,
+        R::Params: 'static,
+        R::Result: 'static,
+    {
+        self.requests.push(RequestHandler::new::<R>(handler));
+    }
+
+    fn add_for_notification<N>(&mut self, handler: fn(&mut TicServer, N::Params))
+    where
+        N: lsp_types::notification::Notification,
+        N::Params: 'static,
+    {
+        self.notifications.push(NotificationHandler::new::<N>(handler));
+    }
+
+    fn handle_request(&mut self, server: &mut TicServer, mut request: lsp_server::Request) -> Result<()> {
+        for handler in &mut self.requests {
+            match (handler.handler)(server, request) {
+                Ok(response) => {
+                    server.sender.send(Message::Response(response)).unwrap();
+                    return Ok(());
+                }
+                Err(r) => {
+                    request = r;
+                }
+            }
+        }
+        eprintln!("unhandled request: {:?}", request.method);
+        Ok(())
+    }
+
+    fn handle_notification(&mut self, server: &mut TicServer, mut notification: lsp_server::Notification) {
+        for handler in &mut self.notifications {
+            match (handler.handler)(server, notification) {
+                Ok(()) => {
+                    return;
+                }
+                Err(n) => {
+                    notification = n;
+                }
+            }
+        }
+        eprintln!("unhandled notification: {:?}", notification.method);
+    }
+}
+
+fn main() -> Result<()> {
     let (connection, io_threads) = Connection::stdio();
 
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
-    let mut server_capabilities = ServerCapabilities::default();
-    server_capabilities.text_document_sync = Some(TextDocumentSyncCapability::Kind(lsp_types::TextDocumentSyncKind::Full));
-    server_capabilities.semantic_tokens_provider = Some(SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
+    let server_capabilities = serde_json::to_value(&server_capabilities()).unwrap();
+    let initialization_params = connection.initialize(server_capabilities)?;
+    if let Err(e) = main_loop(&connection, initialization_params) {
+        eprintln!("error, aborting: {}", e);
+    }
+    io_threads.join()?;
+
+    // Shut down gracefully.
+    eprintln!("shutting down server");
+    Ok(())
+}
+
+fn server_capabilities() -> ServerCapabilities {
+    let mut capabilities = ServerCapabilities::default();
+    capabilities.text_document_sync = Some(TextDocumentSyncCapability::Kind(lsp_types::TextDocumentSyncKind::Full));
+    capabilities.semantic_tokens_provider = Some(SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
         work_done_progress_options: WorkDoneProgressOptions {
             work_done_progress: Some(false),
         },
@@ -50,25 +204,21 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         range: Some(false),
         full: Some(SemanticTokensFullOptions::Bool(true)),
     }));
-    let server_capabilities = serde_json::to_value(&server_capabilities).unwrap();
-    eprintln!("capabilities: {}", serde_json::to_string(&server_capabilities).unwrap());
-    let initialization_params = connection.initialize(server_capabilities)?;
-    if let Err(e) = main_loop(&connection, initialization_params) {
-        eprintln!("error, aborting: {}", e);
-    }
-    io_threads.join()?;
-
-    // Shut down gracefully.
-    eprintln!("shutting down server");
-    Ok(())
+    capabilities.declaration_provider = Some(DeclarationCapability::Simple(true));
+    capabilities.definition_provider = Some(OneOf::Left(true));
+    capabilities
 }
 
 fn main_loop(
     connection: &Connection,
     params: serde_json::Value,
-) -> Result<(), Box<dyn Error + Sync + Send>> {
+) -> Result<()> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
-    let mut compilation = ticc::Compilation::from_source("");
+    let mut server = TicServer {
+        sender: connection.sender.clone(),
+        compilations: CompilationSet::default(),
+    };
+    let mut handlers = crate::handlers::handlers();
     for msg in &connection.receiver {
         match msg {
             Message::Request(req) => {
@@ -76,93 +226,17 @@ fn main_loop(
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                match cast::<SemanticTokensFullRequest>(req) {
-                    Ok((id, params)) => {
-                        eprintln!("got semantic tokens request #{}: {:?}", id, params);
-                        let tokens = semantic_tokens::get_semantic_tokens(&mut compilation);
-                        let result = Some(SemanticTokensResult::Tokens(SemanticTokens {
-                            result_id: None,
-                            data: tokens,
-                        }));
-                        let result = serde_json::to_value(&result).unwrap();
-                        let response = Response { id, result: Some(result), error: None };
-                        connection.sender.send(Message::Response(response))?;
-                    }
-                    Err(_) => {}
-                }
+                handlers.handle_request(&mut server, req)?;
             }
             Message::Response(resp) => {
                 eprintln!("got response: {:?}", resp);
             }
             Message::Notification(not) => {
                 eprintln!("got notification: {:?}", not.method);
-                match recognize_notification(not) {
-                    NotificationKind::DidOpenTextDocument(open) => {
-                        compilation = ticc::Compilation::from_source(&open.text_document.text);
-                    }
-                    NotificationKind::DidCloseTextDocument(_close) => {
-                        compilation = ticc::Compilation::from_source("");
-                    }
-                    NotificationKind::DidChangeTextDocument(mut change) => {
-                        compilation = ticc::Compilation::from_source(&change.content_changes.swap_remove(0).text);
-
-                        let diagnostics = diagnostics::get_diagnostics(&mut compilation);
-                        let params = PublishDiagnosticsParams {
-                            uri: change.text_document.uri,
-                            diagnostics,
-                            version: None,
-                        };
-                        connection.sender.send(Message::Notification(Notification {
-                            method: lsp_types::notification::PublishDiagnostics::METHOD.into(),
-                            params: serde_json::to_value(&params).unwrap(),
-                        }))?;
-                    }
-                    NotificationKind::Unknown(n) => {
-                        eprintln!("unknown notification: {:?}", n);
-                    }
-                }
+                handlers.handle_notification(&mut server, not);
             }
         }
     }
     eprintln!("stopping main loop");
     Ok(())
-}
-
-fn cast<R>(req: Request) -> Result<(RequestId, R::Params), Request>
-where
-    R: lsp_types::request::Request,
-    R::Params: serde::de::DeserializeOwned,
-{
-    req.extract(R::METHOD)
-}
-
-enum NotificationKind {
-    DidOpenTextDocument(DidOpenTextDocumentParams),
-    DidChangeTextDocument(DidChangeTextDocumentParams),
-    DidCloseTextDocument(DidCloseTextDocumentParams),
-    Unknown(Notification),
-}
-
-fn recognize_notification(n: Notification) -> NotificationKind {
-    fn cast<N>(n: Notification) -> Result<N::Params, Notification>
-    where
-        N: lsp_types::notification::Notification,
-        N::Params: serde::de::DeserializeOwned,
-    {
-        n.extract(N::METHOD)
-    }
-
-    let n = match cast::<lsp_types::notification::DidOpenTextDocument>(n) {
-        Ok(n) => return NotificationKind::DidOpenTextDocument(n),
-        Err(n) => n,
-    };
-    let n = match cast::<lsp_types::notification::DidChangeTextDocument>(n) {
-        Ok(n) => return NotificationKind::DidChangeTextDocument(n),
-        Err(n) => n,
-    };
-    let n = match cast::<lsp_types::notification::DidCloseTextDocument>(n) {
-        Ok(n) => return NotificationKind::DidCloseTextDocument(n),
-        Err(n) => n,
-    };
-    NotificationKind::Unknown(n)
 }

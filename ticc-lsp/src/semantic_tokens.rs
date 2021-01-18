@@ -13,12 +13,12 @@ pub fn get_semantic_tokens(compilation: &mut Compilation) -> Vec<SemanticToken> 
     for token in compilation.tokens() {
         let start_offset = token.span.start as usize;
         let end_offset = token.span.end as usize;
-        for c in src[last_token_start..start_offset].encode_utf16() {
-            if c == 10 {
+        for c in src[last_token_start..start_offset].chars() {
+            if c == '\n' {
                 current_pos.0 += 1;
                 current_pos.1 = 0;
             } else {
-                current_pos.1 += 1;
+                current_pos.1 += c.len_utf16() as u32;
             }
         }
 
