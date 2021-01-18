@@ -115,3 +115,8 @@ impl From<rowan::TextRange> for Span {
         }
     }
 }
+
+pub fn parse_source(source: &str) {
+    let mut compilation = Compilation::from_source(source);
+    compilation.compile_to_end();
+}
