@@ -25,6 +25,7 @@ pub fn get_diagnostics(compilation: &mut Compilation) -> Vec<Diagnostic> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lsp_types::{Position, Range};
 
     fn first_error_position(source: &str) -> Range {
         let mut compilation = Compilation::from_source(source);

@@ -409,20 +409,20 @@ mod tests {
     use super::*;
 
     fn parse_file(mut source: &str) -> Vec<ir::Item> {
-        let mut offset = 0;
+        let mut pos = Pos::new(0);
         let mut items = Vec::new();
         while source.len() > 0 {
-            let item = parse_one_item(source, offset);
-            let length = item.span.end - item.span.start;
-            offset = item.span.end;
-            source = &source[(length as usize)..];
+            let item = parse_one_item(source, pos);
+            let length = item.span.end.idx() - item.span.start.idx();
+            pos = item.span.end;
+            source = &source[length..];
             items.push(item);
         }
         items
     }
 
     fn parse_item_length(source: &str) -> u32 {
-        let parsed = parse_one_item(source, 0);
+        let parsed = parse_one_item(source, Pos::new(0));
         parsed.syntax.text_len().into()
     }
 
@@ -503,8 +503,8 @@ mod tests {
 
         let tokens = lex(source).collect::<Vec<_>>();
         for token in tokens {
-            let before = &source[..(token.span.start as usize)];
-            let after = &source[(token.span.end as usize)..];
+            let before = &source[..token.span.start.idx()];
+            let after = &source[token.span.end.idx()..];
             let source = String::from(before) + after;
             assert_eq!(source, parse_roundtrip(&source));
         }
