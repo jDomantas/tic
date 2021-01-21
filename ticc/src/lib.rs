@@ -61,7 +61,7 @@ impl Compilation {
 
         loop {
             let compiled = self.compiled_length();
-            if compiled >= offset {
+            if compiled >= offset || compiled == self.src.len() {
                 break;
             }
 

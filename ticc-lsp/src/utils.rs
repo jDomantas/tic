@@ -116,7 +116,7 @@ impl ToTicc for Position {
                 let mut current = 0;
                 for (i, c) in line_source.char_indices() {
                     current += c.len_utf16();
-                    if current >= self.character as usize {
+                    if current > self.character as usize {
                         return Pos::new((line_start + i) as u32);
                     }
                 }
@@ -130,5 +130,36 @@ impl ToTicc for Position {
             }
             (None, Some(_)) => unreachable!(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translate_to_lsp() {
+        let source = "012345678\n01234567";
+        let mut translator = LocationTranslator::for_source(source);
+        for i in 0..=18 {
+            assert_eq!(Position { line: i / 10, character: i % 10 }, translator.to_lsp(Pos::new(i)));
+        }
+    }
+
+    #[test]
+    fn translate_to_ticc() {
+        let source = "012345678\n01234567";
+        let mut translator = LocationTranslator::for_source(source);
+        for i in 0..10 {
+            assert_eq!(Pos::new(i), translator.to_ticc(Position { line: 0, character: i }));
+        }
+        for i in 0..=8 {
+            assert_eq!(Pos::new(10 + i), translator.to_ticc(Position { line: 1, character: i }));
+        }
+        assert_eq!(Pos::new(18), translator.to_ticc(Position { line: 1, character: 9 }));
+        assert_eq!(Pos::new(18), translator.to_ticc(Position { line: 1, character: 10 }));
+        assert_eq!(Pos::new(18), translator.to_ticc(Position { line: 2, character: 0 }));
+        assert_eq!(Pos::new(18), translator.to_ticc(Position { line: 2, character: 15 }));
+        assert_eq!(Pos::new(18), translator.to_ticc(Position { line: 45, character: 82 }));
     }
 }
