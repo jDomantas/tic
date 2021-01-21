@@ -1,6 +1,6 @@
 use std::fmt;
 use logos::{Logos, SpannedIter};
-use crate::Span;
+use crate::{Pos, Span};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Copy, Clone, Logos)]
 pub(crate) enum TokenKind {
@@ -216,8 +216,8 @@ impl<'a> Iterator for Lexer<'a> {
         self.lexer.next().map(|(kind, span)| Token {
             kind,
             span: Span {
-                start: span.start as u32,
-                end: span.end as u32,
+                start: Pos::new(span.start as u32),
+                end: Pos::new(span.end as u32),
             }
         })
     }

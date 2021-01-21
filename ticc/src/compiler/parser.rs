@@ -4,18 +4,18 @@ mod type_;
 
 use std::iter::Peekable;
 use rowan::{GreenNode, Language};
-use crate::{Error, Span};
+use crate::{Error, Pos, Span};
 use crate::compiler::{
     ir,
     lexer::{Lexer, TokenKind, lex},
     syntax::{SyntaxKind, TicLanguage}
 };
 
-pub(crate) fn parse_one_item(source: &str, start_offset: u32) -> ir::Item {
+pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
     let mut parser = Parser {
         at_start_of_line: true,
         tokens: lex(source).peekable(),
-        current_pos: Span { start: 0, end: 0 },
+        current_pos: Span { start: Pos::new(0), end: Pos::new(0) },
         events: Vec::new(),
         hints: Vec::new(),
         expected_tokens: Vec::new(),
@@ -26,7 +26,7 @@ pub(crate) fn parse_one_item(source: &str, start_offset: u32) -> ir::Item {
     let eat_all = parser.at_eof();
     let events = parser.finish();
     let (green, errors) = events_to_node(events, source, eat_all);
-    let span = Span { start: 0, end: green.text_len().into() }.offset(start_offset);
+    let span = Span { start: Pos::new(0), end: Pos::new(green.text_len().into()) }.offset(start_pos);
     ir::Item {
         syntax: green,
         span,
@@ -303,19 +303,19 @@ fn events_to_node(events: Vec<Event>, source: &str, eat_all: bool) -> (GreenNode
             }
             Event::AddToken(kind) => {
                 for trivia in trivia.drain(..) {
-                    let trivia_source = &source[(trivia.span.start as usize)..(trivia.span.end as usize)];
+                    let trivia_source = &source[trivia.span.start.idx()..trivia.span.end.idx()];
                     builder.token(TicLanguage::kind_to_raw(trivia.kind.into()), trivia_source.into());
                 }
                 let token = lexer.next().unwrap();
                 assert_eq!(token.kind, kind);
-                let token_source = &source[(token.span.start as usize)..(token.span.end as usize)];
+                let token_source = &source[token.span.start.idx()..token.span.end.idx()];
                 builder.token(TicLanguage::kind_to_raw(kind.into()), token_source.into());
                 tokens_since_error += 1;
                 let mut appending = true;
                 while lexer.peek().map(|t| t.kind.is_trivia()).unwrap_or(false) {
                     let trivia_token = lexer.next().unwrap();
                     if appending {
-                        let trivia_source = &source[(trivia_token.span.start as usize)..(trivia_token.span.end as usize)];
+                        let trivia_source = &source[trivia_token.span.start.idx()..trivia_token.span.end.idx()];
                         builder.token(TicLanguage::kind_to_raw(trivia_token.kind.into()), trivia_source.into());
                     } else {
                         trivia.push(trivia_token);
@@ -343,12 +343,12 @@ fn events_to_node(events: Vec<Event>, source: &str, eat_all: bool) -> (GreenNode
     }
     if eat_all {
         for trivia in trivia.drain(..) {
-            let trivia_source = &source[(trivia.span.start as usize)..(trivia.span.end as usize)];
+            let trivia_source = &source[trivia.span.start.idx()..trivia.span.end.idx()];
             builder.token(TicLanguage::kind_to_raw(trivia.kind.into()), trivia_source.into());
         }
         for token in lexer {
             assert!(token.kind.is_trivia(), "non-trivia trailing token");
-            let trivia_source = &source[(token.span.start as usize)..(token.span.end as usize)];
+            let trivia_source = &source[token.span.start.idx()..token.span.end.idx()];
             builder.token(TicLanguage::kind_to_raw(token.kind.into()), trivia_source.into());
         }
     }

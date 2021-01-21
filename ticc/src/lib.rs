@@ -37,11 +37,11 @@ impl Compilation {
         api::errors::errors(self)
     }
 
-    pub fn find_definition(&mut self, pos: u32) -> Option<Span> {
+    pub fn find_definition(&mut self, pos: Pos) -> Option<Span> {
         api::navigation::find_definition(self, pos)
     }
 
-    pub fn find_references(&mut self, pos: u32) -> Option<Vec<Span>> {
+    pub fn find_references(&mut self, pos: Pos) -> Option<Vec<Span>> {
         api::navigation::find_references(self, pos)
     }
 
@@ -66,7 +66,8 @@ impl Compilation {
             }
 
             let tail = &self.src[compiled..];
-            let mut item = parser::parse_one_item(tail, compiled as u32);
+            let item_start = Pos::new(compiled as u32);
+            let mut item = parser::parse_one_item(tail, item_start);
             let next_symbol = self.next_symbol.last().copied().unwrap_or(ir::Symbol(0));
             let mut symbols = compiler::SymbolGen { next: next_symbol };
             compiler::resolve::resolve(&mut item, &scope, &mut symbols);
@@ -90,7 +91,7 @@ impl Compilation {
     }
 
     fn compiled_length(&self) -> usize {
-        self.items.last().map(|i| i.span.end as usize).unwrap_or(0)
+        self.items.last().map(|i| i.span.end.idx()).unwrap_or(0)
     }
 }
 
@@ -105,17 +106,27 @@ pub struct Pos {
     pub offset: u32,
 }
 
+impl Pos {
+    pub fn new(offset: u32) -> Pos {
+        Pos { offset }
+    }
+
+    pub(crate) fn idx(self) -> usize {
+        self.offset as usize
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
 pub struct Span {
-    pub start: u32,
-    pub end: u32,
+    pub start: Pos,
+    pub end: Pos,
 }
 
 impl Span {
-    pub(crate) fn offset(self, offset: u32) -> Span {
+    pub(crate) fn offset(self, from: Pos) -> Span {
         Span {
-            start: self.start + offset,
-            end: self.end + offset,
+            start: Pos { offset: self.start.offset + from.offset },
+            end: Pos { offset: self.end.offset + from.offset },
         }
     }
 }
@@ -123,8 +134,8 @@ impl Span {
 impl From<rowan::TextRange> for Span {
     fn from(range: rowan::TextRange) -> Self {
         Span {
-            start: range.start().into(),
-            end: range.end().into(),
+            start: Pos::new(range.start().into()),
+            end: Pos::new(range.end().into()),
         }
     }
 }

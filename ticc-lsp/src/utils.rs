@@ -57,15 +57,7 @@ impl ToLsp for Pos {
     type LspRepr = Position;
 
     fn to_lsp(self, translator: &mut LocationTranslator<'_>) -> Self::LspRepr {
-        translator.to_lsp(self.offset)
-    }
-}
-
-impl ToLsp for u32 {
-    type LspRepr = Position;
-
-    fn to_lsp(self, translator: &mut LocationTranslator<'_>) -> Self::LspRepr {
-        let pos = self as usize;
+        let pos = self.offset as usize;
         let line = translator.line_index(pos);
         let line_start = translator.line_starts[line];
         let src = &translator.source[line_start..pos];
@@ -106,7 +98,7 @@ impl ToTicc for Range {
 }
 
 impl ToTicc for Position {
-    type TiccRepr = u32;
+    type TiccRepr = Pos;
 
     fn to_ticc(self, translator: &mut LocationTranslator<'_>) -> Self::TiccRepr {
         while !translator.complete && translator.line_starts.len() <= self.line as usize {
@@ -125,16 +117,16 @@ impl ToTicc for Position {
                 for (i, c) in line_source.char_indices() {
                     current += c.len_utf16();
                     if current >= self.character as usize {
-                        return (line_start + i) as u32;
+                        return Pos::new((line_start + i) as u32);
                     }
                 }
                 // character is after the end of the line, clamp to line's end
-                line_end as u32
+                Pos::new(line_end as u32)
             }
             (None, None) => {
                 // position's line is larger than number of lines in the source,
                 // clamp to the end of the source
-                translator.source.len() as u32
+                Pos::new(translator.source.len() as u32)
             }
             (None, Some(_)) => unreachable!(),
         }

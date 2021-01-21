@@ -40,7 +40,7 @@ impl<'a> Scope<'a> {
             }
             self.defs.insert(def.symbol, def.clone());
             let span = def.span;
-            let name = &source[(span.start as usize)..(span.end as usize)];
+            let name = &source[span.start.idx()..span.end.idx()];
             match def.kind {
                 ir::DefKind::Value { .. } => {
                     self.values.insert(name.into(), def.symbol);

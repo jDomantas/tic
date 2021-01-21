@@ -60,10 +60,7 @@ pub(crate) fn tokens(compilation: &mut Compilation) -> impl Iterator<Item = Toke
                 WalkEvent::Leave(NodeOrToken::Node(_)) |
                 WalkEvent::Leave(NodeOrToken::Token(_)) => None,
                 WalkEvent::Enter(NodeOrToken::Token(t)) => {
-                    let span = Span {
-                        start: offset + u32::from(t.text_range().start()),
-                        end: offset + u32::from(t.text_range().end()),
-                    };
+                    let span = Span::from(t.text_range()).offset(offset);
                     let kind = symbol_kinds.get(&span).copied();
                     convert_token(t.kind(), kind)
                         .map(|kind| Token {

@@ -11,8 +11,8 @@ pub fn get_semantic_tokens(compilation: &mut Compilation) -> Vec<SemanticToken> 
     let mut last_token_start = 0;
 
     for token in compilation.tokens() {
-        let start_offset = token.span.start as usize;
-        let end_offset = token.span.end as usize;
+        let start_offset = token.span.start.offset as usize;
+        let end_offset = token.span.end.offset as usize;
         for c in src[last_token_start..start_offset].chars() {
             if c == '\n' {
                 current_pos.0 += 1;
