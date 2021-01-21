@@ -96,7 +96,7 @@ pub struct Error {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
 pub struct Span {
     pub start: u32,
     pub end: u32,

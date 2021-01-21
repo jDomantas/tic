@@ -30,6 +30,7 @@ pub(crate) enum DefKind {
     },
     Type {
         param_count: usize,
+        is_var: bool,
     },
 }
 

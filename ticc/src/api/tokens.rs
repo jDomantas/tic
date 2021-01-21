@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use rowan::{NodeOrToken, SyntaxNode, WalkEvent};
 use crate::{Compilation, Span};
 use crate::compiler::syntax::{SyntaxKind, TicLanguage};
+use crate::compiler::ir;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TokenKind {
@@ -24,7 +26,28 @@ pub struct Token {
 
 pub(crate) fn tokens(compilation: &mut Compilation) -> impl Iterator<Item = Token> + '_ {
     compilation.compile_to_end();
-    let mut node_stack = Vec::new();
+
+    let def_kinds = compilation.items
+        .iter()
+        .flat_map(|i| i.defs.iter().map(|d| (d.symbol, &d.kind)))
+        .collect::<HashMap<_, _>>();
+
+    let symbol_kinds = compilation.items
+        .iter()
+        .flat_map(|i| {
+            let refs = i.refs
+                .iter()
+                .filter_map(|r| if let Some(&kind) = def_kinds.get(&r.symbol) {
+                    Some((r.span, kind))
+                } else {
+                    None
+                });
+            let defs = i.defs
+                .iter()
+                .map(|d| (d.span, &d.kind));
+            refs.chain(defs)
+        })
+        .collect::<HashMap<_, _>>();
 
     compilation.items
         .iter()
@@ -33,30 +56,26 @@ pub(crate) fn tokens(compilation: &mut Compilation) -> impl Iterator<Item = Toke
             .map(move |e| (e, i.span.start)))
         .filter_map(move |(event, offset)| {
             match event {
-                WalkEvent::Enter(NodeOrToken::Node(n)) => {
-                    node_stack.push(n.kind());
-                    None
-                }
-                WalkEvent::Leave(NodeOrToken::Node(_)) => {
-                    node_stack.pop();
-                    None
-                }
+                WalkEvent::Enter(NodeOrToken::Node(_)) |
+                WalkEvent::Leave(NodeOrToken::Node(_)) |
+                WalkEvent::Leave(NodeOrToken::Token(_)) => None,
                 WalkEvent::Enter(NodeOrToken::Token(t)) => {
-                    convert_token(t.kind(), *node_stack.last().unwrap())
+                    let span = Span {
+                        start: offset + u32::from(t.text_range().start()),
+                        end: offset + u32::from(t.text_range().end()),
+                    };
+                    let kind = symbol_kinds.get(&span).copied();
+                    convert_token(t.kind(), kind)
                         .map(|kind| Token {
                             kind,
-                            span: Span {
-                                start: offset + u32::from(t.text_range().start()),
-                                end: offset + u32::from(t.text_range().end()),
-                            },
+                            span,
                         })
                 }
-                WalkEvent::Leave(NodeOrToken::Token(_)) => None,
             }
         })
 }
 
-fn convert_token(syntax: SyntaxKind, parent: SyntaxKind) -> Option<TokenKind> {
+fn convert_token(syntax: SyntaxKind, def_kind: Option<&ir::DefKind>) -> Option<TokenKind> {
     match syntax {
         SyntaxKind::TypeItem |
         SyntaxKind::ValueItem |
@@ -120,13 +139,12 @@ fn convert_token(syntax: SyntaxKind, parent: SyntaxKind) -> Option<TokenKind> {
         SyntaxKind::ConsToken |
         SyntaxKind::ArgPipeToken => Some(TokenKind::Operator),
         SyntaxKind::NumberToken => Some(TokenKind::Number),
-        SyntaxKind::IdentToken => Some(match parent {
-            SyntaxKind::TypeItem |
-            SyntaxKind::NamedType => TokenKind::Type,
-            SyntaxKind::TypeCase |
-            SyntaxKind::MatchCase => TokenKind::Ctor,
-            SyntaxKind::TypeParams => TokenKind::TypeVariable,
-            _ => TokenKind::Value,
+        SyntaxKind::IdentToken => Some(match def_kind {
+            Some(ir::DefKind::Value { .. }) => TokenKind::Value,
+            Some(ir::DefKind::Ctor { .. }) => TokenKind::Ctor,
+            Some(ir::DefKind::Type { is_var: true, .. }) => TokenKind::TypeVariable,
+            Some(ir::DefKind::Type { is_var: false, .. }) => TokenKind::Type,
+            None => TokenKind::Value,
         }),
         SyntaxKind::Space |
         SyntaxKind::Newline |

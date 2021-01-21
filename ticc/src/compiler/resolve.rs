@@ -48,6 +48,7 @@ impl<'a> Resolver<'a> {
                     symbol,
                     kind: ir::DefKind::Type {
                         param_count: 0,
+                        is_var: true,
                     },
                     vis: ir::Visibility::Local,
                     span: param.text_range().into(),
@@ -60,6 +61,7 @@ impl<'a> Resolver<'a> {
                 symbol,
                 kind: ir::DefKind::Type {
                     param_count: param_symbols.len(),
+                    is_var: false,
                 },
                 vis: ir::Visibility::Module,
                 span: token.text_range().into(),
@@ -170,6 +172,7 @@ impl<'a> Resolver<'a> {
                             symbol,
                             kind: ir::DefKind::Type {
                                 param_count: 0,
+                                is_var: true,
                             },
                             vis: ir::Visibility::Local,
                             span: name.text_range().into(),
