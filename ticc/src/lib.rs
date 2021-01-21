@@ -41,6 +41,10 @@ impl Compilation {
         api::navigation::find_definition(self, pos)
     }
 
+    pub fn find_references(&mut self, pos: u32) -> Option<Vec<Span>> {
+        api::navigation::find_references(self, pos)
+    }
+
     fn compile_to_end(&mut self) {
         self.compile_up_to(self.src.len());
     }
@@ -94,6 +98,11 @@ impl Compilation {
 pub struct Error {
     pub span: Span,
     pub message: String,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
+pub struct Pos {
+    pub offset: u32,
 }
 
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]

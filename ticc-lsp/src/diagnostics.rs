@@ -1,34 +1,15 @@
-use lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
+use lsp_types::{Diagnostic, DiagnosticSeverity};
 use ticc::Compilation;
+use crate::utils::LocationTranslator;
 
 pub fn get_diagnostics(compilation: &mut Compilation) -> Vec<Diagnostic> {
     let source = compilation.source();
-    let line_starts = std::iter::once(0).chain(source
-        .char_indices()
-        .filter_map(|(i, c)| if c == '\n' { Some((i + 1) as u32) } else { None }))
-        .collect::<Vec<_>>();
-
-    let translate_position = |offset: u32| {
-        let pos = match line_starts.binary_search(&offset) {
-            Ok(idx) => Position {
-                line: idx as u32,
-                character: 0,
-            },
-            Err(idx) => Position {
-                line: idx as u32 - 1,
-                character: offset - line_starts[idx - 1],
-            },
-        };
-        pos
-    };
+    let mut translator = LocationTranslator::for_source(&source);
 
     compilation
         .errors()
         .map(|e| Diagnostic {
-            range: Range {
-                start: translate_position(e.span.start),
-                end: translate_position(e.span.end),
-            },
+            range: translator.to_lsp(e.span),
             severity: Some(DiagnosticSeverity::Error),
             code: None,
             code_description: None,

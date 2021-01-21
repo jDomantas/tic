@@ -1,7 +1,9 @@
 mod diagnostics;
+mod find_references;
 mod go_to_definition;
 mod handlers;
 mod semantic_tokens;
+mod utils;
 
 use std::collections::HashMap;
 use crossbeam_channel::Sender;
@@ -206,6 +208,7 @@ fn server_capabilities() -> ServerCapabilities {
     }));
     capabilities.declaration_provider = Some(DeclarationCapability::Simple(true));
     capabilities.definition_provider = Some(OneOf::Left(true));
+    capabilities.references_provider = Some(OneOf::Left(true));
     capabilities
 }
 

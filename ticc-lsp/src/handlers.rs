@@ -35,6 +35,32 @@ fn go_to_definition(
     }
 }
 
+fn find_references(
+    server: &mut TicServer,
+    params: lsp_types::ReferenceParams,
+) -> Option<Vec<lsp_types::Location>> {
+    let key = FileKey::from(params.text_document_position.text_document.uri);
+    let compilation = server.compilations.get_mut(&key).unwrap();
+    let pos = params.text_document_position.position;
+    let references = crate::find_references::find_references(compilation, pos)?;
+    let mut references = references
+        .into_iter()
+        .map(|range| lsp_types::Location {
+            uri: key.0.clone(),
+            range,
+        })
+        .collect::<Vec<_>>();
+    if params.context.include_declaration {
+        if let Some(range) = crate::go_to_definition::find_definition(compilation, pos) {
+            references.push(lsp_types::Location {
+                uri: key.0.clone(),
+                range,
+            })
+        }
+    }
+    Some(references)
+}
+
 fn on_open(
     server: &mut TicServer,
     params: lsp_types::DidOpenTextDocumentParams,
@@ -90,6 +116,7 @@ pub(crate) fn handlers() -> Handlers {
     handlers.add_for_request::<request::SemanticTokensFullRequest>(semantic_tokens);
     handlers.add_for_request::<request::GotoDefinition>(go_to_definition);
     handlers.add_for_request::<request::GotoDeclaration>(go_to_definition);
+    handlers.add_for_request::<request::References>(find_references);
 
     handlers.add_for_notification::<notification::DidOpenTextDocument>(on_open);
     handlers.add_for_notification::<notification::DidChangeTextDocument>(on_change);

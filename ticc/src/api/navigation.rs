@@ -6,6 +6,40 @@ pub(crate) fn find_definition(compilation: &mut Compilation, pos: u32) -> Option
     find_usage_at(compilation, pos).and_then(|s| find_def_span(compilation, s))
 }
 
+/// Returns `None` when there's no symbol at the given position.
+/// Returns `Some(vec![])` when there's a symbol at the given position, but
+/// there no references to that symbol in the code.
+pub(crate) fn find_references(compilation: &mut Compilation, pos: u32) -> Option<Vec<Span>> {
+    compilation.compile_up_to(pos as usize + 1);
+    let symbol = find_usage_at(compilation, pos)?;
+    let (item, def) = compilation.items
+        .iter()
+        .flat_map(|i| i.defs.iter().map(move |d| (i, d)))
+        .find(|(_, d)| d.symbol == symbol)?;
+    let refs = if def.vis == ir::Visibility::Local {
+        item.refs
+            .iter()
+            .filter_map(|r| if r.symbol == symbol {
+                Some(r.span)
+            } else {
+                None
+            })
+            .collect()
+    } else {
+        compilation.compile_to_end();
+        compilation.items
+            .iter()
+            .flat_map(|i| i.refs.iter())
+            .filter_map(|r| if r.symbol == symbol {
+                Some(r.span)
+            } else {
+                None
+            })
+            .collect()
+    };
+    Some(refs)
+}
+
 fn find_usage_at(compilation: &mut Compilation, pos: u32) -> Option<ir::Symbol> {
     for item in &compilation.items {
         if pos < item.span.start || item.span.end <= pos {
