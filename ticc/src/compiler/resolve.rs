@@ -141,18 +141,18 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_type_with_vars(&mut self, ty: node::Type, scope: &mut Scope<'_>) -> ir::Type {
+    fn resolve_type_with_vars(&mut self, ty: node::Type, scope: &mut Scope<'_>, type_vars: &mut Vec<ir::Symbol>) -> ir::Type {
         match ty {
             node::Type::Int(_) => ir::Type::Int,
             node::Type::Bool(_) => ir::Type::Bool,
             node::Type::Fn(ty) => {
                 let from = if let Some(ty) = ty.from() {
-                    self.resolve_type_with_vars(ty, scope)
+                    self.resolve_type_with_vars(ty, scope, type_vars)
                 } else {
                     ir::Type::Error
                 };
                 let to = if let Some(ty) = ty.to() {
-                    self.resolve_type_with_vars(ty, scope)
+                    self.resolve_type_with_vars(ty, scope, type_vars)
                 } else {
                     ir::Type::Error
                 };
@@ -168,6 +168,7 @@ impl<'a> Resolver<'a> {
                         Some(symbol)
                     } else if name.text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
                         let symbol = self.symbols.gen();
+                        type_vars.push(symbol);
                         self.item.defs.push(ir::Def {
                             symbol,
                             kind: ir::DefKind::Type {
@@ -192,14 +193,14 @@ impl<'a> Resolver<'a> {
                 };
                 let mut args = Vec::new();
                 for ty in ty.type_args() {
-                    args.push(self.resolve_type_with_vars(ty, scope));
+                    args.push(self.resolve_type_with_vars(ty, scope, type_vars));
                 }
                 symbol.map(|s| ir::Type::Named(s, args)).unwrap_or(ir::Type::Error)
             }
             node::Type::Rec(_) => ir::Type::Rec,
             node::Type::Paren(ty) => {
                 if let Some(ty) = ty.inner() {
-                    self.resolve_type_with_vars(ty, scope)
+                    self.resolve_type_with_vars(ty, scope, type_vars)
                 } else {
                     ir::Type::Error
                 }
@@ -209,8 +210,9 @@ impl<'a> Resolver<'a> {
 
     fn resolve_value_item(&mut self, item: node::ValueItem, scope: &Scope<'_>) {
         let mut scope = Scope::with_parent(scope);
+        let mut type_vars = Vec::new();
         let ty = if let Some(ty) = item.type_() {
-            self.resolve_type_with_vars(ty, &mut scope)
+            self.resolve_type_with_vars(ty, &mut scope, &mut type_vars)
         } else {
             ir::Type::Infer
         };
@@ -224,6 +226,7 @@ impl<'a> Resolver<'a> {
                 symbol: self.symbols.gen(),
                 kind: ir::DefKind::Value {
                     ty,
+                    type_vars,
                 },
                 vis,
                 span: token.text_range().into(),  
@@ -270,8 +273,9 @@ impl<'a> Resolver<'a> {
             }
             node::Expr::Let(expr) => {
                 let mut scope = Scope::with_parent(scope);
+                let mut type_vars = Vec::new();
                 let ty = if let Some(ty) = expr.type_() {
-                    self.resolve_type_with_vars(ty, &mut scope)
+                    self.resolve_type_with_vars(ty, &mut scope, &mut type_vars)
                 } else {
                     ir::Type::Infer
                 };
@@ -285,6 +289,7 @@ impl<'a> Resolver<'a> {
                         symbol,
                         kind: ir::DefKind::Value {
                             ty,
+                            type_vars,
                         },
                         vis: ir::Visibility::Local,
                         span,
@@ -325,6 +330,7 @@ impl<'a> Resolver<'a> {
                         symbol,
                         kind: ir::DefKind::Value {
                             ty: ir::Type::Infer,
+                            type_vars: Vec::new(),
                         },
                         vis: ir::Visibility::Local,
                         span,
@@ -363,6 +369,7 @@ impl<'a> Resolver<'a> {
                     symbol,
                     kind: ir::DefKind::Value {
                         ty: ir::Type::Infer,
+                        type_vars: Vec::new(),
                     },
                     vis: ir::Visibility::Local,
                     span,

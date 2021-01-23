@@ -21,6 +21,7 @@ pub(crate) struct Symbol(pub(crate) u32);
 #[derive(Clone)]
 pub(crate) enum DefKind {
     Value {
+        type_vars: Vec<Symbol>,
         ty: Type,
     },
     Ctor {
