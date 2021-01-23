@@ -3,7 +3,13 @@ use crate::compiler::ir;
 
 pub(crate) fn find_definition(compilation: &mut Compilation, pos: Pos) -> Option<Span> {
     compilation.compile_up_to(pos.idx() + 1);
-    find_usage_at(compilation, pos).and_then(|s| find_def_span(compilation, s))
+    if let Some(r) = super::find_ref_at(compilation, pos) {
+        super::find_def(compilation, r.symbol).map(|def| def.span)
+    } else if let Some(def) = super::find_def_at(compilation, pos) {
+        Some(def.span)
+    } else {
+        None
+    }
 }
 
 /// Returns `None` when there's no symbol at the given position.
@@ -11,7 +17,7 @@ pub(crate) fn find_definition(compilation: &mut Compilation, pos: Pos) -> Option
 /// there no references to that symbol in the code.
 pub(crate) fn find_references(compilation: &mut Compilation, pos: Pos) -> Option<Vec<Span>> {
     compilation.compile_up_to(pos.idx() + 1);
-    let symbol = find_usage_at(compilation, pos)?;
+    let symbol = super::find_ref_at(compilation, pos)?.symbol;
     let (item, def) = compilation.items
         .iter()
         .flat_map(|i| i.defs.iter().map(move |d| (i, d)))
@@ -38,29 +44,4 @@ pub(crate) fn find_references(compilation: &mut Compilation, pos: Pos) -> Option
             .collect()
     };
     Some(refs)
-}
-
-fn find_usage_at(compilation: &mut Compilation, pos: Pos) -> Option<ir::Symbol> {
-    for item in &compilation.items {
-        if pos < item.span.start || item.span.end <= pos {
-            continue;
-        }
-        for r in &item.refs {
-            if r.span.start <= pos && pos <= r.span.end {
-                return Some(r.symbol);
-            }
-        }
-    }
-    None
-}
-
-fn find_def_span(compilation: &mut Compilation, symbol: ir::Symbol) -> Option<Span> {
-    for item in &compilation.items {
-        for def in &item.defs {
-            if def.symbol == symbol {
-                return Some(def.span);
-            }
-        }
-    }
-    None
 }

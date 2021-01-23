@@ -7,8 +7,9 @@ pub(crate) mod compiler;
 pub(crate) mod api;
 
 use std::sync::Arc;
-pub use api::tokens::{Token, TokenKind};
 use compiler::{Scope, ir, parser};
+pub use api::tokens::{Token, TokenKind};
+pub use api::info::Info;
 
 pub struct Compilation {
     src: Arc<str>,
@@ -43,6 +44,10 @@ impl Compilation {
 
     pub fn find_references(&mut self, pos: Pos) -> Option<Vec<Span>> {
         api::navigation::find_references(self, pos)
+    }
+
+    pub fn info(&mut self, pos: Pos) -> Option<Info> {
+        api::info::info_at(self, pos)
     }
 
     fn compile_to_end(&mut self) {

@@ -52,6 +52,16 @@ pub(crate) struct Def {
     pub(crate) span: Span,
 }
 
+impl Def {
+    pub(crate) fn to_ref(&self) -> Ref {
+        Ref {
+            symbol: self.symbol,
+            span: self.span,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub(crate) struct Ref {
     pub(crate) symbol: Symbol,
     pub(crate) span: Span,

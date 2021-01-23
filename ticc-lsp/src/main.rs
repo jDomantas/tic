@@ -2,6 +2,7 @@ mod diagnostics;
 mod find_references;
 mod go_to_definition;
 mod handlers;
+mod hover;
 mod semantic_tokens;
 mod utils;
 
@@ -10,6 +11,7 @@ use crossbeam_channel::Sender;
 use lsp_types::{
     DeclarationCapability,
     InitializeParams,
+    HoverProviderCapability,
     OneOf,
     SemanticTokensFullOptions,
     SemanticTokensLegend,
@@ -209,6 +211,7 @@ fn server_capabilities() -> ServerCapabilities {
     capabilities.declaration_provider = Some(DeclarationCapability::Simple(true));
     capabilities.definition_provider = Some(OneOf::Left(true));
     capabilities.references_provider = Some(OneOf::Left(true));
+    capabilities.hover_provider = Some(HoverProviderCapability::Simple(true));
     capabilities
 }
 
