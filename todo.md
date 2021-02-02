@@ -1,7 +1,7 @@
 # Features:
 
-* semantic highlighting: names colored by kind (type, value, function, ...)
-* show type on hover
+* ~~semantic highlighting: names colored by kind (type, value, function, ...)~~
+* ~~show type on hover~~
 * ~~live diagnostics~~
 * autocomplete types and values
 * nice to have: search by type

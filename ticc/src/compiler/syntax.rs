@@ -76,6 +76,12 @@ pub(crate) enum SyntaxKind {
     __Last,
 }
 
+impl SyntaxKind {
+    pub(crate) fn is_trivia(self) -> bool {
+        matches!(self, SyntaxKind::Space | SyntaxKind::Newline | SyntaxKind::Comment)
+    }
+}
+
 impl From<TokenKind> for SyntaxKind {
     fn from(token: TokenKind) -> Self {
         match token {

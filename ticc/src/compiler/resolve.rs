@@ -10,17 +10,23 @@ pub(crate) fn resolve(item: &mut ir::Item, scope: &Scope<'_>, symbols: &mut Symb
     if let Some(item) = syntax.item() {
         resolver.resolve_item(item, scope);
     }
+    for def in &mut item.defs {
+        def.span = def.span.offset(item.span.start);
+    }
+    for r in &mut item.refs {
+        r.span = r.span.offset(item.span.start);
+    }
 }
 
 struct Resolver<'a> {
     item: &'a mut ir::Item,
-    symbols: &'a mut SymbolGen, 
+    symbols: &'a mut SymbolGen,
 }
 
 impl<'a> Resolver<'a> {
     fn emit_error(&mut self, span: Span, message: impl Into<String>) {
         self.item.errors.push(Error {
-            span,
+            span: span.offset(self.item.span.start),
             message: message.into(),
         });
     }

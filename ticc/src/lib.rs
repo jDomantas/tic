@@ -76,7 +76,8 @@ impl Compilation {
             let next_symbol = self.next_symbol.last().copied().unwrap_or(ir::Symbol(0));
             let mut symbols = compiler::SymbolGen { next: next_symbol };
             compiler::resolve::resolve(&mut item, &scope, &mut symbols);
-            self.add_item(item);
+            compiler::typeck::type_check(self, &mut item, &scope);
+            self.items.push(item);
             self.next_symbol.push(symbols.next);
             scope.add_item(&self.src, self.items.last().unwrap(), false);
         }
@@ -121,7 +122,7 @@ impl Pos {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Span {
     pub start: Pos,
     pub end: Pos,
@@ -142,5 +143,14 @@ impl From<rowan::TextRange> for Span {
             start: Pos::new(range.start().into()),
             end: Pos::new(range.end().into()),
         }
+    }
+}
+
+impl std::fmt::Debug for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Span")
+            .field("start", &self.start.offset)
+            .field("end", &self.end.offset)
+            .finish()
     }
 }

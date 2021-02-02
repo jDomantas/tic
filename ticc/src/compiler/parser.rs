@@ -25,8 +25,11 @@ pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
     }
     let eat_all = parser.at_eof();
     let events = parser.finish();
-    let (green, errors) = events_to_node(events, source, eat_all);
+    let (green, mut errors) = events_to_node(events, source, eat_all);
     let span = Span { start: Pos::new(0), end: Pos::new(green.text_len().into()) }.offset(start_pos);
+    for error in &mut errors {
+        error.span = error.span.offset(start_pos);
+    }
     ir::Item {
         syntax: green,
         span,

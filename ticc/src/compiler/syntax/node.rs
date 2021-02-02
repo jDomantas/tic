@@ -272,6 +272,10 @@ impl MatchVars {
 
 impl BinaryOp {
     pub(crate) fn token(&self) -> SyntaxToken {
-        self.syntax.children_with_tokens().find_map(|c| c.into_token()).unwrap()
+        self.syntax
+            .children_with_tokens()
+            .filter_map(|c| c.into_token())
+            .find(|t| !t.kind().is_trivia())
+            .unwrap()
     }
 }

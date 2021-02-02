@@ -3,6 +3,7 @@ pub(crate) mod lexer;
 pub(crate) mod parser;
 pub(crate) mod resolve;
 pub(crate) mod syntax;
+pub(crate) mod typeck;
 
 use std::collections::HashMap;
 use rowan::SmolStr;

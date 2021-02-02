@@ -53,19 +53,19 @@ pub(crate) fn info_at(compilation: &mut Compilation, pos: Pos) -> Option<Info> {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
-struct Name<'a> {
+pub(crate) struct Name<'a> {
     name: &'a str,
     idx: u32,
 }
 
-struct TypePrinter<'a> {
-    compilation: &'a Compilation,
-    name_cache: HashMap<ir::Symbol, Name<'a>>,
-    used_names: HashSet<Name<'a>>,
+pub(crate) struct TypePrinter<'a> {
+    pub(crate) compilation: &'a Compilation,
+    pub(crate) name_cache: HashMap<ir::Symbol, Name<'a>>,
+    pub(crate) used_names: HashSet<Name<'a>>,
 }
 
 impl<'a> TypePrinter<'a> {
-    fn print_type(&mut self, ty: &ir::Type, to: &mut String) {
+    pub(crate) fn print_type(&mut self, ty: &ir::Type, to: &mut String) {
         self.print_type_prec(ty, 0, to);
     }
 
