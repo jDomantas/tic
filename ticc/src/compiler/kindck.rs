@@ -1,9 +1,10 @@
-use crate::{Error, Span};
+use crate::{Compilation, Error, Span};
 use crate::compiler::{ir, Scope, syntax::node};
 use crate::compiler::syntax::AstNode;
 
-pub(crate) fn kind_check(item: &mut ir::Item, scope: &Scope<'_>) {
+pub(crate) fn kind_check(compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
     let mut scope = Scope::with_parent(scope);
+    scope.add_item(&compilation.src, item, true);
 
     for def in &mut item.defs {
         match &mut def.kind {
