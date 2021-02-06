@@ -2,36 +2,33 @@ use crate::{Error, Span};
 use crate::compiler::{ir, syntax::node, Scope, SymbolGen};
 
 pub(crate) fn resolve(item: &mut ir::Item, scope: &Scope<'_>, symbols: &mut SymbolGen) {
-    let syntax = item.syntax();
     let mut resolver = Resolver {
-        item,
+        defs: &mut item.defs,
+        refs: &mut item.refs,
+        errors: &mut item.errors,
         symbols,
     };
-    if let Some(item) = syntax.item() {
+    if let Some(item) = item.syntax.item() {
         resolver.resolve_item(item, scope);
-    }
-    for def in &mut item.defs {
-        def.span = def.span.offset(item.span.start);
-    }
-    for r in &mut item.refs {
-        r.span = r.span.offset(item.span.start);
     }
 }
 
 struct Resolver<'a> {
-    item: &'a mut ir::Item,
+    defs: &'a mut Vec<ir::Def>,
+    refs: &'a mut Vec<ir::Ref>,
+    errors: &'a mut Vec<Error>,
     symbols: &'a mut SymbolGen,
 }
 
 impl<'a> Resolver<'a> {
     fn emit_error(&mut self, span: Span, message: impl Into<String>) {
-        self.item.errors.push(Error {
-            span: span.offset(self.item.span.start),
+        self.errors.push(Error {
+            span,
             message: message.into(),
         });
     }
 
-    fn resolve_item(&mut self, item: node::Item, scope: &Scope<'_>) {
+    fn resolve_item(&mut self, item: node::Item<'_>, scope: &Scope<'_>) {
         match item {
             node::Item::Type(i) => {
                 self.resolve_type_item(i, scope);
@@ -42,7 +39,7 @@ impl<'a> Resolver<'a> {
         }
     }
     
-    fn resolve_type_item(&mut self, item: node::TypeItem, scope: &Scope<'_>) {
+    fn resolve_type_item(&mut self, item: node::TypeItem<'_>, scope: &Scope<'_>) {
         let symbol = self.symbols.gen();
         let mut scope = Scope::with_parent(scope);
         let mut param_symbols = Vec::new();
@@ -50,27 +47,27 @@ impl<'a> Resolver<'a> {
             for param in params.params() {
                 let symbol = self.symbols.gen();
                 param_symbols.push(symbol);
-                self.item.defs.push(ir::Def {
+                self.defs.push(ir::Def {
                     symbol,
                     kind: ir::DefKind::Type {
                         param_count: 0,
                         is_var: true,
                     },
                     vis: ir::Visibility::Local,
-                    span: param.text_range().into(),
+                    span: param.span(),
                 });
                 scope.types.insert(param.text().clone(), symbol);
             }
         }
         if let Some(token) = item.name_token() {
-            self.item.defs.push(ir::Def {
+            self.defs.push(ir::Def {
                 symbol,
                 kind: ir::DefKind::Type {
                     param_count: param_symbols.len(),
                     is_var: false,
                 },
                 vis: ir::Visibility::Module,
-                span: token.text_range().into(),
+                span: token.span(),
             });
         }
         for case in item.cases() {
@@ -78,14 +75,14 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_type_case(&mut self, case: node::TypeCase, scope: &Scope<'_>, type_symbol: ir::Symbol, param_symbols: &[ir::Symbol]) {
+    fn resolve_type_case(&mut self, case: node::TypeCase<'_>, scope: &Scope<'_>, type_symbol: ir::Symbol, param_symbols: &[ir::Symbol]) {
         let symbol = self.symbols.gen();
         let mut fields = Vec::new();
         for ty in case.types() {
             fields.push(self.resolve_type(ty, scope));
         }
         if let Some(ident) = case.name_token() {
-            self.item.defs.push(ir::Def {
+            self.defs.push(ir::Def {
                 symbol,
                 kind: ir::DefKind::Ctor {
                     type_symbol,
@@ -93,12 +90,12 @@ impl<'a> Resolver<'a> {
                     fields,
                 },
                 vis: ir::Visibility::Module,
-                span: ident.text_range().into(),
+                span: ident.span(),
             });
         }
     }
 
-    fn resolve_type(&mut self, ty: node::Type, scope: &Scope<'_>) -> ir::Type {
+    fn resolve_type(&mut self, ty: node::Type<'_>, scope: &Scope<'_>) -> ir::Type {
         match ty {
             node::Type::Int(_) => ir::Type::Int,
             node::Type::Bool(_) => ir::Type::Bool,
@@ -118,13 +115,13 @@ impl<'a> Resolver<'a> {
             node::Type::Named(ty) => {
                 let symbol = if let Some(name) = ty.name_token() {
                     if let Some(symbol) = scope.lookup_type(name.text()) {
-                        self.item.refs.push(ir::Ref {
+                        self.refs.push(ir::Ref {
                             symbol,
-                            span: name.text_range().into(),
+                            span: name.span(),
                         });
                         Some(symbol)
                     } else {
-                        self.emit_error(name.text_range().into(), "undefined type");
+                        self.emit_error(name.span(), "undefined type");
                         None
                     }
                 } else {
@@ -147,7 +144,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    fn resolve_type_with_vars(&mut self, ty: node::Type, scope: &mut Scope<'_>, type_vars: &mut Vec<ir::Symbol>) -> ir::Type {
+    fn resolve_type_with_vars<'b>(&mut self, ty: node::Type<'b>, scope: &mut Scope<'b>, type_vars: &mut Vec<ir::Symbol>) -> ir::Type {
         match ty {
             node::Type::Int(_) => ir::Type::Int,
             node::Type::Bool(_) => ir::Type::Bool,
@@ -167,31 +164,31 @@ impl<'a> Resolver<'a> {
             node::Type::Named(ty) => {
                 let symbol = if let Some(name) = ty.name_token() {
                     if let Some(symbol) = scope.lookup_type(name.text()) {
-                        self.item.refs.push(ir::Ref {
+                        self.refs.push(ir::Ref {
                             symbol,
-                            span: name.text_range().into(),
+                            span: name.span(),
                         });
                         Some(symbol)
                     } else if name.text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
                         let symbol = self.symbols.gen();
                         type_vars.push(symbol);
-                        self.item.defs.push(ir::Def {
+                        self.defs.push(ir::Def {
                             symbol,
                             kind: ir::DefKind::Type {
                                 param_count: 0,
                                 is_var: true,
                             },
                             vis: ir::Visibility::Local,
-                            span: name.text_range().into(),
+                            span: name.span(),
                         });
-                        self.item.refs.push(ir::Ref {
+                        self.refs.push(ir::Ref {
                             symbol,
-                            span: name.text_range().into(),
+                            span: name.span(),
                         });
                         scope.types.insert(name.text().clone(), symbol);
                         Some(symbol)
                     } else {
-                        self.emit_error(name.text_range().into(), "undefined type");
+                        self.emit_error(name.span(), "undefined type");
                         None
                     }
                 } else {
@@ -228,14 +225,14 @@ impl<'a> Resolver<'a> {
             } else {
                 ir::Visibility::Module
             };
-            self.item.defs.push(ir::Def {
+            self.defs.push(ir::Def {
                 symbol: self.symbols.gen(),
                 kind: ir::DefKind::Value {
                     ty,
                     type_vars,
                 },
                 vis,
-                span: token.text_range().into(),  
+                span: token.span(),  
             });
         }
         if let Some(expr) = item.expr() {
@@ -252,12 +249,12 @@ impl<'a> Resolver<'a> {
             node::Expr::Name(expr) => {
                 if let Some(name) = expr.name_token() {
                     if let Some(symbol) = scope.lookup_value(name.text()) {
-                        self.item.refs.push(ir::Ref {
+                        self.refs.push(ir::Ref {
                             symbol,
-                            span: name.text_range().into(),
+                            span: name.span(),
                         });
                     } else {
-                        self.emit_error(name.text_range().into(), "undefined variable");
+                        self.emit_error(name.span(), "undefined variable");
                     }
                 }
             }
@@ -289,9 +286,9 @@ impl<'a> Resolver<'a> {
                     self.resolve_expr(expr, &scope);
                 }
                 if let Some(ident) = expr.name_token() {
-                    let span = ident.text_range().into();
+                    let span = ident.span();
                     let symbol = self.symbols.gen();
-                    self.item.defs.push(ir::Def {
+                    self.defs.push(ir::Def {
                         symbol,
                         kind: ir::DefKind::Value {
                             ty,
@@ -330,9 +327,9 @@ impl<'a> Resolver<'a> {
             node::Expr::Lambda(expr) => {
                 let mut scope = Scope::with_parent(scope);
                 if let Some(ident) = expr.param_token() {
-                    let span = ident.text_range().into();
+                    let span = ident.span();
                     let symbol = self.symbols.gen();
-                    self.item.defs.push(ir::Def {
+                    self.defs.push(ir::Def {
                         symbol,
                         kind: ir::DefKind::Value {
                             ty: ir::Type::Infer,
@@ -358,20 +355,20 @@ impl<'a> Resolver<'a> {
     fn resolve_match_case(&mut self, case: node::MatchCase, scope: &Scope<'_>) {
         if let Some(ident) = case.ctor_token() {
             if let Some(symbol) = scope.lookup_ctor(ident.text()) {
-                self.item.refs.push(ir::Ref {
+                self.refs.push(ir::Ref {
                     symbol,
-                    span: ident.text_range().into(),
+                    span: ident.span(),
                 });
             } else {
-                self.emit_error(ident.text_range().into(), "undefined constructor");
+                self.emit_error(ident.span(), "undefined constructor");
             }
         }
         let mut scope = Scope::with_parent(scope);
         if let Some(vars) = case.vars() {
             for var in vars.vars() {
-                let span = var.text_range().into();
+                let span = var.span();
                 let symbol = self.symbols.gen();
-                self.item.defs.push(ir::Def {
+                self.defs.push(ir::Def {
                     symbol,
                     kind: ir::DefKind::Value {
                         ty: ir::Type::Infer,

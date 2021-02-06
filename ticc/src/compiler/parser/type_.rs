@@ -19,9 +19,9 @@ pub(super) fn type_(p: &mut Parser<'_>) {
 }
 
 fn non_fn_type(p: &mut Parser<'_>) -> Option<CompletedMarker> {
-    if p.at(TokenKind::Name) {
+    if p.at(TokenKind::Ident) {
         let m = p.start();
-        p.bump(TokenKind::Name);
+        p.bump(TokenKind::Ident);
         while let Some(_) = atom_type(p) {}
         Some(m.complete(p, SyntaxKind::NamedType))
     } else {
@@ -44,9 +44,9 @@ pub(super) fn atom_type(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         let m = p.start();
         p.bump(TokenKind::Rec);
         Some(m.complete(p, SyntaxKind::RecType))
-    } else if p.at(TokenKind::Name) {
+    } else if p.at(TokenKind::Ident) {
         let m = p.start();
-        p.bump(TokenKind::Name);
+        p.bump(TokenKind::Ident);
         Some(m.complete(p, SyntaxKind::NamedType))
     } else if p.at(TokenKind::LeftParen) {
         let m = p.start();

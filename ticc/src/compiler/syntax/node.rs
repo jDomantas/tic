@@ -3,6 +3,7 @@ use super::{
     SyntaxKind,
     SyntaxNode,
     SyntaxToken,
+    TokenKind,
     child,
     child2,
     child3,
@@ -12,13 +13,13 @@ use super::{
 
 macro_rules! nodes {
     () => {};
-    ($v:vis enum $name:ident { $($member:ident($t:ty),)* } $($rest:tt)*) => {
-        $v enum $name {
-            $($member($t),)*
+    ($v:vis enum $name:ident { $($member:ident($t:ident),)* } $($rest:tt)*) => {
+        $v enum $name<'a> {
+            $($member($t<'a>),)*
         }
 
-        impl AstNode for $name {
-            fn cast(syntax: SyntaxNode) -> Option<Self> {
+        impl<'a> AstNode<'a> for $name<'a> {
+            fn cast(syntax: SyntaxNode<'a>) -> Option<Self> {
                 $(
                     if let Some(x) = <$t>::cast(syntax.clone()) {
                         return Some(Self::$member(x));
@@ -27,7 +28,7 @@ macro_rules! nodes {
                 None
             }
 
-            fn syntax(&self) -> &SyntaxNode {
+            fn syntax(&self) -> &SyntaxNode<'a> {
                 match self {
                     $(Self::$member(x) => x.syntax(),)*
                 }
@@ -38,12 +39,12 @@ macro_rules! nodes {
     };
     
     ($v:vis struct $name:ident { $kind:expr } $($rest:tt)*) => {
-        $v struct $name {
-            $v syntax : SyntaxNode,
+        $v struct $name<'a> {
+            $v syntax : SyntaxNode<'a>,
         }
 
-        impl AstNode for $name {
-            fn cast(syntax: SyntaxNode) -> Option<Self> {
+        impl<'a> AstNode<'a> for $name<'a> {
+            fn cast(syntax: SyntaxNode<'a>) -> Option<Self> {
                 if syntax.kind() == $kind {
                     Some(Self { syntax })
                 } else {
@@ -51,7 +52,7 @@ macro_rules! nodes {
                 }
             }
 
-            fn syntax(&self) -> &SyntaxNode {
+            fn syntax(&self) -> &SyntaxNode<'a> {
                 &self.syntax
             }
         }
@@ -119,163 +120,161 @@ nodes! {
     pub(crate) struct BinaryOp { SyntaxKind::BinaryOp }
 }
 
-impl TypeItem {
-    pub(crate) fn type_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::TypeToken) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
-    pub(crate) fn params(&self) -> Option<TypeParams> { child(&self.syntax) }
-    pub(crate) fn equals_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::EqualsToken) }
-    pub(crate) fn cases(&self) -> impl Iterator<Item = TypeCase> { children(&self.syntax) }
-    pub(crate) fn semi_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::SemicolonToken) }
+impl<'a> TypeItem<'a> {
+    pub(crate) fn type_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Type) }
+    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn params(&self) -> Option<TypeParams<'a>> { child(&self.syntax) }
+    pub(crate) fn equals_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Equals) }
+    pub(crate) fn cases(&self) -> impl Iterator<Item = TypeCase<'a>> + 'a { children(&self.syntax) }
+    pub(crate) fn semi_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Semicolon) }
 }
 
-impl TypeParams {
-    pub(crate) fn params(&self) -> impl Iterator<Item = SyntaxToken> {
+impl<'a> TypeParams<'a> {
+    pub(crate) fn params(&self) -> impl Iterator<Item = SyntaxToken<'a>> + 'a {
         self.syntax
-            .children_with_tokens()
+            .all_children()
             .filter_map(|c| c.into_token())
-            .filter(|c| c.kind() == SyntaxKind::IdentToken)
+            .filter(|c| c.kind() == TokenKind::Ident)
     }
 }
 
-impl TypeCase {
-    pub(crate) fn pipe_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::PipeToken) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
-    pub(crate) fn types(&self) -> impl Iterator<Item = Type> { children(&self.syntax) }
+impl<'a> TypeCase<'a> {
+    pub(crate) fn pipe_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Pipe) }
+    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn types(&self) -> impl Iterator<Item = Type<'a>> + 'a { children(&self.syntax) }
 }
 
-impl IntType {
-    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, SyntaxKind::IntToken).unwrap() }
+impl<'a> IntType<'a> {
+    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Int).unwrap() }
 }
 
-impl BoolType {
-    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, SyntaxKind::BoolToken).unwrap() }
+impl<'a> BoolType<'a> {
+    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Bool).unwrap() }
 }
 
-impl FnType {
-    pub(crate) fn from(&self) -> Option<Type> { child(&self.syntax) }
-    pub(crate) fn arrow_token(&self) -> SyntaxToken { child_token(&self.syntax, SyntaxKind::ArrowToken).unwrap() }
-    pub(crate) fn to(&self) -> Option<Type> { child2(&self.syntax) }
+impl<'a> FnType<'a> {
+    pub(crate) fn from(&self) -> Option<Type<'a>> { child(&self.syntax) }
+    pub(crate) fn arrow_token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Arrow).unwrap() }
+    pub(crate) fn to(&self) -> Option<Type<'a>> { child2(&self.syntax) }
 }
 
-impl NamedType {
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
-    pub(crate) fn type_args(&self) -> impl Iterator<Item = Type> { children(&self.syntax) }
+impl<'a> NamedType<'a> {
+    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn type_args(&self) -> impl Iterator<Item = Type<'a>> + 'a { children(&self.syntax) }
 }
 
-impl RecType {
-    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, SyntaxKind::RecToken).unwrap() }
+impl<'a> RecType<'a> {
+    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Rec).unwrap() }
 }
 
-impl ParenType {
-    pub(crate) fn left_paren_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::LeftParenToken) }
-    pub(crate) fn inner(&self) -> Option<Type> { child(&self.syntax) }
-    pub(crate) fn right_paren_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::RightParenToken) }
+impl<'a> ParenType<'a> {
+    pub(crate) fn left_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::LeftParen) }
+    pub(crate) fn inner(&self) -> Option<Type<'a>> { child(&self.syntax) }
+    pub(crate) fn right_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::RightParen) }
 }
 
-impl ValueItem {
-    pub(crate) fn export_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ExportToken) }
-    pub(crate) fn let_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::LetToken) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
-    pub(crate) fn colon_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ColonToken) }
-    pub(crate) fn type_(&self) -> Option<Type> { child(&self.syntax) }
-    pub(crate) fn eq_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::EqualsToken) }
-    pub(crate) fn expr(&self) -> Option<Expr> { child(&self.syntax) }
-    pub(crate) fn semi_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::SemicolonToken) }
+impl<'a> ValueItem<'a> {
+    pub(crate) fn export_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Export) }
+    pub(crate) fn let_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Let) }
+    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn colon_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Colon) }
+    pub(crate) fn type_(&self) -> Option<Type<'a>> { child(&self.syntax) }
+    pub(crate) fn eq_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Equals) }
+    pub(crate) fn expr(&self) -> Option<Expr<'a>> { child(&self.syntax) }
+    pub(crate) fn semi_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Semicolon) }
 }
 
-impl NameExpr {
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
+impl<'a> NameExpr<'a> {
+    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
 }
 
-impl ApplyExpr {
-    pub(crate) fn function(&self) -> Option<Expr> { child(&self.syntax) }
-    pub(crate) fn arg(&self) -> Option<Expr> { child2(&self.syntax) }
+impl<'a> ApplyExpr<'a> {
+    pub(crate) fn function(&self) -> Option<Expr<'a>> { child(&self.syntax) }
+    pub(crate) fn arg(&self) -> Option<Expr<'a>> { child2(&self.syntax) }
 }
 
-impl BinaryExpr {
-    pub(crate) fn lhs(&self) -> Option<Expr> { child(&self.syntax) }
-    pub(crate) fn op(&self) -> Option<BinaryOp> { child(&self.syntax) }
-    pub(crate) fn rhs(&self) -> Option<Expr> { child2(&self.syntax) }
+impl<'a> BinaryExpr<'a> {
+    pub(crate) fn lhs(&self) -> Option<Expr<'a>> { child(&self.syntax) }
+    pub(crate) fn op(&self) -> Option<BinaryOp<'a>> { child(&self.syntax) }
+    pub(crate) fn rhs(&self) -> Option<Expr<'a>> { child2(&self.syntax) }
 }
 
-impl LetExpr {
-    pub(crate) fn let_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::LetToken) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
-    pub(crate) fn colon_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ColonToken) }
-    pub(crate) fn type_(&self) -> Option<Type> { child(&self.syntax) }
-    pub(crate) fn eq_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::EqualsToken) }
-    pub(crate) fn value(&self) -> Option<Expr> { child(&self.syntax) }
-    pub(crate) fn semi_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::SemicolonToken) }
-    pub(crate) fn rest(&self) -> Option<Expr> { child2(&self.syntax) }
+impl<'a> LetExpr<'a> {
+    pub(crate) fn let_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Let) }
+    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn colon_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Colon) }
+    pub(crate) fn type_(&self) -> Option<Type<'a>> { child(&self.syntax) }
+    pub(crate) fn eq_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Equals) }
+    pub(crate) fn value(&self) -> Option<Expr<'a>> { child(&self.syntax) }
+    pub(crate) fn semi_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Semicolon) }
+    pub(crate) fn rest(&self) -> Option<Expr<'a>> { child2(&self.syntax) }
 }
 
-impl MatchExpr {
-    pub(crate) fn match_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::MatchToken) }
-    pub(crate) fn discr(&self) -> Option<Expr> { child(&self.syntax) }
-    pub(crate) fn with_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::WithToken) }
-    pub(crate) fn cases(&self) -> impl Iterator<Item = MatchCase> { children(&self.syntax) }
-    pub(crate) fn end_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::EndToken) }
+impl<'a> MatchExpr<'a> {
+    pub(crate) fn match_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Match) }
+    pub(crate) fn discr(&self) -> Option<Expr<'a>> { child(&self.syntax) }
+    pub(crate) fn with_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::With) }
+    pub(crate) fn cases(&self) -> impl Iterator<Item = MatchCase<'a>> + 'a { children(&self.syntax) }
+    pub(crate) fn end_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::End) }
 }
 
-impl IfExpr {
-    pub(crate) fn if_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IfToken) }
-    pub(crate) fn cond(&self) -> Option<Expr> { child(&self.syntax) }
-    pub(crate) fn then_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ThenToken) }
-    pub(crate) fn then_value(&self) -> Option<Expr> { child2(&self.syntax) }
-    pub(crate) fn else_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ElseToken) }
-    pub(crate) fn else_value(&self) -> Option<Expr> { child3(&self.syntax) }
+impl<'a> IfExpr<'a> {
+    pub(crate) fn if_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::If) }
+    pub(crate) fn cond(&self) -> Option<Expr<'a>> { child(&self.syntax) }
+    pub(crate) fn then_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Then) }
+    pub(crate) fn then_value(&self) -> Option<Expr<'a>> { child2(&self.syntax) }
+    pub(crate) fn else_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Else) }
+    pub(crate) fn else_value(&self) -> Option<Expr<'a>> { child3(&self.syntax) }
 }
 
-impl BoolExpr {
+impl<'a> BoolExpr<'a> {
     pub(crate) fn token(&self) -> SyntaxToken {
-        self.syntax.children_with_tokens().find_map(|c| c.into_token()).unwrap()
+        self.syntax.all_children().find_map(|c| c.into_token()).unwrap()
     }
 }
 
-impl NumberExpr {
+impl<'a> NumberExpr<'a> {
     pub(crate) fn token(&self) -> SyntaxToken {
-        self.syntax.children_with_tokens().find_map(|c| c.into_token()).unwrap()
+        self.syntax.all_children().find_map(|c| c.into_token()).unwrap()
     }
 }
 
-impl LambdaExpr {
-    pub(crate) fn lambda_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::BackslashToken) }
-    pub(crate) fn fold_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::FoldToken) }
+impl<'a> LambdaExpr<'a> {
+    pub(crate) fn lambda_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Backslash) }
+    pub(crate) fn fold_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Fold) }
     pub(crate) fn is_fold(&self) -> bool { self.fold_token().is_some() }
-    pub(crate) fn param_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
-    pub(crate) fn arrow_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ArrowToken) }
-    pub(crate) fn body(&self) -> Option<Expr> { child(&self.syntax) }
+    pub(crate) fn param_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn arrow_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Arrow) }
+    pub(crate) fn body(&self) -> Option<Expr<'a>> { child(&self.syntax) }
 }
 
-impl ParenExpr {
-    pub(crate) fn left_paren_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::LeftParenToken) }
-    pub(crate) fn inner(&self) -> Option<Expr> { child(&self.syntax) }
-    pub(crate) fn right_paren_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::RightParenToken) }
+impl<'a> ParenExpr<'a> {
+    pub(crate) fn left_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::LeftParen) }
+    pub(crate) fn inner(&self) -> Option<Expr<'a>> { child(&self.syntax) }
+    pub(crate) fn right_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::RightParen) }
 }
 
-impl MatchCase {
-    pub(crate) fn pipe_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::PipeToken) }
-    pub(crate) fn ctor_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::IdentToken) }
-    pub(crate) fn vars(&self) -> Option<MatchVars> { child(&self.syntax) }
-    pub(crate) fn arrow_token(&self) -> Option<SyntaxToken> { child_token(&self.syntax, SyntaxKind::ArrowToken) }
-    pub(crate) fn body(&self) -> Option<Expr> { child(&self.syntax) }
+impl<'a> MatchCase<'a> {
+    pub(crate) fn pipe_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Pipe) }
+    pub(crate) fn ctor_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn vars(&self) -> Option<MatchVars<'a>> { child(&self.syntax) }
+    pub(crate) fn arrow_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Arrow) }
+    pub(crate) fn body(&self) -> Option<Expr<'a>> { child(&self.syntax) }
 }
 
-impl MatchVars {
-    pub(crate) fn vars(&self) -> impl Iterator<Item = SyntaxToken> {
+impl<'a> MatchVars<'a> {
+    pub(crate) fn vars(&self) -> impl Iterator<Item = SyntaxToken<'a>> + 'a {
         self.syntax
-            .children_with_tokens()
+            .all_children()
             .filter_map(|c| c.into_token())
-            .filter(|c| c.kind() == SyntaxKind::IdentToken)
     }
 }
 
-impl BinaryOp {
-    pub(crate) fn token(&self) -> SyntaxToken {
+impl<'a> BinaryOp<'a> {
+    pub(crate) fn token(&self) -> SyntaxToken<'a> {
         self.syntax
-            .children_with_tokens()
-            .filter_map(|c| c.into_token())
-            .find(|t| !t.kind().is_trivia())
+            .all_children()
+            .find_map(|c| c.into_token())
             .unwrap()
     }
 }

@@ -6,7 +6,7 @@ pub(super) fn expr(p: &mut Parser<'_>) {
     if p.at(TokenKind::Let) {
         let m = p.start();
         p.bump(TokenKind::Let);
-        p.expect(TokenKind::Name);
+        p.expect(TokenKind::Ident);
         if p.at(TokenKind::Colon) {
             p.bump(TokenKind::Colon);
             super::type_::type_(p);
@@ -41,7 +41,7 @@ pub(super) fn expr(p: &mut Parser<'_>) {
         if p.at(TokenKind::Fold) {
             p.bump(TokenKind::Fold);
         }
-        p.expect(TokenKind::Name);
+        p.expect(TokenKind::Ident);
         p.expect(TokenKind::Arrow);
         expr(p);
         m.complete(p, SyntaxKind::LambdaExpr);
@@ -53,10 +53,10 @@ pub(super) fn expr(p: &mut Parser<'_>) {
 fn match_case(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump(TokenKind::Pipe);
-    p.expect(TokenKind::Name);
+    p.expect(TokenKind::Ident);
     let v = p.start();
-    while p.at(TokenKind::Name) {
-        p.bump(TokenKind::Name);
+    while p.at(TokenKind::Ident) {
+        p.bump(TokenKind::Ident);
     }
     v.complete(p, SyntaxKind::MatchVars);
     p.expect(TokenKind::Arrow);
@@ -118,9 +118,9 @@ fn atom_expr(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         let m = p.start();
         p.bump_any();
         Some(m.complete(p, SyntaxKind::NumberExpr))
-    } else if p.at(TokenKind::Name) {
+    } else if p.at(TokenKind::Ident) {
         let m = p.start();
-        p.bump(TokenKind::Name);
+        p.bump(TokenKind::Ident);
         Some(m.complete(p, SyntaxKind::NameExpr))
     } else {
         None

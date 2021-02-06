@@ -139,66 +139,6 @@ pub(crate) const ALL_TOKEN_KINDS: &[TokenKind] = &[
     TokenKind::Error,
 ];
 
-impl fmt::Display for TokenKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.to_str())
-    }
-}
-
-impl TokenKind {
-    pub fn is_trivia(self) -> bool {
-        matches!(self, TokenKind::Space | TokenKind::Newline | TokenKind::Comment)
-    }
-
-    pub fn to_str(self) -> &'static str {
-        match self {
-            TokenKind::Export => "`export`",
-            TokenKind::Let => "`let`",
-            TokenKind::Match => "`match`",
-            TokenKind::With => "`with`",
-            TokenKind::End => "`end`",
-            TokenKind::If => "`if`",
-            TokenKind::Then => "`then`",
-            TokenKind::Else => "`else`",
-            TokenKind::Type => "`type`",
-            TokenKind::Int => "`int`",
-            TokenKind::Bool => "`bool`",
-            TokenKind::True => "`true`",
-            TokenKind::False => "`false`",
-            TokenKind::Fold => "`fold`",
-            TokenKind::Rec => "`rec`",
-            TokenKind::Colon => "`:`",
-            TokenKind::Equals => "`=`",
-            TokenKind::Plus => "`+`",
-            TokenKind::Minus => "`-`",
-            TokenKind::Star => "`*`",
-            TokenKind::Less => "`<`",
-            TokenKind::LessEq => "`<=`",
-            TokenKind::Greater => "`>`",
-            TokenKind::GreaterEq => "`>=`",
-            TokenKind::EqEq => "`==`",
-            TokenKind::NotEq => "`!=`",
-            TokenKind::Cons => "`::`",
-            TokenKind::ArgPipe => "`|>`",
-            TokenKind::LeftParen => "`(`",
-            TokenKind::RightParen => "`)`",
-            TokenKind::LeftBracket => "`[`",
-            TokenKind::RightBracket => "`]`",
-            TokenKind::Backslash => "`\\`",
-            TokenKind::Arrow => "`->`",
-            TokenKind::Pipe => "`|`",
-            TokenKind::Comma => "`,`",
-            TokenKind::Semicolon => "`;`",
-            TokenKind::Name => "name",
-            TokenKind::Number => "number",
-            TokenKind::Space => "space",
-            TokenKind::Newline => "newline",
-            TokenKind::Comment => "comment",
-            TokenKind::Error => "bad token",
-        }
-    }
-}
-
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct Token {
     pub(crate) kind: TokenKind,
@@ -215,10 +155,10 @@ impl<'a> Iterator for Lexer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.lexer.next().map(|(kind, span)| Token {
             kind,
-            span: Span {
-                start: Pos::new(span.start as u32),
-                end: Pos::new(span.end as u32),
-            }
+            span: Span::new(
+                Pos::new(span.start as u32),
+                Pos::new(span.end as u32),
+            ),
         })
     }
 }

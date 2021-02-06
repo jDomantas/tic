@@ -2,7 +2,7 @@ use crate::{Compilation, Pos, Span, compiler};
 use crate::compiler::ir;
 
 pub(crate) fn find_definition(compilation: &mut Compilation, pos: Pos) -> Option<Span> {
-    compilation.compile_up_to(pos.idx() + 1);
+    compilation.compile_up_to(pos.source_pos() + 1);
     if let Some(r) = super::find_ref_at(compilation, pos) {
         super::find_def(compilation, r.symbol).map(|def| def.span)
     } else if let Some(def) = super::find_def_at(compilation, pos) {
@@ -16,7 +16,7 @@ pub(crate) fn find_definition(compilation: &mut Compilation, pos: Pos) -> Option
 /// Returns `Some(vec![])` when there's a symbol at the given position, but
 /// there no references to that symbol in the code.
 pub(crate) fn find_references(compilation: &mut Compilation, pos: Pos) -> Option<Vec<Span>> {
-    compilation.compile_up_to(pos.idx() + 1);
+    compilation.compile_up_to(pos.source_pos() + 1);
     let symbol = super::find_ref_at(compilation, pos)?.symbol;
     let (item, def) = compilation.items
         .iter()

@@ -8,11 +8,11 @@ use crate::compiler::ir;
 
 fn find_ref_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Ref> {
     for item in &compilation.items {
-        if pos < item.span.start || item.span.end <= pos {
+        if pos < item.span.start() || item.span.end() <= pos {
             continue;
         }
         for r in &item.refs {
-            if r.span.start <= pos && pos <= r.span.end {
+            if r.span.start() <= pos && pos <= r.span.end() {
                 return Some(&r);
             }
         }
@@ -22,11 +22,11 @@ fn find_ref_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Ref> {
 
 fn find_def_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Def> {
     for item in &compilation.items {
-        if pos < item.span.start || item.span.end <= pos {
+        if pos < item.span.start() || item.span.end() <= pos {
             continue;
         }
         for def in &item.defs {
-            if def.span.start <= pos && pos <= def.span.end {
+            if def.span.start() <= pos && pos <= def.span.end() {
                 return Some(&def);
             }
         }

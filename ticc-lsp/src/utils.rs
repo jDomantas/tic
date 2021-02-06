@@ -57,7 +57,7 @@ impl ToLsp for Pos {
     type LspRepr = Position;
 
     fn to_lsp(self, translator: &mut LocationTranslator<'_>) -> Self::LspRepr {
-        let pos = self.offset as usize;
+        let pos = self.source_pos();
         let line = translator.line_index(pos);
         let line_start = translator.line_starts[line];
         let src = &translator.source[line_start..pos];
@@ -74,8 +74,8 @@ impl ToLsp for Span {
 
     fn to_lsp(self, translator: &mut LocationTranslator<'_>) -> Self::LspRepr {
         Range {
-            start: translator.to_lsp(self.start),
-            end: translator.to_lsp(self.end),
+            start: translator.to_lsp(self.start()),
+            end: translator.to_lsp(self.end()),
         }
     }
 }
@@ -90,10 +90,10 @@ impl ToTicc for Range {
     type TiccRepr = Span;
 
     fn to_ticc(self, translator: &mut LocationTranslator<'_>) -> Self::TiccRepr {
-        Span {
-            start: translator.to_ticc(self.start),
-            end: translator.to_ticc(self.end),
-        }
+        Span::new(
+            translator.to_ticc(self.start),
+            translator.to_ticc(self.end),
+        )
     }
 }
 

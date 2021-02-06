@@ -202,24 +202,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b181ba2dcf07aaccad5448e8ead58db5b742cf85dfe035e2227f137a539a189"
 
 [[package]]
-name = "rowan"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e081ed6eacce09e243b619ab90f069c27b0cff8a6d0eb8ad2ec935b65853798"
-dependencies = [
- "rustc-hash",
- "smol_str",
- "text-size",
- "thin-dst",
-]
-
-[[package]]
-name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
 name = "ryu"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -268,12 +250,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "smol_str"
-version = "0.1.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ca0f7ce3a29234210f0f4f0b56f8be2e722488b95cb522077943212da3b32eb"
-
-[[package]]
 name = "syn"
 version = "1.0.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -294,25 +270,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "text-size"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f03e7efdedc3bc78cb2337f1e2785c39e45f5ef762d9e4ebb137fff7380a6d8a"
-
-[[package]]
-name = "thin-dst"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db3c46be180f1af9673ebb27bc1235396f61ef6965b3fe0dbb2e624deb604f0e"
-
-[[package]]
 name = "ticc"
 version = "0.1.0"
 dependencies = [
  "codespan-reporting",
  "logos",
- "rowan",
- "smol_str",
+ "ticc-syntax",
 ]
 
 [[package]]
@@ -326,6 +289,10 @@ dependencies = [
  "serde_json",
  "ticc",
 ]
+
+[[package]]
+name = "ticc-syntax"
+version = "0.1.0"
 
 [[package]]
 name = "tinyvec"

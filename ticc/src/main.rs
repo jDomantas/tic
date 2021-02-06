@@ -61,7 +61,7 @@ fn print_errors(file: &str, source: &str, errors: impl Iterator<Item = ticc::Err
         let diagnostic = cr::diagnostic::Diagnostic::error()
             .with_message(error.message)
             .with_labels(vec![
-                cr::diagnostic::Label::primary(file, (error.span.start.offset as usize)..(error.span.end.offset as usize)),
+                cr::diagnostic::Label::primary(file, error.span.source_range()),
             ]);
         
         cr::term::emit(&mut stream, &config, &files, &diagnostic)?;

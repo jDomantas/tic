@@ -3,19 +3,22 @@ mod item;
 mod type_;
 
 use std::iter::Peekable;
-use rowan::{GreenNode, Language};
+
+use ticc_syntax::{NodeId, SyntaxTree, SyntaxBuilder, TokenKind, TriviaKind};
+
 use crate::{Error, Pos, Span};
 use crate::compiler::{
     ir,
-    lexer::{Lexer, TokenKind, lex},
-    syntax::{SyntaxKind, TicLanguage}
+    lexer::{Lexer, TokenKind as LexerToken, lex},
+    syntax::{SyntaxKind, SyntaxNode},
 };
 
 pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
     let mut parser = Parser {
         at_start_of_line: true,
         tokens: lex(source).peekable(),
-        current_pos: Span { start: Pos::new(0), end: Pos::new(0) },
+        start_pos,
+        current_pos: Span::new(start_pos, start_pos),
         events: Vec::new(),
         hints: Vec::new(),
         expected_tokens: Vec::new(),
@@ -25,13 +28,10 @@ pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
     }
     let eat_all = parser.at_eof();
     let events = parser.finish();
-    let (green, mut errors) = events_to_node(events, source, eat_all);
-    let span = Span { start: Pos::new(0), end: Pos::new(green.text_len().into()) }.offset(start_pos);
-    for error in &mut errors {
-        error.span = error.span.offset(start_pos);
-    }
+    let (syntax, mut errors) = events_to_node(events, start_pos, source, eat_all);
+    let span = syntax.root().full_span();
     ir::Item {
-        syntax: green,
+        syntax: super::syntax::ItemSyntax::new(syntax),
         span,
         errors,
         defs: Vec::new(),
@@ -54,6 +54,7 @@ enum Event {
 struct Parser<'a> {
     at_start_of_line: bool,
     tokens: Peekable<Lexer<'a>>,
+    start_pos: Pos,
     current_pos: Span,
     events: Vec<Event>,
     hints: Vec<ParseHint>,
@@ -96,12 +97,12 @@ impl Parser<'_> {
 
     fn peek(&mut self) -> Option<TokenKind> {
         loop {
-            match self.tokens.peek() {
-                Some(t) if t.kind.is_trivia() => {
-                    self.at_start_of_line = t.kind == TokenKind::Newline;
+            match self.tokens.peek().copied().map(|t| (t.kind, classify_token(t.kind))) {
+                Some((raw_kind, TokenOrTrivia::Trivia(t))) => {
+                    self.at_start_of_line = t == TriviaKind::Newline;
                     self.tokens.next();
                 }
-                Some(t) => break Some(t.kind),
+                Some((_, TokenOrTrivia::Token(t))) => break Some(t),
                 None => break None,
             }
         }
@@ -110,10 +111,12 @@ impl Parser<'_> {
     fn bump_any(&mut self) {
         assert!(!self.at_eof());
         let token = self.tokens.next().unwrap();
-        self.at_start_of_line = token.kind == TokenKind::Newline;
-        let event = Event::AddToken(token.kind);
-        self.current_pos = Span { start: token.span.end, end: token.span.end };
-        self.events.push(event);
+        self.at_start_of_line = token.kind == LexerToken::Newline;
+        match classify_token(token.kind) {
+            TokenOrTrivia::Token(t) => self.events.push(Event::AddToken(t)),
+            TokenOrTrivia::Trivia(_) => panic!("bumping trivia token"),
+        };
+        self.current_pos = Span::new(token.span.end(), token.span.end());
         self.hints.clear();
         self.expected_tokens.clear();
     }
@@ -143,7 +146,6 @@ impl Parser<'_> {
         if self.at(token) {
             self.bump(token);
         } else {
-            // todo!("emit error: expected token {:?}, got {:?}", token, self.peek());
             self.emit_error();
         }
     }
@@ -189,8 +191,9 @@ impl Parser<'_> {
             }
             msg
         };
+        let start_pos = self.start_pos;
         self.events.push(Event::Error(Error {
-            span: self.tokens.peek().map(|t| t.span).unwrap_or(self.current_pos),
+            span: self.tokens.peek().map(|t| t.span.from_origin(start_pos)).unwrap_or(self.current_pos),
             message,
         }));
     }
@@ -289,41 +292,106 @@ fn reorder_forward_parents(mut events: Vec<Event>) -> Vec<Event> {
     final_events
 }
 
-fn events_to_node(events: Vec<Event>, source: &str, eat_all: bool) -> (GreenNode, Vec<Error>) {
+enum TokenOrTrivia {
+    Token(TokenKind),
+    Trivia(TriviaKind),
+}
+
+impl TokenOrTrivia {
+    fn is_trivia(&self) -> bool {
+        matches!(self, TokenOrTrivia::Trivia(_))
+    }
+}
+
+fn classify_token(token: LexerToken) -> TokenOrTrivia {
+    match token {
+        LexerToken::Export => TokenOrTrivia::Token(TokenKind::Export),
+        LexerToken::Let => TokenOrTrivia::Token(TokenKind::Let),
+        LexerToken::Match => TokenOrTrivia::Token(TokenKind::Match),
+        LexerToken::With => TokenOrTrivia::Token(TokenKind::With),
+        LexerToken::End => TokenOrTrivia::Token(TokenKind::End),
+        LexerToken::If => TokenOrTrivia::Token(TokenKind::If),
+        LexerToken::Then => TokenOrTrivia::Token(TokenKind::Then),
+        LexerToken::Else => TokenOrTrivia::Token(TokenKind::Else),
+        LexerToken::Type => TokenOrTrivia::Token(TokenKind::Type),
+        LexerToken::Int => TokenOrTrivia::Token(TokenKind::Int),
+        LexerToken::Bool => TokenOrTrivia::Token(TokenKind::Bool),
+        LexerToken::True => TokenOrTrivia::Token(TokenKind::True),
+        LexerToken::False => TokenOrTrivia::Token(TokenKind::False),
+        LexerToken::Fold => TokenOrTrivia::Token(TokenKind::Fold),
+        LexerToken::Rec => TokenOrTrivia::Token(TokenKind::Rec),
+        LexerToken::Colon => TokenOrTrivia::Token(TokenKind::Colon),
+        LexerToken::Equals => TokenOrTrivia::Token(TokenKind::Equals),
+        LexerToken::Plus => TokenOrTrivia::Token(TokenKind::Plus),
+        LexerToken::Minus => TokenOrTrivia::Token(TokenKind::Minus),
+        LexerToken::Star => TokenOrTrivia::Token(TokenKind::Star),
+        LexerToken::Less => TokenOrTrivia::Token(TokenKind::Less),
+        LexerToken::LessEq => TokenOrTrivia::Token(TokenKind::LessEq),
+        LexerToken::Greater => TokenOrTrivia::Token(TokenKind::Greater),
+        LexerToken::GreaterEq => TokenOrTrivia::Token(TokenKind::GreaterEq),
+        LexerToken::EqEq => TokenOrTrivia::Token(TokenKind::EqEq),
+        LexerToken::NotEq => TokenOrTrivia::Token(TokenKind::NotEq),
+        LexerToken::Cons => TokenOrTrivia::Token(TokenKind::Cons),
+        LexerToken::ArgPipe => TokenOrTrivia::Token(TokenKind::ArgPipe),
+        LexerToken::LeftParen => TokenOrTrivia::Token(TokenKind::LeftParen),
+        LexerToken::RightParen => TokenOrTrivia::Token(TokenKind::RightParen),
+        LexerToken::LeftBracket => TokenOrTrivia::Token(TokenKind::LeftBracket),
+        LexerToken::RightBracket => TokenOrTrivia::Token(TokenKind::RightBracket),
+        LexerToken::Backslash => TokenOrTrivia::Token(TokenKind::Backslash),
+        LexerToken::Arrow => TokenOrTrivia::Token(TokenKind::Arrow),
+        LexerToken::Pipe => TokenOrTrivia::Token(TokenKind::Pipe),
+        LexerToken::Comma => TokenOrTrivia::Token(TokenKind::Comma),
+        LexerToken::Semicolon => TokenOrTrivia::Token(TokenKind::Semicolon),
+        LexerToken::Name => TokenOrTrivia::Token(TokenKind::Ident),
+        LexerToken::Number => TokenOrTrivia::Token(TokenKind::Number),
+        LexerToken::Space => TokenOrTrivia::Trivia(TriviaKind::Space),
+        LexerToken::Newline => TokenOrTrivia::Trivia(TriviaKind::Newline),
+        LexerToken::Comment => TokenOrTrivia::Trivia(TriviaKind::Comment),
+        LexerToken::Error => TokenOrTrivia::Token(TokenKind::Error),
+    }
+}
+
+fn events_to_node(events: Vec<Event>, start_pos: Pos, source: &str, eat_all: bool) -> (SyntaxTree, Vec<Error>) {
     let mut lexer = lex(source).peekable();
     let mut errors = Vec::new();
-    let mut builder = rowan::GreenNodeBuilder::new();
+    let mut builder = SyntaxBuilder::new(start_pos, source);
     let mut trivia = Vec::new();
-    while lexer.peek().map(|t| t.kind.is_trivia()).unwrap_or(false) {
-        trivia.push(lexer.next().unwrap());
+    while let Some((TokenOrTrivia::Trivia(kind), span)) = lexer.peek().map(|t| (classify_token(t.kind), t.span)) {
+        lexer.next().unwrap();
+        trivia.push((kind, span));
     }
-    builder.start_node(TicLanguage::kind_to_raw(SyntaxKind::Root));
+    let mut next_node_id = NodeId(0);
+    builder.start_node(next_node_id, SyntaxKind::Root);
+    next_node_id.0 += 1;
     let mut tokens_since_error = 2;
     for event in events {
         match event {
             Event::StartNode { kind, .. } => {
-                builder.start_node(TicLanguage::kind_to_raw(kind));
+                builder.start_node(next_node_id, kind);
+                next_node_id.0 += 1;
             }
             Event::AddToken(kind) => {
-                for trivia in trivia.drain(..) {
-                    let trivia_source = &source[trivia.span.start.idx()..trivia.span.end.idx()];
-                    builder.token(TicLanguage::kind_to_raw(trivia.kind.into()), trivia_source.into());
+                for (kind, span) in trivia.drain(..) {
+                    builder.add_trivia(kind, span.source_len());
                 }
                 let token = lexer.next().unwrap();
-                assert_eq!(token.kind, kind);
-                let token_source = &source[token.span.start.idx()..token.span.end.idx()];
-                builder.token(TicLanguage::kind_to_raw(kind.into()), token_source.into());
+                match classify_token(token.kind) {
+                    TokenOrTrivia::Token(actual_kind) => {
+                        assert_eq!(actual_kind, kind);
+                        builder.add_token(kind, token.span.source_len());
+                    }
+                    TokenOrTrivia::Trivia(_) => panic!("adding trivia as proper token"),
+                }
                 tokens_since_error += 1;
                 let mut appending = true;
-                while lexer.peek().map(|t| t.kind.is_trivia()).unwrap_or(false) {
-                    let trivia_token = lexer.next().unwrap();
+                while let Some(TokenOrTrivia::Trivia(trivia_kind)) = lexer.peek().map(|t| classify_token(t.kind)) {
+                    let span = lexer.next().unwrap().span;
                     if appending {
-                        let trivia_source = &source[trivia_token.span.start.idx()..trivia_token.span.end.idx()];
-                        builder.token(TicLanguage::kind_to_raw(trivia_token.kind.into()), trivia_source.into());
+                        builder.add_trivia(trivia_kind, span.source_len());
                     } else {
-                        trivia.push(trivia_token);
+                        trivia.push((trivia_kind, span));
                     }
-                    if trivia_token.kind == TokenKind::Newline {
+                    if trivia_kind == TriviaKind::Newline {
                         appending = false;
                     }
                 }
@@ -345,17 +413,18 @@ fn events_to_node(events: Vec<Event>, source: &str, eat_all: bool) -> (GreenNode
         }
     }
     if eat_all {
-        for trivia in trivia.drain(..) {
-            let trivia_source = &source[trivia.span.start.idx()..trivia.span.end.idx()];
-            builder.token(TicLanguage::kind_to_raw(trivia.kind.into()), trivia_source.into());
+        for (kind, span) in trivia.drain(..) {
+            builder.add_trivia(kind, span.source_len());
         }
         for token in lexer {
-            assert!(token.kind.is_trivia(), "non-trivia trailing token");
-            let trivia_source = &source[token.span.start.idx()..token.span.end.idx()];
-            builder.token(TicLanguage::kind_to_raw(token.kind.into()), trivia_source.into());
+            match classify_token(token.kind) {
+                TokenOrTrivia::Token(_) => panic!("non-trivia trailing token"),
+                TokenOrTrivia::Trivia(trivia) => {
+                    builder.add_trivia(trivia, token.span.source_len());
+                }
+            }
         }
     }
-    builder.finish_node();
     (builder.finish(), errors)
 }
 
@@ -373,7 +442,7 @@ impl ParseHint {
                 TokenKind::Bool |
                 TokenKind::Rec |
                 TokenKind::LeftParen |
-                TokenKind::Name => true,
+                TokenKind::Ident => true,
                 _ => false,                
             },
             ParseHint::Expr => match token {
@@ -385,7 +454,7 @@ impl ParseHint {
                 TokenKind::LeftParen |
                 TokenKind::LeftBracket |
                 TokenKind::Backslash |
-                TokenKind::Name |
+                TokenKind::Ident |
                 TokenKind::Number => true,
                 _ => false,
             },
@@ -416,17 +485,17 @@ mod tests {
         let mut items = Vec::new();
         while source.len() > 0 {
             let item = parse_one_item(source, pos);
-            let length = item.span.end.idx() - item.span.start.idx();
-            pos = item.span.end;
+            let length = item.span.source_len();
+            pos = item.span.end();
             source = &source[length..];
             items.push(item);
         }
         items
     }
 
-    fn parse_item_length(source: &str) -> u32 {
+    fn parse_item_length(source: &str) -> usize {
         let parsed = parse_one_item(source, Pos::new(0));
-        parsed.syntax.text_len().into()
+        parsed.span.source_len()
     }
 
     #[test]
@@ -447,23 +516,32 @@ mod tests {
         assert_eq!(21, parse_item_length(source));
     }
 
-    fn syntax_tree_source(syntax: rowan::GreenNode) -> String {
-        let node = rowan::SyntaxNode::<TicLanguage>::new_root(syntax);
-        let tokens = node
-            .descendants_with_tokens()
-            .filter_map(|e| e.into_token())
-            .collect::<Vec<_>>();
-        tokens
-            .iter()
-            .flat_map(|t| t.text().chars())
-            .collect::<String>()        
+    fn syntax_tree_source(syntax: &SyntaxTree) -> String {
+        fn collect(node: &SyntaxNode<'_>, into: &mut String) {
+            for child in node.all_children() {
+                match child {
+                    ticc_syntax::cursor::SyntaxElement::Node(n) => {
+                        collect(&n, into);
+                    }
+                    ticc_syntax::cursor::SyntaxElement::Token(t) => {
+                        into.push_str(t.text());
+                    }
+                    ticc_syntax::cursor::SyntaxElement::Trivia(t) => {
+                        into.push_str(t.text());
+                    }
+                }
+            }
+        }
+        let mut result = String::new();
+        collect(&syntax.root(), &mut result);
+        result
     }
 
     fn parse_roundtrip(source: &str) -> String {
         let items = parse_file(source);
         items
             .into_iter()
-            .map(|i| syntax_tree_source(i.syntax))
+            .map(|i| syntax_tree_source(&i.syntax.tree))
             .collect()
     }
 
@@ -506,8 +584,8 @@ mod tests {
 
         let tokens = lex(source).collect::<Vec<_>>();
         for token in tokens {
-            let before = &source[..token.span.start.idx()];
-            let after = &source[token.span.end.idx()..];
+            let before = &source[..token.span.start().source_pos()];
+            let after = &source[token.span.end().source_pos()..];
             let source = String::from(before) + after;
             assert_eq!(source, parse_roundtrip(&source));
         }

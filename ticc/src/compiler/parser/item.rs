@@ -9,7 +9,7 @@ pub(super) fn item(p: &mut Parser<'_>) -> bool {
             p.bump(TokenKind::Export);
         }
         p.expect(TokenKind::Let);
-        p.expect(TokenKind::Name);
+        p.expect(TokenKind::Ident);
         // missing type on top-level definition is a semantic error
         if p.at(TokenKind::Colon) {
             p.bump(TokenKind::Colon);
@@ -23,7 +23,7 @@ pub(super) fn item(p: &mut Parser<'_>) -> bool {
     } else if p.at(TokenKind::Type) {
         let m = p.start();
         p.bump(TokenKind::Type);
-        p.expect(TokenKind::Name);
+        p.expect(TokenKind::Ident);
         type_params(p);
         p.expect(TokenKind::Equals);
         type_case(p, true);
@@ -40,12 +40,12 @@ pub(super) fn item(p: &mut Parser<'_>) -> bool {
 }
 
 fn type_params(p: &mut Parser<'_>) {
-    if !p.at(TokenKind::Name) {
+    if !p.at(TokenKind::Ident) {
         return;
     }
     let m = p.start();
-    while p.at(TokenKind::Name) {
-        p.bump(TokenKind::Name);
+    while p.at(TokenKind::Ident) {
+        p.bump(TokenKind::Ident);
     }
     m.complete(p, SyntaxKind::TypeParams);
 }
@@ -55,7 +55,7 @@ fn type_case(p: &mut Parser<'_>, pipe_optional: bool) {
     if !pipe_optional || p.at(TokenKind::Pipe) {
         p.expect(TokenKind::Pipe);
     }
-    p.expect(TokenKind::Name);
+    p.expect(TokenKind::Ident);
     while let Some(_) = super::type_::atom_type(p) {}
     m.complete(p, SyntaxKind::TypeCase);
 }

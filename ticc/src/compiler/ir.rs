@@ -1,18 +1,12 @@
 use crate::{Error, Span};
-use crate::compiler::syntax::ItemSyntax;
+use crate::compiler::syntax::{ItemSyntax, SyntaxNode};
 
 pub(crate) struct Item {
-    pub(crate) syntax: rowan::GreenNode,
+    pub(crate) syntax: ItemSyntax,
     pub(crate) span: Span,
     pub(crate) errors: Vec<Error>,
     pub(crate) defs: Vec<Def>,
     pub(crate) refs: Vec<Ref>,
-}
-
-impl Item {
-    pub(crate) fn syntax(&self) -> ItemSyntax {
-        ItemSyntax::new(self.syntax.clone())
-    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]

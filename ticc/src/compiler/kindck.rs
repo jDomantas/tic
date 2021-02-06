@@ -1,6 +1,6 @@
 use crate::{Compilation, Error, Span};
 use crate::compiler::{ir, Scope, syntax::node};
-use crate::compiler::syntax::AstNode;
+use crate::compiler::syntax::{AstNode, SyntaxNode};
 
 pub(crate) fn kind_check(compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
     let mut scope = Scope::with_parent(scope);
@@ -55,19 +55,22 @@ fn check_ty(scope: &Scope<'_>, ty: &mut ir::Type) {
 }
 
 fn report_errors(scope: &Scope<'_>, item: &mut ir::Item) {
-    if let Some(syntax_item) = item.syntax().item() {
-        let syntax = syntax_item.syntax();
-        let types = syntax.descendants().filter_map(node::NamedType::cast);
-        for ty in types {
-            report_type(scope, item, ty);
-        }
-    }
+    let refs = &item.refs;
+    let errors = &mut item.errors;
+    item.syntax
+        .tree
+        .root()
+        .for_each_descendant(|node| {
+            if let Some(ty) = node::NamedType::cast(node.clone()) {
+                report_type(scope, refs, errors, ty);
+            }
+        });
 }
 
-fn report_type(scope: &Scope<'_>, item: &mut ir::Item, ty: node::NamedType) -> Option<()> {
+fn report_type(scope: &Scope<'_>, refs: &[ir::Ref], errors: &mut Vec<Error>, ty: node::NamedType) -> Option<()> {
     let name_token = ty.name_token()?;
-    let span = Span::from(name_token.text_range()).offset(item.span.start);
-    let r = item.refs.iter().find(|r| r.span == span)?;
+    let span = Span::from(name_token.span());
+    let r = refs.iter().find(|r| r.span == span)?;
     let def = scope.lookup_def(r.symbol);
     let param_count = match def.kind {
         ir::DefKind::Type { param_count, .. } => param_count,
@@ -75,7 +78,7 @@ fn report_type(scope: &Scope<'_>, item: &mut ir::Item, ty: node::NamedType) -> O
     };
     let actual_count = ty.type_args().count();
     if param_count != actual_count {
-        item.errors.push(crate::Error {
+        errors.push(Error {
             span,
             message: format!("expected {} type arguments, got {}", param_count, actual_count),
         });

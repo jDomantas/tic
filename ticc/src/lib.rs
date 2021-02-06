@@ -84,21 +84,8 @@ impl Compilation {
         }
     }
 
-    fn add_item(&mut self, mut item: ir::Item) {
-        for error in &mut item.errors {
-            error.span = error.span.offset(item.span.start);
-        }
-        for def in &mut item.defs {
-            def.span = def.span.offset(item.span.start);
-        }
-        for r in &mut item.refs {
-            r.span = r.span.offset(item.span.start);
-        }
-        self.items.push(item);
-    }
-
     fn compiled_length(&self) -> usize {
-        self.items.last().map(|i| i.span.end.idx()).unwrap_or(0)
+        self.items.last().map(|i| i.span.end().source_pos()).unwrap_or(0)
     }
 }
 
@@ -108,50 +95,4 @@ pub struct Error {
     pub message: String,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
-pub struct Pos {
-    pub offset: u32,
-}
-
-impl Pos {
-    pub fn new(offset: u32) -> Pos {
-        Pos { offset }
-    }
-
-    pub(crate) fn idx(self) -> usize {
-        self.offset as usize
-    }
-}
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
-pub struct Span {
-    pub start: Pos,
-    pub end: Pos,
-}
-
-impl Span {
-    pub(crate) fn offset(self, from: Pos) -> Span {
-        Span {
-            start: Pos { offset: self.start.offset + from.offset },
-            end: Pos { offset: self.end.offset + from.offset },
-        }
-    }
-}
-
-impl From<rowan::TextRange> for Span {
-    fn from(range: rowan::TextRange) -> Self {
-        Span {
-            start: Pos::new(range.start().into()),
-            end: Pos::new(range.end().into()),
-        }
-    }
-}
-
-impl std::fmt::Debug for Span {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Span")
-            .field("start", &self.start.offset)
-            .field("end", &self.end.offset)
-            .finish()
-    }
-}
+pub use ticc_syntax::{Pos, Span};

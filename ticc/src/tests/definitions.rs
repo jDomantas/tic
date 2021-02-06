@@ -7,7 +7,7 @@ fn go_to_definition() {
         // 012345678901234567
     );
 
-    let mut def_pos = |pos: Pos| compilation.find_definition(pos).map(|s| s.start);
+    let mut def_pos = |pos: Pos| compilation.find_definition(pos).map(|s| s.start());
 
     assert_eq!(None, def_pos(Pos::new(13)));
     assert_eq!(Some(Pos::new(7)), def_pos(Pos::new(14)));
@@ -19,14 +19,15 @@ fn go_to_definition() {
 #[test]
 fn go_to_definition_2() {
     let mut compilation = Compilation::from_source(
-        r#"type List a = Nil | Cons a rec;"#,
+        r#"type List a = Nil | Cons  a rec;"#,
         // 0123456789012345678901234567890
     );
 
-    let mut def_pos = |pos: Pos| compilation.find_definition(pos).map(|s| s.start);
+    let mut def_pos = |pos: Pos| compilation.find_definition(pos).map(|s| s.start());
 
-    assert_eq!(None, def_pos(Pos::new(24)));
-    assert_eq!(Some(Pos::new(10)), def_pos(Pos::new(25)));
+    assert_eq!(Some(Pos::new(20)), def_pos(Pos::new(24)));
+    assert_eq!(None, def_pos(Pos::new(25)));
     assert_eq!(Some(Pos::new(10)), def_pos(Pos::new(26)));
-    assert_eq!(None, def_pos(Pos::new(27)));
+    assert_eq!(Some(Pos::new(10)), def_pos(Pos::new(27)));
+    assert_eq!(None, def_pos(Pos::new(28)));
 }

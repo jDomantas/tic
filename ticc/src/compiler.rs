@@ -7,12 +7,11 @@ pub(crate) mod syntax;
 pub(crate) mod typeck;
 
 use std::collections::HashMap;
-use rowan::SmolStr;
 
 pub(crate) struct Scope<'a> {
-    values: HashMap<SmolStr, ir::Symbol>,
-    types: HashMap<SmolStr, ir::Symbol>,
-    ctors: HashMap<SmolStr, ir::Symbol>,
+    values: HashMap<&'a str, ir::Symbol>,
+    types: HashMap<&'a str, ir::Symbol>,
+    ctors: HashMap<&'a str, ir::Symbol>,
     defs: HashMap<ir::Symbol, ir::Def>,
     parent: Option<&'a Scope<'a>>,
 }
@@ -35,24 +34,24 @@ impl<'a> Scope<'a> {
         }
     }
 
-    pub(crate) fn add_item(&mut self, source: &str, item: &ir::Item, include_local: bool) {
+    pub(crate) fn add_item(&mut self, source: &'a str, item: &ir::Item, include_local: bool) {
         for def in &item.defs {
             if def.vis == ir::Visibility::Local && !include_local {
                 continue;
             }
             self.defs.insert(def.symbol, def.clone());
             let span = def.span;
-            let name = &source[span.start.idx()..span.end.idx()];
+            let name = &source[span.start().source_pos()..span.end().source_pos()];
             match def.kind {
                 ir::DefKind::Value { .. } => {
-                    self.values.insert(name.into(), def.symbol);
+                    self.values.insert(name, def.symbol);
                 }
                 ir::DefKind::Ctor { ..  }=> {
-                    self.ctors.insert(name.into(), def.symbol);
-                    self.values.insert(name.into(), def.symbol);
+                    self.ctors.insert(name, def.symbol);
+                    self.values.insert(name, def.symbol);
                 }
                 ir::DefKind::Type { .. } => {
-                    self.types.insert(name.into(), def.symbol);
+                    self.types.insert(name, def.symbol);
                 }
             }
         }

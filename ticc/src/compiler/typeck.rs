@@ -1,16 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use crate::{Compilation, Error, Pos, Span};
 use crate::compiler::{Scope, ir, syntax::node};
-use crate::compiler::syntax::{AstNode, SyntaxKind};
+use crate::compiler::syntax::{AstNode, SyntaxKind, TokenKind};
 
 pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
     let mut scope = Scope::with_parent(scope);
     scope.add_item(&compilation.src, item, true);
-    let syntax = item.syntax();
+    let syntax = &item.syntax;
     let mut checker = TypeChecker {
         compilation,
         unifier: Unifier::default(),
-        item_offset: item.span.start,
         span_types: HashMap::new(),
         symbols: HashMap::new(),
         ctors: HashMap::new(),
@@ -55,7 +54,7 @@ pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: 
         Some(node::Item::Type(_)) => {}
         Some(node::Item::Value(i)) => {
             let expected_ty = if let Some(token) = i.name_token() {
-                let span = Span::from(token.text_range()).offset(item.span.start);
+                let span = token.span();
                 let def = item.defs.iter().find(|d| d.span == span).unwrap();
                 match &def.kind {
                     ir::DefKind::Value { type_vars: _, ty } => {
@@ -297,7 +296,6 @@ struct Ctor<'a> {
 struct TypeChecker<'a> {
     compilation: &'a Compilation,
     unifier: Unifier,
-    item_offset: Pos,
     span_types: HashMap<Span, TyIdx>,
     symbols: HashMap<Span, ir::Symbol>,
     ctors: HashMap<ir::Symbol, Ctor<'a>>,
@@ -368,31 +366,13 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn check_expr(&mut self, expr: node::Expr, expected: TyIdx) {
-        let start = Pos::new(expr
-            .syntax()
-            .descendants_with_tokens()
-            .filter_map(|e| e.into_token())
-            .filter(|t| !t.kind().is_trivia())
-            .next()
-            .map(|t| t.text_range().start())
-            .unwrap_or(expr.syntax().text_range().start())
-            .into());
-        let end = Pos::new(expr
-            .syntax()
-            .descendants_with_tokens()
-            .filter_map(|e| e.into_token())
-            .filter(|t| !t.kind().is_trivia())
-            .last()
-            .map(|t| t.text_range().end())
-            .unwrap_or(expr.syntax().text_range().start())
-            .into());
-        let span = Span { start, end }.offset(self.item_offset);
+    fn check_expr(&mut self, expr: node::Expr<'_>, expected: TyIdx) {
+        let span = expr.syntax().span();
         self.span_types.insert(span, expected);
         match expr {
             node::Expr::Name(expr) => {
                 if let Some(token) = expr.name_token() {
-                    let span = Span::from(token.text_range()).offset(self.item_offset);
+                    let span = token.span();
                     if let Some(&sym) = self.symbols.get(&span) {
                         let ty = self.lookup_name(sym);
                         self.unify(expected, ty, span);
@@ -413,26 +393,26 @@ impl<'a> TypeChecker<'a> {
             }
             node::Expr::Binary(expr) => {
                 match expr.op().map(|o| o.token().kind()) {
-                    Some(SyntaxKind::PlusToken) |
-                    Some(SyntaxKind::MinusToken) |
-                    Some(SyntaxKind::StarToken) => {
+                    Some(TokenKind::Plus) |
+                    Some(TokenKind::Minus) |
+                    Some(TokenKind::Star) => {
                         let i = self.allocate(Ty::Int);
                         self.check_operands(expr, i);
                         self.unify(expected, i, span);
                     }
-                    Some(SyntaxKind::LessToken) |
-                    Some(SyntaxKind::LessEqToken) |
-                    Some(SyntaxKind::GreaterToken) |
-                    Some(SyntaxKind::GreaterEqToken) |
-                    Some(SyntaxKind::EqEqToken) |
-                    Some(SyntaxKind::NotEqToken) => {
+                    Some(TokenKind::Less) |
+                    Some(TokenKind::LessEq) |
+                    Some(TokenKind::Greater) |
+                    Some(TokenKind::GreaterEq) |
+                    Some(TokenKind::EqEq) |
+                    Some(TokenKind::NotEq) => {
                         let i = self.allocate(Ty::Int);
                         self.check_operands(expr, i);
                         let b = self.allocate(Ty::Bool);
                         self.unify(expected, b, span);
                     }
-                    Some(SyntaxKind::ConsToken) => todo!("cons operator"),
-                    Some(SyntaxKind::ArgPipeToken) => {
+                    Some(TokenKind::Cons) => todo!("cons operator"),
+                    Some(TokenKind::ArgPipe) => {
                         let arg = self.fresh_var();
                         if let Some(e) = expr.lhs() {
                             self.check_expr(e, arg);
@@ -456,7 +436,7 @@ impl<'a> TypeChecker<'a> {
             }
             node::Expr::Let(expr) => {
                 let bound_ty = if let Some(t) = expr.name_token() {
-                    let span = Span::from(t.text_range()).offset(self.item_offset);
+                    let span = t.span();
                     if let Some(&sym) = self.symbols.get(&span) {
                         self.lookup_name(sym)
                     } else {
@@ -483,7 +463,7 @@ impl<'a> TypeChecker<'a> {
                 };
                 for case in expr.cases() {
                     if let Some(ctor_tok) = case.ctor_token() {
-                        let span = Span::from(ctor_tok.text_range()).offset(self.item_offset);
+                        let span = ctor_tok.span();
                         if let Some(ctor) = self.symbols.get(&span).and_then(|s| self.ctors.get(s)).copied() {
                             let mut t = self.allocate(Ty::Named(ctor.type_symbol));
                             let mut vars_inst = Vec::new();
@@ -495,16 +475,15 @@ impl<'a> TypeChecker<'a> {
                             self.unify(primary, t, span);
                             let field_count = case.vars().map(|v| v.vars().count()).unwrap_or(0);
                             if field_count != ctor.fields.len() {
-                                let end = Pos::new(case
+                                let end = case
                                     .vars()
-                                    .and_then(|v| v.vars().last().map(|v| v.text_range().end()))
-                                    .unwrap_or(ctor_tok.text_range().end())
-                                    .into());
-                                let span = Span { start: Pos::new(ctor_tok.text_range().start().into()), end }.offset(self.item_offset);
+                                    .and_then(|v| v.vars().last().map(|v| v.span().end()))
+                                    .unwrap_or(ctor_tok.span().end());
+                                let span = Span::new(ctor_tok.span().start(), end);
                                 self.emit_error(span, format!("expected {} fields, got {}", ctor.fields.len(), field_count));
                             } else if let Some(vars) = case.vars() {
                                 for (var, ty) in vars.vars().zip(ctor.fields) {
-                                    let span = Span::from(var.text_range()).offset(self.item_offset);
+                                    let span = var.span();
                                     if let Some(&s) = self.symbols.get(&span) {
                                         let sym_ty = self.lookup_name(s);
                                         let field_ty = match ty {
@@ -544,7 +523,7 @@ impl<'a> TypeChecker<'a> {
             }
             node::Expr::Lambda(expr) => {
                 let arg_ty = if let Some(t) = expr.param_token() {
-                    let span = Span::from(t.text_range()).offset(self.item_offset);
+                    let span = t.span();
                     if let Some(&sym) = self.symbols.get(&span) {
                         self.lookup_name(sym)
                     } else {
@@ -577,7 +556,7 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
-    fn check_operands(&mut self, expr: node::BinaryExpr, ty: TyIdx) {
+    fn check_operands(&mut self, expr: node::BinaryExpr<'_>, ty: TyIdx) {
         if let Some(e) = expr.lhs() {
             self.check_expr(e, ty);
         }

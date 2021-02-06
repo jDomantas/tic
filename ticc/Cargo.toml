@@ -5,7 +5,6 @@ authors = ["djade <djadenkus@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+ticc-syntax = { path = "../ticc-syntax" }
 logos = "0.11.4"
-rowan = "0.10.0"
-smol_str = "0.1.17"
 codespan-reporting = "0.11.0"

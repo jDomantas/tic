@@ -9,11 +9,11 @@ pub struct Info {
 }
 
 pub(crate) fn info_at(compilation: &mut Compilation, pos: Pos) -> Option<Info> {
-    compilation.compile_up_to(pos.idx() + 1);
+    compilation.compile_up_to(pos.source_pos() + 1);
     let r = super::find_ref_at(compilation, pos).copied()
         .or_else(|| super::find_def_at(compilation, pos).map(|d| d.to_ref()))?;
     let def = super::find_def(compilation, r.symbol)?;
-    let name = &compilation.src[def.span.start.idx()..def.span.end.idx()];
+    let name = &compilation.src[def.span.source_range()];
     let mut type_printer = TypePrinter {
         compilation,
         name_cache: HashMap::new(),
@@ -123,7 +123,7 @@ impl<'a> TypePrinter<'a> {
         }
         let def = super::find_def(self.compilation, symbol);
         let name = match def {
-            Some(d) => &self.compilation.src[d.span.start.idx()..d.span.end.idx()],
+            Some(d) => &self.compilation.src[d.span.source_range()],
             None => {
                 let name = Name { name: "?", idx: 0 };
                 self.name_cache.insert(symbol, name);
