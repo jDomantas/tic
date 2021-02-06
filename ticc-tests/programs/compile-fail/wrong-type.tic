@@ -1,0 +1,26 @@
+let a : int = true;
+--            ^^^^ ERROR: expected int, got bool
+
+let b : int -> bool =
+    \num -> num;
+--          ^^^ ERROR: expected bool, got int
+
+type Wrap = Wrap int;
+
+let c : Wrap = Wrap true;
+--                  ^^^^ ERROR: expected int, got bool
+
+let d : int = Wrap 1;
+--            ^^^^^^ ERROR: expected int, got Wrap
+
+let e : Wrap = true;
+--             ^^^^ ERROR: expected Wrap, got bool
+
+let f : bool =
+    if 123 then
+--     ^^^ ERROR: expected bool, got int
+        true
+    else
+        456;
+--      ^^^ ERROR: expected bool, got int
+

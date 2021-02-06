@@ -1,0 +1,10 @@
+type List = Empty | NonEmpty int rec;
+
+let sum : List -> int =
+    \fold list ->
+        match list with
+        | Empty -> true
+--                 ^^^^ ERROR: expected int, got bool
+        | NonEmpty x xs -> if xs then 0 else x
+--                            ^^ ERROR: expected bool, got int
+        end;

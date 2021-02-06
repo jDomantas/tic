@@ -3,4 +3,5 @@ members = [
     "ticc",
     "ticc-lsp",
     "ticc-syntax",
+    "ticc-tests",
 ]

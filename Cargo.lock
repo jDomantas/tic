@@ -295,6 +295,14 @@ name = "ticc-syntax"
 version = "0.1.0"
 
 [[package]]
+name = "ticc-tests"
+version = "0.1.0"
+dependencies = [
+ "codespan-reporting",
+ "ticc",
+]
+
+[[package]]
 name = "tinyvec"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

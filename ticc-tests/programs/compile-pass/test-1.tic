@@ -1,0 +1,3 @@
+let a : int = 1;
+let b : bool = true;
+let id : a -> a = \x -> x;

@@ -1,0 +1,11 @@
+[package]
+name = "ticc-tests"
+version = "0.1.0"
+authors = ["djade <djadenkus@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ticc = { path = "../ticc" }
+codespan-reporting = "0.11.0"
