@@ -1,0 +1,15 @@
+let a : rec = 1;
+--      ^^^ ERROR: rec
+
+let b : int -> rec = \x -> x;
+--             ^^^ ERROR: rec
+
+type Generic a = Generic;
+
+let c : Generic rec = Generic;
+--              ^^^ ERROR: rec
+
+type Valid = V (rec);
+
+type Invalid = IV (Generic rec);
+--                         ^^^ ERROR: rec

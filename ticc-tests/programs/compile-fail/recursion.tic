@@ -1,0 +1,10 @@
+let a : int = a;
+--            ^ ERROR: undefined variable
+
+let fact : int -> int =
+    \x ->
+        if x == 0 then
+            1
+        else
+            x * fact (x - 1);
+--              ^^^^ ERROR: undefined variable

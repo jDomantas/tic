@@ -24,3 +24,11 @@ let f : bool =
         456;
 --      ^^^ ERROR: expected bool, got int
 
+type Generic a = Generic;
+
+let g : Generic int -> Generic bool =
+    \x -> x;
+--        ^ ERROR: expected Generic bool, got Generic int
+
+let h : Generic int -> Generic bool =
+    \x -> Generic;

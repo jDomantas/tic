@@ -1,0 +1,11 @@
+let a : int = 1a;
+--            ^^ ERROR: invalid number
+
+let b : int = 1e5;
+--            ^^^ ERROR: invalid number
+
+let c : int = 1_2_3;
+--            ^^^^^ ERROR: invalid number
+
+let d : int = 123456789012345678901234567890;
+--            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ERROR: invalid number

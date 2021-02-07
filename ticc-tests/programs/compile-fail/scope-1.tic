@@ -1,0 +1,6 @@
+let first : int = second;
+--                ^^^^^^ ERROR: undefined variable
+
+let second : int = 1;
+
+let third : int = second;
