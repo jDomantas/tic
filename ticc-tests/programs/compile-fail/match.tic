@@ -1,0 +1,14 @@
+type T =
+    | Zero
+    | One int
+    | Two int int;
+
+let x : T -> int =
+    \t -> match t with
+    | Zero a -> 0
+--    ^^^^^^ ERROR: expected 0 fields
+    | One a b c -> a
+--    ^^^^^^^^^ ERROR: expected 1 field
+    | Two a -> a
+--    ^^^^^ ERROR: expected 2 fields
+    end;
