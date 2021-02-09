@@ -28,7 +28,14 @@ pub(crate) fn info_at(compilation: &mut Compilation, pos: Pos) -> Option<Info> {
         ir::DefKind::Ctor { type_symbol, type_params, fields } => {
             let mut doc = format!("{}: ", name);
             for field in fields.iter() {
-                type_printer.print_type_prec(field, 1, &mut doc);
+                match field {
+                    ir::Field::Rec => {
+                        doc += "rec";
+                    }
+                    ir::Field::Type(ty) => {
+                        type_printer.print_type_prec(ty, 1, &mut doc);
+                    }
+                }
                 doc.push_str(" -> ");
             }
             type_printer.print_type(&ir::Type::Named(*type_symbol, Vec::new()), &mut doc);

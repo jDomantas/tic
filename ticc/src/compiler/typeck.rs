@@ -34,9 +34,13 @@ pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: 
                     *type_symbol,
                     type_params.iter().copied().map(|s| ir::Type::Named(s, Vec::new())).collect(),
                 );
+                let whole = ty.clone();
                 for field in fields.iter().rev() {
                     ty = ir::Type::Fn(
-                        Box::new(field.clone()),
+                        Box::new(match field {
+                            ir::Field::Rec => whole.clone(),
+                            ir::Field::Type(t) => t.clone(),
+                        }),
                         Box::new(ty),
                     );
                 }
@@ -290,7 +294,7 @@ impl Unifier {
 struct Ctor<'a> {
     type_symbol: ir::Symbol,
     type_vars: &'a [ir::Symbol],
-    fields: &'a [ir::Type],
+    fields: &'a [ir::Field],
 }
 
 struct TypeChecker<'a> {
@@ -482,13 +486,13 @@ impl<'a> TypeChecker<'a> {
                                 let span = Span::new(ctor_tok.span().start(), end);
                                 self.emit_error(span, format!("expected {} fields, got {}", ctor.fields.len(), field_count));
                             } else if let Some(vars) = case.vars() {
-                                for (var, ty) in vars.vars().zip(ctor.fields) {
+                                for (var, field) in vars.vars().zip(ctor.fields) {
                                     let span = var.span();
                                     if let Some(&s) = self.symbols.get(&span) {
                                         let sym_ty = self.lookup_name(s);
-                                        let field_ty = match ty {
-                                            ir::Type::Rec => rec,
-                                            _ => self.unifier.instantiate(ty, &vars_inst),
+                                        let field_ty = match field {
+                                            ir::Field::Rec => rec,
+                                            ir::Field::Type(ty) => self.unifier.instantiate(ty, &vars_inst),
                                         };
                                         self.unify(field_ty, sym_ty, span);
                                     }

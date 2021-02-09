@@ -56,6 +56,16 @@ fn type_case(p: &mut Parser<'_>, pipe_optional: bool) {
         p.expect(TokenKind::Pipe);
     }
     p.expect(TokenKind::Ident);
-    while let Some(_) = super::type_::atom_type(p) {}
+    loop {
+        if p.at(TokenKind::Rec) {
+            let m = p.start();
+            p.bump(TokenKind::Rec);
+            m.complete(p, SyntaxKind::RecField);
+        } else if let Some(m) = super::type_::atom_type(p) {
+            m.precede(p).complete(p, SyntaxKind::TypeField);
+        } else {
+            break;
+        }
+    }
     m.complete(p, SyntaxKind::TypeCase);
 }

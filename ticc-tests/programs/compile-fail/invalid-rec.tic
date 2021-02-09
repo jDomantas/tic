@@ -9,7 +9,7 @@ type Generic a = Generic;
 let c : Generic rec = Generic;
 --              ^^^ ERROR: rec
 
-type Valid = V (rec);
+type Valid = V rec;
 
 type Invalid = IV (Generic rec);
 --                         ^^^ ERROR: rec

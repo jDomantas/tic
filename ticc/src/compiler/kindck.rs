@@ -13,7 +13,9 @@ pub(crate) fn kind_check(compilation: &Compilation, item: &mut ir::Item, scope: 
             }
             ir::DefKind::Ctor { fields, .. } => {
                 for field in fields {
-                    check_ty(&scope, field);
+                    if let ir::Field::Type(ty) = field {
+                        check_ty(&scope, ty);
+                    }
                 }
             }
             ir::DefKind::Type { .. } => {}

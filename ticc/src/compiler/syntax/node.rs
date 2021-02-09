@@ -72,21 +72,29 @@ nodes! {
     pub(crate) struct TypeParams { SyntaxKind::TypeParams }
     pub(crate) struct TypeCase { SyntaxKind::TypeCase }
 
+    pub(crate) struct RecField { SyntaxKind::RecField }
+    pub(crate) struct TypeField { SyntaxKind::TypeField }
+
+    pub(crate) enum Field {
+        Rec(RecField),
+        Type(TypeField),
+    }
+
     pub(crate) enum Type {
         Int(IntType),
         Bool(BoolType),
         Fn(FnType),
         Named(NamedType),
-        Rec(RecType),
         Paren(ParenType),
+        Err(ErrType),
     }
 
     pub(crate) struct IntType { SyntaxKind::IntType }
     pub(crate) struct BoolType { SyntaxKind::BoolType }
     pub(crate) struct FnType { SyntaxKind::FnType }
     pub(crate) struct NamedType { SyntaxKind::NamedType }
-    pub(crate) struct RecType { SyntaxKind::RecType }
     pub(crate) struct ParenType { SyntaxKind::ParenType }
+    pub(crate) struct ErrType { SyntaxKind::ErrType }
 
     pub(crate) struct ValueItem { SyntaxKind::ValueItem }
 
@@ -141,7 +149,15 @@ impl<'a> TypeParams<'a> {
 impl<'a> TypeCase<'a> {
     pub(crate) fn pipe_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Pipe) }
     pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
-    pub(crate) fn types(&self) -> impl Iterator<Item = Type<'a>> + 'a { children(&self.syntax) }
+    pub(crate) fn fields(&self) -> impl Iterator<Item = Field<'a>> + 'a { children(&self.syntax) }
+}
+
+impl<'a> RecField<'a> {
+    pub(crate) fn rec_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Rec) }
+}
+
+impl<'a> TypeField<'a> {
+    pub(crate) fn ty(&self) -> Option<Type<'a>> { child(&self.syntax) }
 }
 
 impl<'a> IntType<'a> {
@@ -161,10 +177,6 @@ impl<'a> FnType<'a> {
 impl<'a> NamedType<'a> {
     pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
     pub(crate) fn type_args(&self) -> impl Iterator<Item = Type<'a>> + 'a { children(&self.syntax) }
-}
-
-impl<'a> RecType<'a> {
-    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Rec).unwrap() }
 }
 
 impl<'a> ParenType<'a> {

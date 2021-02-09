@@ -78,8 +78,17 @@ impl<'a> Resolver<'a> {
     fn resolve_type_case(&mut self, case: node::TypeCase<'_>, scope: &Scope<'_>, type_symbol: ir::Symbol, param_symbols: &[ir::Symbol]) {
         let symbol = self.symbols.gen();
         let mut fields = Vec::new();
-        for ty in case.types() {
-            fields.push(self.resolve_type(ty, scope));
+        for field in case.fields() {
+            match field {
+                node::Field::Rec(_) => fields.push(ir::Field::Rec),
+                node::Field::Type(ty) => {
+                    fields.push(if let Some(ty) = ty.ty() {
+                        ir::Field::Type(self.resolve_type(ty, scope))
+                    } else {
+                        ir::Field::Type(ir::Type::Error)
+                    });
+                }
+            }
         }
         if let Some(ident) = case.name_token() {
             self.defs.push(ir::Def {
@@ -133,7 +142,6 @@ impl<'a> Resolver<'a> {
                 }
                 symbol.map(|s| ir::Type::Named(s, args)).unwrap_or(ir::Type::Error)
             }
-            node::Type::Rec(_) => ir::Type::Rec,
             node::Type::Paren(ty) => {
                 if let Some(ty) = ty.inner() {
                     self.resolve_type(ty, scope)
@@ -141,6 +149,7 @@ impl<'a> Resolver<'a> {
                     ir::Type::Error
                 }
             }
+            node::Type::Err(_) => ir::Type::Error,
         }
     }
 
@@ -200,7 +209,6 @@ impl<'a> Resolver<'a> {
                 }
                 symbol.map(|s| ir::Type::Named(s, args)).unwrap_or(ir::Type::Error)
             }
-            node::Type::Rec(_) => ir::Type::Rec,
             node::Type::Paren(ty) => {
                 if let Some(ty) = ty.inner() {
                     self.resolve_type_with_vars(ty, scope, type_vars)
@@ -208,6 +216,7 @@ impl<'a> Resolver<'a> {
                     ir::Type::Error
                 }
             }
+            node::Type::Err(_) => ir::Type::Error,
         }
     }
 

@@ -21,7 +21,7 @@ pub(crate) enum DefKind {
     Ctor {
         type_symbol: Symbol,
         type_params: Vec<Symbol>,
-        fields: Vec<Type>,
+        fields: Vec<Field>,
     },
     Type {
         param_count: usize,
@@ -60,6 +60,12 @@ impl Def {
 pub(crate) struct Ref {
     pub(crate) symbol: Symbol,
     pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum Field {
+    Rec,
+    Type(Type),
 }
 
 #[derive(Debug, Clone)]

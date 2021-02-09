@@ -40,10 +40,6 @@ pub(super) fn atom_type(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         let m = p.start();
         p.bump(TokenKind::Bool);
         Some(m.complete(p, SyntaxKind::BoolType))
-    } else if p.at(TokenKind::Rec) {
-        let m = p.start();
-        p.bump(TokenKind::Rec);
-        Some(m.complete(p, SyntaxKind::RecType))
     } else if p.at(TokenKind::Ident) {
         let m = p.start();
         p.bump(TokenKind::Ident);
@@ -54,6 +50,11 @@ pub(super) fn atom_type(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         type_(p);
         p.expect(TokenKind::RightParen);
         Some(m.complete(p, SyntaxKind::ParenType))
+    } else if p.at(TokenKind::Rec) {
+        p.emit_error();
+        let m = p.start();
+        p.bump(TokenKind::Rec);
+        Some(m.complete(p, SyntaxKind::ErrType))
     } else {
         None
     }
