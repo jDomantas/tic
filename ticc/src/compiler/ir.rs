@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use crate::{Error, Span};
-use crate::compiler::syntax::{NodeId, ItemSyntax, SyntaxNode};
+use crate::compiler::syntax::ItemSyntax;
 
 pub(crate) struct Item {
     pub(crate) syntax: ItemSyntax,
@@ -8,7 +7,6 @@ pub(crate) struct Item {
     pub(crate) errors: Vec<Error>,
     pub(crate) defs: Vec<Def>,
     pub(crate) refs: Vec<Ref>,
-    pub(crate) types: HashMap<NodeId, Type>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]

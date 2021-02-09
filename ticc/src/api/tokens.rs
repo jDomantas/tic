@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use ticc_syntax::cursor::SyntaxElement;
 use crate::{Compilation, Span};
-use crate::compiler::syntax::{SyntaxKind, TriviaKind, TokenKind as Syntax};
+use crate::compiler::syntax::{TriviaKind, TokenKind as Syntax};
 use crate::compiler::ir;
 
 #[derive(Debug, Clone, Copy)]

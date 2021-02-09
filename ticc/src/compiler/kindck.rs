@@ -1,6 +1,6 @@
-use crate::{Compilation, Error, Span};
+use crate::{Compilation, Error};
 use crate::compiler::{ir, Scope, syntax::node};
-use crate::compiler::syntax::{AstNode, SyntaxNode};
+use crate::compiler::syntax::AstNode;
 
 pub(crate) fn kind_check(compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
     let mut scope = Scope::with_parent(scope);
@@ -8,7 +8,7 @@ pub(crate) fn kind_check(compilation: &Compilation, item: &mut ir::Item, scope: 
 
     for def in &mut item.defs {
         match &mut def.kind {
-            ir::DefKind::Value { type_vars, ty } => {
+            ir::DefKind::Value { ty, .. } => {
                 check_ty(&scope, ty)
             }
             ir::DefKind::Ctor { fields, .. } => {
@@ -71,7 +71,7 @@ fn report_errors(scope: &Scope<'_>, item: &mut ir::Item) {
 
 fn report_type(scope: &Scope<'_>, refs: &[ir::Ref], errors: &mut Vec<Error>, ty: node::NamedType) -> Option<()> {
     let name_token = ty.name_token()?;
-    let span = Span::from(name_token.span());
+    let span = name_token.span();
     let r = refs.iter().find(|r| r.span == span)?;
     let def = scope.lookup_def(r.symbol);
     let param_count = match def.kind {

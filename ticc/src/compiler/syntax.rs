@@ -3,7 +3,6 @@ pub(crate) mod node;
 pub use ticc_syntax::{NodeId, SyntaxKind, TokenKind, TriviaKind};
 pub use ticc_syntax::cursor::{SyntaxNode, SyntaxToken, TriviaToken};
 use ticc_syntax::SyntaxTree;
-use crate::compiler::lexer::TokenKind as LexerToken;
 
 pub(crate) trait AstNode<'a>: Sized {
     fn cast(syntax: SyntaxNode<'a>) -> Option<Self>;

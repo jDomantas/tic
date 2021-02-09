@@ -22,7 +22,7 @@ fn non_fn_type(p: &mut Parser<'_>) -> Option<CompletedMarker> {
     if p.at(TokenKind::Ident) {
         let m = p.start();
         p.bump(TokenKind::Ident);
-        while let Some(_) = atom_type(p) {}
+        while atom_type(p).is_some() {}
         Some(m.complete(p, SyntaxKind::NamedType))
     } else {
         atom_type(p)

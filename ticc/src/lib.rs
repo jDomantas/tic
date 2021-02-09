@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 pub(crate) mod compiler;
 pub(crate) mod api;
 

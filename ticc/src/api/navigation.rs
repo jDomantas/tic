@@ -1,4 +1,4 @@
-use crate::{Compilation, Pos, Span, compiler};
+use crate::{Compilation, Pos, Span};
 use crate::compiler::ir;
 
 pub(crate) fn find_definition(compilation: &mut Compilation, pos: Pos) -> Option<Span> {

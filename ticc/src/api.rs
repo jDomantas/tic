@@ -3,7 +3,7 @@ pub(crate) mod info;
 pub(crate) mod navigation;
 pub(crate) mod tokens;
 
-use crate::{Compilation, Pos, Span};
+use crate::{Compilation, Pos};
 use crate::compiler::ir;
 
 fn find_ref_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Ref> {

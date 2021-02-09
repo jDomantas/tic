@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
-use crate::{Compilation, Error, Pos, Span};
+use crate::{Compilation, Error, Span};
 use crate::compiler::{Scope, ir, syntax::node};
-use crate::compiler::syntax::{AstNode, SyntaxKind, TokenKind};
+use crate::compiler::syntax::{AstNode, TokenKind};
 
 pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
     let mut scope = Scope::with_parent(scope);
@@ -70,7 +70,6 @@ pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: 
                 checker.allocate(Ty::Error)
             };
             if let Some(e) = i.expr() {
-                let expected = checker.fresh_var();
                 checker.check_expr(e, expected_ty);
             }
         }
@@ -142,7 +141,7 @@ impl Unifier {
         let ty = self.final_idx(ty);
         match self.get(ty) {
             TySlot::Ty(t) => Some(t),
-            TySlot::Next(next) => unreachable!(),
+            TySlot::Next(_) => unreachable!(),
             TySlot::Infer => None,
         }
     }
@@ -353,14 +352,14 @@ impl<'a> TypeChecker<'a> {
         match self.symbol_types.get(&symbol) {
             Some(NameTy::Infer(idx)) => *idx,
             Some(NameTy::Inst(ty, vars)) => {
-                let mut inst = vars
+                let inst = vars
                     .iter()
                     .map(|v| (*v, unifier.fresh_var()))
                     .collect::<Vec<_>>();
                 unifier.instantiate(ty, &inst)
             }
             Some(NameTy::InstOwn(ty, vars)) => {
-                let mut inst = vars
+                let inst = vars
                     .iter()
                     .map(|v| (*v, unifier.fresh_var()))
                     .collect::<Vec<_>>();

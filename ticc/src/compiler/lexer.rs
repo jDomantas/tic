@@ -1,4 +1,3 @@
-use std::fmt;
 use logos::{Logos, SpannedIter};
 use crate::{Pos, Span};
 

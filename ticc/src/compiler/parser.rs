@@ -10,7 +10,7 @@ use crate::{Error, Pos, Span};
 use crate::compiler::{
     ir,
     lexer::{Lexer, TokenKind as LexerToken, lex},
-    syntax::{SyntaxKind, SyntaxNode},
+    syntax::SyntaxKind,
 };
 
 pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
@@ -28,7 +28,7 @@ pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
     }
     let eat_all = parser.at_eof();
     let events = parser.finish();
-    let (syntax, mut errors) = events_to_node(events, start_pos, source, eat_all);
+    let (syntax, errors) = events_to_node(events, start_pos, source, eat_all);
     let span = syntax.root().full_span();
     ir::Item {
         syntax: super::syntax::ItemSyntax::new(syntax),
@@ -36,7 +36,6 @@ pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
         errors,
         defs: Vec::new(),
         refs: Vec::new(),
-        types: Default::default(),
     }
 }
 
@@ -98,12 +97,12 @@ impl Parser<'_> {
 
     fn peek(&mut self) -> Option<TokenKind> {
         loop {
-            match self.tokens.peek().copied().map(|t| (t.kind, classify_token(t.kind))) {
-                Some((raw_kind, TokenOrTrivia::Trivia(t))) => {
+            match self.tokens.peek().copied().map(|t| classify_token(t.kind)) {
+                Some(TokenOrTrivia::Trivia(t)) => {
                     self.at_start_of_line = t == TriviaKind::Newline;
                     self.tokens.next();
                 }
-                Some((_, TokenOrTrivia::Token(t))) => break Some(t),
+                Some(TokenOrTrivia::Token(t)) => break Some(t),
                 None => break None,
             }
         }
@@ -296,12 +295,6 @@ fn reorder_forward_parents(mut events: Vec<Event>) -> Vec<Event> {
 enum TokenOrTrivia {
     Token(TokenKind),
     Trivia(TriviaKind),
-}
-
-impl TokenOrTrivia {
-    fn is_trivia(&self) -> bool {
-        matches!(self, TokenOrTrivia::Trivia(_))
-    }
 }
 
 fn classify_token(token: LexerToken) -> TokenOrTrivia {

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use crate::{Compilation, Pos, Span, compiler};
+use crate::{Compilation, Pos, Span};
 use crate::compiler::ir;
 
 pub struct Info {

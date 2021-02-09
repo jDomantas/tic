@@ -8,7 +8,7 @@ pub(crate) fn check_numbers(item: &mut ir::Item) {
     syntax.for_each_descendant(|node| {
         if let Some(num) = node::NumberExpr::cast(node.clone()) {
             let token = num.token();
-            let err = match parse_int(num.token().text()) {
+            let err = match parse_int(token.text()) {
                 Ok(_) => None,
                 Err(ParseError::InvalidDigit) => Some("invalid number"),
                 Err(ParseError::Overflow) => Some("number is too large"),
@@ -16,7 +16,7 @@ pub(crate) fn check_numbers(item: &mut ir::Item) {
             if let Some(err) = err {
                 errors.push(Error {
                     message: err.to_owned(),
-                    span: num.token().span(),
+                    span: token.span(),
                 });
             }
         }

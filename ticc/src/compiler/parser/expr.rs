@@ -94,7 +94,7 @@ fn apply_expr(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         p.emit_error();
         return None;
     };
-    while let Some(_) = atom_expr(p) {
+    while atom_expr(p).is_some() {
         m = m.precede(p).complete(p, SyntaxKind::ApplyExpr);
     }
     Some(m)

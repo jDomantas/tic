@@ -56,7 +56,7 @@ impl<'a> Resolver<'a> {
                     vis: ir::Visibility::Local,
                     span: param.span(),
                 });
-                scope.types.insert(param.text().clone(), symbol);
+                scope.types.insert(param.text(), symbol);
             }
         }
         if let Some(token) = item.name_token() {
@@ -194,7 +194,7 @@ impl<'a> Resolver<'a> {
                             symbol,
                             span: name.span(),
                         });
-                        scope.types.insert(name.text().clone(), symbol);
+                        scope.types.insert(name.text(), symbol);
                         Some(symbol)
                     } else {
                         self.emit_error(name.span(), "undefined type");
@@ -306,7 +306,7 @@ impl<'a> Resolver<'a> {
                         vis: ir::Visibility::Local,
                         span,
                     });
-                    scope.values.insert(ident.text().clone(), symbol);
+                    scope.values.insert(ident.text(), symbol);
                 }
                 if let Some(expr) = expr.rest() {
                     self.resolve_expr(expr, &scope);
@@ -347,7 +347,7 @@ impl<'a> Resolver<'a> {
                         vis: ir::Visibility::Local,
                         span,
                     });
-                    scope.values.insert(ident.text().clone(), symbol);
+                    scope.values.insert(ident.text(), symbol);
                 }
                 if let Some(expr) = expr.body() {
                     self.resolve_expr(expr, &scope);
@@ -386,7 +386,7 @@ impl<'a> Resolver<'a> {
                     vis: ir::Visibility::Local,
                     span,
                 });
-                scope.values.insert(var.text().clone(), symbol);
+                scope.values.insert(var.text(), symbol);
             }
         }
         if let Some(expr) = case.body() {
