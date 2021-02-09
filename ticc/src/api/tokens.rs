@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use ticc_syntax::cursor::SyntaxElement;
 use crate::{Compilation, Span};
-use crate::compiler::syntax::{SyntaxKind, TokenKind as Syntax};
+use crate::compiler::syntax::{SyntaxKind, TriviaKind, TokenKind as Syntax};
 use crate::compiler::ir;
 
 #[derive(Debug, Clone, Copy)]
@@ -26,52 +27,57 @@ pub struct Token {
 pub(crate) fn tokens(compilation: &mut Compilation) -> impl Iterator<Item = Token> + '_ {
     compilation.compile_to_end();
 
-    // let def_kinds = compilation.items
-    //     .iter()
-    //     .flat_map(|i| i.defs.iter().map(|d| (d.symbol, &d.kind)))
-    //     .collect::<HashMap<_, _>>();
+    let def_kinds = compilation.items
+        .iter()
+        .flat_map(|i| i.defs.iter().map(|d| (d.symbol, &d.kind)))
+        .collect::<HashMap<_, _>>();
 
-    // let symbol_kinds = compilation.items
-    //     .iter()
-    //     .flat_map(|i| {
-    //         let refs = i.refs
-    //             .iter()
-    //             .filter_map(|r| if let Some(&kind) = def_kinds.get(&r.symbol) {
-    //                 Some((r.span, kind))
-    //             } else {
-    //                 None
-    //             });
-    //         let defs = i.defs
-    //             .iter()
-    //             .map(|d| (d.span, &d.kind));
-    //         refs.chain(defs)
-    //     })
-    //     .collect::<HashMap<_, _>>();
+    let symbol_kinds = compilation.items
+        .iter()
+        .flat_map(|i| {
+            let refs = i.refs
+                .iter()
+                .filter_map(|r| if let Some(&kind) = def_kinds.get(&r.symbol) {
+                    Some((r.span, kind))
+                } else {
+                    None
+                });
+            let defs = i.defs
+                .iter()
+                .map(|d| (d.span, &d.kind));
+            refs.chain(defs)
+        })
+        .collect::<HashMap<_, _>>();
 
-    // compilation.items
-    //     .iter()
-    //     .flat_map(|i| SyntaxNode::<TicLanguage>::new_root(i.syntax.clone())
-    //         .preorder_with_tokens()
-    //         .map(move |e| (e, i.span.start)))
-    //     .filter_map(move |(event, offset)| {
-    //         match event {
-    //             WalkEvent::Enter(NodeOrToken::Node(_)) |
-    //             WalkEvent::Leave(NodeOrToken::Node(_)) |
-    //             WalkEvent::Leave(NodeOrToken::Token(_)) => None,
-    //             WalkEvent::Enter(NodeOrToken::Token(t)) => {
-    //                 let span = Span::from(t.text_range()).offset(offset);
-    //                 let kind = symbol_kinds.get(&span).copied();
-    //                 convert_token(t.kind(), kind)
-    //                     .map(|kind| Token {
-    //                         kind,
-    //                         span,
-    //                     })
-    //             }
-    //         }
-    //     })
+    let mut tokens = Vec::new();
 
-    // todo!()
-    std::iter::empty()
+    for item in &compilation.items {
+        item.syntax.tree.root().for_each_descendant_element(|elem| {
+            match elem {
+                SyntaxElement::Node(_) => {}
+                SyntaxElement::Token(t) => {
+                    let span = t.span();
+                    let kind = symbol_kinds.get(&span).copied();
+                    if let Some(kind) = convert_token(t.kind(), kind) {
+                        tokens.push(Token {
+                            kind,
+                            span,
+                        });
+                    }
+                }
+                SyntaxElement::Trivia(t) => {
+                    if t.kind() == TriviaKind::Comment {
+                        tokens.push(Token {
+                            kind: TokenKind::Comment,
+                            span: t.span(),
+                        })
+                    }
+                }
+            }
+        })
+    }
+
+    tokens.into_iter()
 }
 
 fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenKind> {

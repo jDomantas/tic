@@ -101,6 +101,20 @@ impl<'a> SyntaxNode<'a> {
             child.for_each_descendant_internal(f);
         }
     }
+
+    pub fn for_each_descendant_element(&self, mut f: impl FnMut(&SyntaxElement<'a>)) {
+        f(&SyntaxElement::Node(self.clone()));
+        self.for_each_descendant_element_internal(&mut f);
+    }
+
+    fn for_each_descendant_element_internal(&self, f: &mut impl FnMut(&SyntaxElement<'a>)) {
+        for child in self.all_children() {
+            f(&child);
+            if let SyntaxElement::Node(n) = child {
+                n.for_each_descendant_element_internal(f);
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
