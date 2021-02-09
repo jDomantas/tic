@@ -1,8 +1,5 @@
 #![allow(unused)]
 
-#[cfg(test)]
-mod tests;
-
 pub(crate) mod compiler;
 pub(crate) mod api;
 

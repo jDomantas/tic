@@ -1,4 +1,4 @@
-use crate::Compilation;
+use ticc::Compilation;
 
 #[test]
 fn no_errors() {
