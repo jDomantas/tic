@@ -8,4 +8,4 @@ let c : int = 1_2_3;
 --            ^^^^^ ERROR: invalid number
 
 let d : int = 123456789012345678901234567890;
---            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ERROR: invalid number
+--            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ERROR: number is too large

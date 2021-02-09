@@ -76,6 +76,7 @@ impl Compilation {
             let next_symbol = self.next_symbol.last().copied().unwrap_or(ir::Symbol(0));
             let mut symbols = compiler::SymbolGen { next: next_symbol };
             compiler::resolve::resolve(&mut item, &scope, &mut symbols);
+            compiler::numck::check_numbers(&mut item);
             compiler::kindck::kind_check(self, &mut item, &scope);
             compiler::typeck::type_check(self, &mut item, &scope);
             self.items.push(item);

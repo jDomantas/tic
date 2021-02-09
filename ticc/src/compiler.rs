@@ -1,6 +1,7 @@
 pub(crate) mod ir;
 pub(crate) mod kindck;
 pub(crate) mod lexer;
+pub(crate) mod numck;
 pub(crate) mod parser;
 pub(crate) mod resolve;
 pub(crate) mod syntax;
