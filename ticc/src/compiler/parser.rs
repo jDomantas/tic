@@ -116,7 +116,7 @@ impl Parser<'_> {
             TokenOrTrivia::Token(t) => self.events.push(Event::AddToken(t)),
             TokenOrTrivia::Trivia(_) => panic!("bumping trivia token"),
         };
-        self.current_pos = Span::new(token.span.end(), token.span.end());
+        self.current_pos = Span::new(token.span.end(), token.span.end()).from_origin(self.start_pos);
         self.hints.clear();
         self.expected_tokens.clear();
     }

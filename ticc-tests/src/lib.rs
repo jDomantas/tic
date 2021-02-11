@@ -94,8 +94,20 @@ pub fn run_tests(root_path: PathBuf) -> Vec<Test> {
     tests
 }
 
+fn matches_span(expected: Span, actual: Span) -> bool {
+    if expected == actual {
+        return true;
+    }
+    // zero length spans are ok if expected span is at the same
+    // position and 1-length, because we don't have a way to
+    // mark expected zero length spans
+    actual.source_len() == 0 &&
+        expected.source_len() == 1 &&
+        actual.start() == expected.start()
+}
+
 fn matches(expected: &Error, actual: &Error) -> bool {
-    if expected.span != actual.span {
+    if !matches_span(expected.span, actual.span) {
         false
     } else {
         actual.message.contains(&expected.message)
@@ -133,7 +145,7 @@ impl Test {
                     extra_errors.remove(i);
                     has_match = true;
                     break;
-                } else if expected.span == err.span {
+                } else if matches_span(expected.span, err.span) {
                     wrong_messages.push((expected.clone(), extra_errors.remove(i)));
                     has_match = true;
                     break;
