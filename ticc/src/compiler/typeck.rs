@@ -11,7 +11,7 @@ pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: 
         compilation,
         scope: &scope,
         unifier: Unifier::default(),
-        span_types: HashMap::new(),
+        expr_types: HashMap::new(),
         symbols: HashMap::new(),
         ctors: HashMap::new(),
         symbol_types: HashMap::new(),
@@ -76,7 +76,16 @@ pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: 
         }
         None => {}
     }
-
+    for (&node, &ty) in &checker.expr_types {
+        item.types.insert(node, checker.unifier.to_ir(ty));
+    }
+    for def in &mut item.defs {
+        if let ir::DefKind::Value { ty, .. } = &mut def.kind {
+            if let Some(&NameTy::Infer(inf)) = checker.symbol_types.get(&def.symbol) {
+                *ty = checker.unifier.to_ir(inf);
+            }
+        }
+    }
 }
 
 enum NameTy<'a> {
@@ -300,7 +309,7 @@ struct TypeChecker<'a> {
     compilation: &'a Compilation,
     scope: &'a Scope<'a>,
     unifier: Unifier,
-    span_types: HashMap<Span, TyIdx>,
+    expr_types: HashMap<NodeId, TyIdx>,
     symbols: HashMap<NodeId, ir::Symbol>,
     ctors: HashMap<ir::Symbol, Ctor<'a>>,
     symbol_types: HashMap<ir::Symbol, NameTy<'a>>,
@@ -373,7 +382,7 @@ impl<'a> TypeChecker<'a> {
 
     fn check_expr(&mut self, expr: node::Expr<'_>, expected: TyIdx) {
         let span = expr.syntax().span();
-        self.span_types.insert(span, expected);
+        self.expr_types.insert(expr.syntax().id(), expected);
         match expr {
             node::Expr::Name(expr) => {
                 if let Some(name) = expr.name() {
