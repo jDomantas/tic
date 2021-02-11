@@ -17,7 +17,9 @@ pub(crate) fn find_definition(compilation: &mut Compilation, pos: Pos) -> Option
 /// there no references to that symbol in the code.
 pub(crate) fn find_references(compilation: &mut Compilation, pos: Pos) -> Option<Vec<Span>> {
     compilation.compile_up_to(pos.source_pos() + 1);
-    let symbol = super::find_ref_at(compilation, pos)?.symbol;
+    let symbol = super::find_ref_at(compilation, pos)
+        .map(|r| r.symbol)
+        .or_else(|| super::find_def_at(compilation, pos).map(|d| d.symbol))?;
     let (item, def) = compilation.items
         .iter()
         .flat_map(|i| i.defs.iter().map(move |d| (i, d)))

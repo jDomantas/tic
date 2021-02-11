@@ -185,7 +185,6 @@ impl<'a> Resolver<'a> {
                             ir::Visibility::Local,
                             name,
                         ));
-                        self.refs.push(ir::Ref::new(symbol, name));
                         scope.types.insert(name.token().text(), symbol);
                         Some(symbol)
                     } else {
