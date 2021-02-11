@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use crate::{Compilation, Error, Span};
 use crate::compiler::{Scope, ir, syntax::node};
-use crate::compiler::syntax::{AstNode, TokenKind};
+use crate::compiler::syntax::{AstNode, NodeId, TokenKind};
 
 pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
     let mut scope = Scope::with_parent(scope);
@@ -20,7 +20,7 @@ pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: 
     let mut symbol_vars = HashMap::new();
     for r in item.refs.iter().copied().chain(item.defs.iter().map(|d| d.to_ref())) {
         let def = scope.lookup_def(r.symbol);
-        checker.symbols.insert(r.span, r.symbol);
+        checker.symbols.insert(r.node, r.symbol);
         match &def.kind {
             ir::DefKind::Value { type_vars, ty } => {
                 if let ir::Type::Infer = ty {
@@ -301,7 +301,7 @@ struct TypeChecker<'a> {
     scope: &'a Scope<'a>,
     unifier: Unifier,
     span_types: HashMap<Span, TyIdx>,
-    symbols: HashMap<Span, ir::Symbol>,
+    symbols: HashMap<NodeId, ir::Symbol>,
     ctors: HashMap<ir::Symbol, Ctor<'a>>,
     symbol_types: HashMap<ir::Symbol, NameTy<'a>>,
     errors: &'a mut Vec<Error>,
@@ -378,7 +378,7 @@ impl<'a> TypeChecker<'a> {
             node::Expr::Name(expr) => {
                 if let Some(name) = expr.name() {
                     let span = name.token().span();
-                    if let Some(&sym) = self.symbols.get(&span) {
+                    if let Some(&sym) = self.symbols.get(&name.syntax().id()) {
                         let ty = self.lookup_name(sym);
                         self.unify(expected, ty, span);
                     }
@@ -441,8 +441,7 @@ impl<'a> TypeChecker<'a> {
             }
             node::Expr::Let(expr) => {
                 let bound_ty = if let Some(name) = expr.name() {
-                    let span = name.token().span();
-                    if let Some(&sym) = self.symbols.get(&span) {
+                    if let Some(&sym) = self.symbols.get(&name.syntax().id()) {
                         self.lookup_name(sym)
                     } else {
                         self.allocate(Ty::Error)
@@ -469,7 +468,7 @@ impl<'a> TypeChecker<'a> {
                 for case in expr.cases() {
                     if let Some(ctor_name) = case.ctor() {
                         let span = ctor_name.token().span();
-                        if let Some(ctor) = self.symbols.get(&span).and_then(|s| self.ctors.get(s)).copied() {
+                        if let Some(ctor) = self.symbols.get(&ctor_name.syntax().id()).and_then(|s| self.ctors.get(s)).copied() {
                             let mut t = self.allocate(Ty::Named(ctor.type_symbol));
                             let mut vars_inst = Vec::new();
                             for &v in ctor.type_vars {
@@ -489,7 +488,7 @@ impl<'a> TypeChecker<'a> {
                             } else if let Some(vars) = case.vars() {
                                 for (var, field) in vars.vars().zip(ctor.fields) {
                                     let span = var.token().span();
-                                    if let Some(&s) = self.symbols.get(&span) {
+                                    if let Some(&s) = self.symbols.get(&var.syntax().id()) {
                                         let sym_ty = self.lookup_name(s);
                                         let field_ty = match field {
                                             ir::Field::Rec => rec,
@@ -528,8 +527,7 @@ impl<'a> TypeChecker<'a> {
             }
             node::Expr::Lambda(expr) => {
                 let arg_ty = if let Some(param) = expr.param() {
-                    let span = param.token().span();
-                    if let Some(&sym) = self.symbols.get(&span) {
+                    if let Some(&sym) = self.symbols.get(&param.syntax().id()) {
                         self.lookup_name(sym)
                     } else {
                         self.allocate(Ty::Error)
