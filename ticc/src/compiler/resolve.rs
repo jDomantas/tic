@@ -54,12 +54,12 @@ impl<'a> Resolver<'a> {
                         is_var: true,
                     },
                     vis: ir::Visibility::Local,
-                    span: param.span(),
+                    span: param.token().span(),
                 });
-                scope.types.insert(param.text(), symbol);
+                scope.types.insert(param.token().text(), symbol);
             }
         }
-        if let Some(token) = item.name_token() {
+        if let Some(name) = item.name() {
             self.defs.push(ir::Def {
                 symbol,
                 kind: ir::DefKind::Type {
@@ -67,7 +67,7 @@ impl<'a> Resolver<'a> {
                     is_var: false,
                 },
                 vis: ir::Visibility::Module,
-                span: token.span(),
+                span: name.token().span(),
             });
         }
         for case in item.cases() {
@@ -90,7 +90,7 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
-        if let Some(ident) = case.name_token() {
+        if let Some(name) = case.name() {
             self.defs.push(ir::Def {
                 symbol,
                 kind: ir::DefKind::Ctor {
@@ -99,7 +99,7 @@ impl<'a> Resolver<'a> {
                     fields,
                 },
                 vis: ir::Visibility::Module,
-                span: ident.span(),
+                span: name.token().span(),
             });
         }
     }
@@ -122,15 +122,15 @@ impl<'a> Resolver<'a> {
                 ir::Type::Fn(Box::new(from), Box::new(to))
             }
             node::Type::Named(ty) => {
-                let symbol = if let Some(name) = ty.name_token() {
-                    if let Some(symbol) = scope.lookup_type(name.text()) {
+                let symbol = if let Some(name) = ty.name() {
+                    if let Some(symbol) = scope.lookup_type(name.token().text()) {
                         self.refs.push(ir::Ref {
                             symbol,
-                            span: name.span(),
+                            span: name.token().span(),
                         });
                         Some(symbol)
                     } else {
-                        self.emit_error(name.span(), "undefined type");
+                        self.emit_error(name.token().span(), "undefined type");
                         None
                     }
                 } else {
@@ -171,14 +171,14 @@ impl<'a> Resolver<'a> {
                 ir::Type::Fn(Box::new(from), Box::new(to))
             }
             node::Type::Named(ty) => {
-                let symbol = if let Some(name) = ty.name_token() {
-                    if let Some(symbol) = scope.lookup_type(name.text()) {
+                let symbol = if let Some(name) = ty.name() {
+                    if let Some(symbol) = scope.lookup_type(name.token().text()) {
                         self.refs.push(ir::Ref {
                             symbol,
-                            span: name.span(),
+                            span: name.token().span(),
                         });
                         Some(symbol)
-                    } else if name.text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
+                    } else if name.token().text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
                         let symbol = self.symbols.gen();
                         type_vars.push(symbol);
                         self.defs.push(ir::Def {
@@ -188,16 +188,16 @@ impl<'a> Resolver<'a> {
                                 is_var: true,
                             },
                             vis: ir::Visibility::Local,
-                            span: name.span(),
+                            span: name.token().span(),
                         });
                         self.refs.push(ir::Ref {
                             symbol,
-                            span: name.span(),
+                            span: name.token().span(),
                         });
-                        scope.types.insert(name.text(), symbol);
+                        scope.types.insert(name.token().text(), symbol);
                         Some(symbol)
                     } else {
-                        self.emit_error(name.span(), "undefined type");
+                        self.emit_error(name.token().span(), "undefined type");
                         None
                     }
                 } else {
@@ -228,7 +228,7 @@ impl<'a> Resolver<'a> {
         } else {
             ir::Type::Infer
         };
-        if let Some(token) = item.name_token() {
+        if let Some(name) = item.name() {
             let vis = if item.export_token().is_some() {
                 ir::Visibility::Export
             } else {
@@ -241,7 +241,7 @@ impl<'a> Resolver<'a> {
                     type_vars,
                 },
                 vis,
-                span: token.span(),  
+                span: name.token().span(),  
             });
         }
         if let Some(expr) = item.expr() {
@@ -256,14 +256,14 @@ impl<'a> Resolver<'a> {
     ) {
         match expr {
             node::Expr::Name(expr) => {
-                if let Some(name) = expr.name_token() {
-                    if let Some(symbol) = scope.lookup_value(name.text()) {
+                if let Some(name) = expr.name() {
+                    if let Some(symbol) = scope.lookup_value(name.token().text()) {
                         self.refs.push(ir::Ref {
                             symbol,
-                            span: name.span(),
+                            span: name.token().span(),
                         });
                     } else {
-                        self.emit_error(name.span(), "undefined variable");
+                        self.emit_error(name.token().span(), "undefined variable");
                     }
                 }
             }
@@ -294,8 +294,8 @@ impl<'a> Resolver<'a> {
                 if let Some(expr) = expr.value() {
                     self.resolve_expr(expr, &scope);
                 }
-                if let Some(ident) = expr.name_token() {
-                    let span = ident.span();
+                if let Some(name) = expr.name() {
+                    let span = name.token().span();
                     let symbol = self.symbols.gen();
                     self.defs.push(ir::Def {
                         symbol,
@@ -306,7 +306,7 @@ impl<'a> Resolver<'a> {
                         vis: ir::Visibility::Local,
                         span,
                     });
-                    scope.values.insert(ident.text(), symbol);
+                    scope.values.insert(name.token().text(), symbol);
                 }
                 if let Some(expr) = expr.rest() {
                     self.resolve_expr(expr, &scope);
@@ -335,8 +335,8 @@ impl<'a> Resolver<'a> {
             node::Expr::Number(_) => {}
             node::Expr::Lambda(expr) => {
                 let mut scope = Scope::with_parent(scope);
-                if let Some(ident) = expr.param_token() {
-                    let span = ident.span();
+                if let Some(name) = expr.param() {
+                    let span = name.token().span();
                     let symbol = self.symbols.gen();
                     self.defs.push(ir::Def {
                         symbol,
@@ -347,7 +347,7 @@ impl<'a> Resolver<'a> {
                         vis: ir::Visibility::Local,
                         span,
                     });
-                    scope.values.insert(ident.text(), symbol);
+                    scope.values.insert(name.token().text(), symbol);
                 }
                 if let Some(expr) = expr.body() {
                     self.resolve_expr(expr, &scope);
@@ -362,20 +362,20 @@ impl<'a> Resolver<'a> {
     }
 
     fn resolve_match_case(&mut self, case: node::MatchCase, scope: &Scope<'_>) {
-        if let Some(ident) = case.ctor_token() {
-            if let Some(symbol) = scope.lookup_ctor(ident.text()) {
+        if let Some(name) = case.ctor() {
+            if let Some(symbol) = scope.lookup_ctor(name.token().text()) {
                 self.refs.push(ir::Ref {
                     symbol,
-                    span: ident.span(),
+                    span: name.token().span(),
                 });
             } else {
-                self.emit_error(ident.span(), "undefined constructor");
+                self.emit_error(name.token().span(), "undefined constructor");
             }
         }
         let mut scope = Scope::with_parent(scope);
         if let Some(vars) = case.vars() {
             for var in vars.vars() {
-                let span = var.span();
+                let span = var.token().span();
                 let symbol = self.symbols.gen();
                 self.defs.push(ir::Def {
                     symbol,
@@ -386,7 +386,7 @@ impl<'a> Resolver<'a> {
                     vis: ir::Visibility::Local,
                     span,
                 });
-                scope.values.insert(var.text(), symbol);
+                scope.values.insert(var.token().text(), symbol);
             }
         }
         if let Some(expr) = case.body() {

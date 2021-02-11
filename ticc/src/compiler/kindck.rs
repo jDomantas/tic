@@ -70,7 +70,7 @@ fn report_errors(scope: &Scope<'_>, item: &mut ir::Item) {
 }
 
 fn report_type(scope: &Scope<'_>, refs: &[ir::Ref], errors: &mut Vec<Error>, ty: node::NamedType) -> Option<()> {
-    let name_token = ty.name_token()?;
+    let name_token = ty.name()?.token();
     let span = name_token.span();
     let r = refs.iter().find(|r| r.span == span)?;
     let def = scope.lookup_def(r.symbol);

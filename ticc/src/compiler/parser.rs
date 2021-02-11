@@ -135,6 +135,12 @@ impl Parser<'_> {
         self.bump_any();
     }
 
+    fn bump_name(&mut self) {
+        let m = self.start();
+        self.bump(TokenKind::Ident);
+        m.complete(self, SyntaxKind::Name);
+    }
+
     fn start(&mut self) -> Marker {
         self.events.push(Event::Placeholder);
         Marker {
@@ -145,6 +151,14 @@ impl Parser<'_> {
     fn expect(&mut self, token: TokenKind) {
         if self.at(token) {
             self.bump(token);
+        } else {
+            self.emit_error();
+        }
+    }
+
+    fn expect_name(&mut self) {
+        if self.at(TokenKind::Ident) {
+            self.bump_name();
         } else {
             self.emit_error();
         }
@@ -473,6 +487,7 @@ impl ParseHint {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ticc_syntax::cursor::SyntaxNode;
 
     fn parse_file(mut source: &str) -> Vec<ir::Item> {
         let mut pos = Pos::new(0);

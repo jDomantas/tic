@@ -58,8 +58,8 @@ pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: 
     match syntax.item() {
         Some(node::Item::Type(_)) => {}
         Some(node::Item::Value(i)) => {
-            let expected_ty = if let Some(token) = i.name_token() {
-                let span = token.span();
+            let expected_ty = if let Some(name) = i.name() {
+                let span = name.token().span();
                 let def = item.defs.iter().find(|d| d.span == span).unwrap();
                 match &def.kind {
                     ir::DefKind::Value { type_vars: _, ty } => {
@@ -376,8 +376,8 @@ impl<'a> TypeChecker<'a> {
         self.span_types.insert(span, expected);
         match expr {
             node::Expr::Name(expr) => {
-                if let Some(token) = expr.name_token() {
-                    let span = token.span();
+                if let Some(name) = expr.name() {
+                    let span = name.token().span();
                     if let Some(&sym) = self.symbols.get(&span) {
                         let ty = self.lookup_name(sym);
                         self.unify(expected, ty, span);
@@ -440,8 +440,8 @@ impl<'a> TypeChecker<'a> {
                 }
             }
             node::Expr::Let(expr) => {
-                let bound_ty = if let Some(t) = expr.name_token() {
-                    let span = t.span();
+                let bound_ty = if let Some(name) = expr.name() {
+                    let span = name.token().span();
                     if let Some(&sym) = self.symbols.get(&span) {
                         self.lookup_name(sym)
                     } else {
@@ -467,8 +467,8 @@ impl<'a> TypeChecker<'a> {
                     _ => (discr, discr),
                 };
                 for case in expr.cases() {
-                    if let Some(ctor_tok) = case.ctor_token() {
-                        let span = ctor_tok.span();
+                    if let Some(ctor_name) = case.ctor() {
+                        let span = ctor_name.token().span();
                         if let Some(ctor) = self.symbols.get(&span).and_then(|s| self.ctors.get(s)).copied() {
                             let mut t = self.allocate(Ty::Named(ctor.type_symbol));
                             let mut vars_inst = Vec::new();
@@ -482,13 +482,13 @@ impl<'a> TypeChecker<'a> {
                             if field_count != ctor.fields.len() {
                                 let end = case
                                     .vars()
-                                    .and_then(|v| v.vars().last().map(|v| v.span().end()))
-                                    .unwrap_or(ctor_tok.span().end());
-                                let span = Span::new(ctor_tok.span().start(), end);
+                                    .and_then(|v| v.vars().last().map(|v| v.token().span().end()))
+                                    .unwrap_or(ctor_name.token().span().end());
+                                let span = Span::new(ctor_name.token().span().start(), end);
                                 self.emit_error(span, format!("expected {} fields, got {}", ctor.fields.len(), field_count));
                             } else if let Some(vars) = case.vars() {
                                 for (var, field) in vars.vars().zip(ctor.fields) {
-                                    let span = var.span();
+                                    let span = var.token().span();
                                     if let Some(&s) = self.symbols.get(&span) {
                                         let sym_ty = self.lookup_name(s);
                                         let field_ty = match field {
@@ -527,8 +527,8 @@ impl<'a> TypeChecker<'a> {
                 self.unify(expected, i, span);
             }
             node::Expr::Lambda(expr) => {
-                let arg_ty = if let Some(t) = expr.param_token() {
-                    let span = t.span();
+                let arg_ty = if let Some(param) = expr.param() {
+                    let span = param.token().span();
                     if let Some(&sym) = self.symbols.get(&span) {
                         self.lookup_name(sym)
                     } else {

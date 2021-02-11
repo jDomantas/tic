@@ -128,11 +128,13 @@ nodes! {
     pub(crate) struct MatchVars { SyntaxKind::MatchVars }
     
     pub(crate) struct BinaryOp { SyntaxKind::BinaryOp }
+
+    pub(crate) struct Name { SyntaxKind::Name }
 }
 
 impl<'a> TypeItem<'a> {
     pub(crate) fn type_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Type) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
     pub(crate) fn params(&self) -> Option<TypeParams<'a>> { child(&self.syntax) }
     pub(crate) fn equals_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Equals) }
     pub(crate) fn cases(&self) -> impl Iterator<Item = TypeCase<'a>> + 'a { children(&self.syntax) }
@@ -140,17 +142,14 @@ impl<'a> TypeItem<'a> {
 }
 
 impl<'a> TypeParams<'a> {
-    pub(crate) fn params(&self) -> impl Iterator<Item = SyntaxToken<'a>> + 'a {
-        self.syntax
-            .all_children()
-            .filter_map(|c| c.into_token())
-            .filter(|c| c.kind() == TokenKind::Ident)
+    pub(crate) fn params(&self) -> impl Iterator<Item = Name<'a>> + 'a {
+        children(&self.syntax)
     }
 }
 
 impl<'a> TypeCase<'a> {
     pub(crate) fn pipe_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Pipe) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
     pub(crate) fn fields(&self) -> impl Iterator<Item = Field<'a>> + 'a { children(&self.syntax) }
 }
 
@@ -177,7 +176,7 @@ impl<'a> FnType<'a> {
 }
 
 impl<'a> NamedType<'a> {
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
     pub(crate) fn type_args(&self) -> impl Iterator<Item = Type<'a>> + 'a { children(&self.syntax) }
 }
 
@@ -190,7 +189,7 @@ impl<'a> ParenType<'a> {
 impl<'a> ValueItem<'a> {
     pub(crate) fn export_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Export) }
     pub(crate) fn let_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Let) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
     pub(crate) fn colon_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Colon) }
     pub(crate) fn type_(&self) -> Option<Type<'a>> { child(&self.syntax) }
     pub(crate) fn eq_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Equals) }
@@ -199,7 +198,7 @@ impl<'a> ValueItem<'a> {
 }
 
 impl<'a> NameExpr<'a> {
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
 }
 
 impl<'a> ApplyExpr<'a> {
@@ -215,7 +214,7 @@ impl<'a> BinaryExpr<'a> {
 
 impl<'a> LetExpr<'a> {
     pub(crate) fn let_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Let) }
-    pub(crate) fn name_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
     pub(crate) fn colon_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Colon) }
     pub(crate) fn type_(&self) -> Option<Type<'a>> { child(&self.syntax) }
     pub(crate) fn eq_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Equals) }
@@ -257,7 +256,7 @@ impl<'a> LambdaExpr<'a> {
     pub(crate) fn lambda_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Backslash) }
     pub(crate) fn fold_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Fold) }
     pub(crate) fn is_fold(&self) -> bool { self.fold_token().is_some() }
-    pub(crate) fn param_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn param(&self) -> Option<Name<'a>> { child(&self.syntax) }
     pub(crate) fn arrow_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Arrow) }
     pub(crate) fn body(&self) -> Option<Expr<'a>> { child(&self.syntax) }
 }
@@ -270,21 +269,28 @@ impl<'a> ParenExpr<'a> {
 
 impl<'a> MatchCase<'a> {
     pub(crate) fn pipe_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Pipe) }
-    pub(crate) fn ctor_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Ident) }
+    pub(crate) fn ctor(&self) -> Option<Name<'a>> { child(&self.syntax) }
     pub(crate) fn vars(&self) -> Option<MatchVars<'a>> { child(&self.syntax) }
     pub(crate) fn arrow_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Arrow) }
     pub(crate) fn body(&self) -> Option<Expr<'a>> { child(&self.syntax) }
 }
 
 impl<'a> MatchVars<'a> {
-    pub(crate) fn vars(&self) -> impl Iterator<Item = SyntaxToken<'a>> + 'a {
-        self.syntax
-            .all_children()
-            .filter_map(|c| c.into_token())
+    pub(crate) fn vars(&self) -> impl Iterator<Item = Name<'a>> + 'a {
+        children(&self.syntax)
     }
 }
 
 impl<'a> BinaryOp<'a> {
+    pub(crate) fn token(&self) -> SyntaxToken<'a> {
+        self.syntax
+            .all_children()
+            .find_map(|c| c.into_token())
+            .unwrap()
+    }
+}
+
+impl<'a> Name<'a> {
     pub(crate) fn token(&self) -> SyntaxToken<'a> {
         self.syntax
             .all_children()

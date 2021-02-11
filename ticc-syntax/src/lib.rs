@@ -30,6 +30,7 @@ pub enum SyntaxKind {
     MatchCase,
     MatchVars,
     BinaryOp,
+    Name,
     Error,
     Trivia,
     Root,
