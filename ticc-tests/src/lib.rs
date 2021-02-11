@@ -125,11 +125,16 @@ impl Test {
     pub fn outcome(&self) -> Outcome {
         let mut extra_errors = self.actual_errors.clone();
         let mut missing_errors = Vec::new();
+        let mut wrong_messages = Vec::new();
         for expected in &self.expected_errors {
             let mut has_match = false;
             for (i, err) in extra_errors.iter().enumerate() {
                 if matches(expected, err) {
                     extra_errors.remove(i);
+                    has_match = true;
+                    break;
+                } else if expected.span == err.span {
+                    wrong_messages.push((expected.clone(), extra_errors.remove(i)));
                     has_match = true;
                     break;
                 }
@@ -139,9 +144,12 @@ impl Test {
             }
         }
         Outcome {
-            success: extra_errors.is_empty() && missing_errors.is_empty(),
+            success: extra_errors.is_empty() &&
+                missing_errors.is_empty() &&
+                wrong_messages.is_empty(),
             extra_errors,
             missing_errors,
+            wrong_messages,
         }
     }
 }
@@ -150,6 +158,7 @@ pub struct Outcome {
     pub success: bool,
     pub extra_errors: Vec<Error>,
     pub missing_errors: Vec<Error>,
+    pub wrong_messages: Vec<(Error, Error)>,
 }
 
 #[test]

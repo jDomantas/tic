@@ -28,6 +28,17 @@ fn main() {
                 print_errors(&path.display().to_string(), &test.source, outcome.missing_errors.iter().cloned()).unwrap();
                 println!();
             }
+            if !outcome.wrong_messages.is_empty() {
+                println!("compiler reported incorrect messaged for {} errors", outcome.wrong_messages.len());
+                let errors = outcome.wrong_messages
+                    .into_iter()
+                    .map(|(expected, mut actual)| {
+                        actual.message += &format!(" (checked for: {:?})", expected.message);
+                        actual
+                    });
+                print_errors(&path.display().to_string(), &test.source, errors).unwrap();
+                println!();
+            }
         }
     }
 }
