@@ -52,6 +52,7 @@ impl<'a> Resolver<'a> {
                     kind: ir::DefKind::Type {
                         param_count: 0,
                         is_var: true,
+                        ctors: ir::Ctors::Opaque,
                     },
                     vis: ir::Visibility::Local,
                     span: param.token().span(),
@@ -60,24 +61,26 @@ impl<'a> Resolver<'a> {
                 scope.types.insert(param.token().text(), symbol);
             }
         }
+        let mut ctors = Vec::new();
+        for case in item.cases() {
+            let sym = self.resolve_type_case(case, &scope, symbol, &param_symbols);
+            ctors.extend(sym);
+        }
         if let Some(name) = item.name() {
             self.defs.push(ir::Def::new(
                 symbol,
                 ir::DefKind::Type {
                     param_count: param_symbols.len(),
                     is_var: false,
+                    ctors: ir::Ctors::List(ctors),
                 },
                 ir::Visibility::Module,
                 name,
             ));
         }
-        for case in item.cases() {
-            self.resolve_type_case(case, &scope, symbol, &param_symbols);
-        }
     }
 
-    fn resolve_type_case(&mut self, case: node::TypeCase<'_>, scope: &Scope<'_>, type_symbol: ir::Symbol, param_symbols: &[ir::Symbol]) {
-        let symbol = self.symbols.gen();
+    fn resolve_type_case(&mut self, case: node::TypeCase<'_>, scope: &Scope<'_>, type_symbol: ir::Symbol, param_symbols: &[ir::Symbol]) -> Option<ir::Symbol> {
         let mut fields = Vec::new();
         for field in case.fields() {
             match field {
@@ -92,6 +95,7 @@ impl<'a> Resolver<'a> {
             }
         }
         if let Some(name) = case.name() {
+            let symbol = self.symbols.gen();
             self.defs.push(ir::Def::new(
                 symbol,
                 ir::DefKind::Ctor {
@@ -102,6 +106,9 @@ impl<'a> Resolver<'a> {
                 ir::Visibility::Module,
                 name,
             ));
+            Some(symbol)
+        } else {
+            None
         }
     }
 
@@ -181,6 +188,7 @@ impl<'a> Resolver<'a> {
                             ir::DefKind::Type {
                                 param_count: 0,
                                 is_var: true,
+                                ctors: ir::Ctors::Opaque,
                             },
                             ir::Visibility::Local,
                             name,

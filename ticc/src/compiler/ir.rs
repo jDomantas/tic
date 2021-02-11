@@ -30,7 +30,14 @@ pub(crate) enum DefKind {
     Type {
         param_count: usize,
         is_var: bool,
+        ctors: Ctors,
     },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum Ctors {
+    Opaque,
+    List(Vec<Symbol>),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
