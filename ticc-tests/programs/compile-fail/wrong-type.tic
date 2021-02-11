@@ -32,3 +32,11 @@ let g : Generic int -> Generic bool =
 
 let h : Generic int -> Generic bool =
     \x -> Generic;
+
+let i : a -> bool =
+    \x -> x;
+--        ^ ERROR: expected bool, got a
+
+let j : bool -> a =
+    \x -> x;
+--        ^ ERROR: expected a, got bool
