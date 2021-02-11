@@ -1,5 +1,7 @@
 use crate::{Error, Span};
-use crate::compiler::syntax::ItemSyntax;
+use crate::compiler::syntax::{ItemSyntax, NodeId, node};
+
+use super::syntax::AstNode;
 
 pub(crate) struct Item {
     pub(crate) syntax: ItemSyntax,
@@ -45,13 +47,30 @@ pub(crate) struct Def {
     pub(crate) kind: DefKind,
     pub(crate) vis: Visibility,
     pub(crate) span: Span,
+    pub(crate) node: NodeId,
 }
 
 impl Def {
+    pub(crate) fn new(
+        symbol: Symbol,
+        kind: DefKind,
+        vis: Visibility,
+        name: node::Name<'_>,
+    ) -> Def {
+        Def {
+            symbol,
+            kind,
+            vis,
+            span: name.token().span(),
+            node: name.syntax().id(),
+        }
+    }
+
     pub(crate) fn to_ref(&self) -> Ref {
         Ref {
             symbol: self.symbol,
             span: self.span,
+            node: self.node,
         }
     }
 }
@@ -60,6 +79,17 @@ impl Def {
 pub(crate) struct Ref {
     pub(crate) symbol: Symbol,
     pub(crate) span: Span,
+    pub(crate) node: NodeId,
+}
+
+impl Ref {
+    pub(crate) fn new(symbol: Symbol, name: node::Name<'_>) -> Ref {
+        Ref {
+            symbol,
+            span: name.token().span(),
+            node: name.syntax().id(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

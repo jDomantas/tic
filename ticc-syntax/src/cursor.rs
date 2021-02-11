@@ -33,7 +33,7 @@ impl<'a> SyntaxElement<'a> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct SyntaxNode<'a> {
     pub(crate) node: &'a crate::SyntaxNode,
     pub(crate) tree: &'a crate::SyntaxTree,

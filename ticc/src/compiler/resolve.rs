@@ -55,20 +55,21 @@ impl<'a> Resolver<'a> {
                     },
                     vis: ir::Visibility::Local,
                     span: param.token().span(),
+                    node: param.syntax.id(),
                 });
                 scope.types.insert(param.token().text(), symbol);
             }
         }
         if let Some(name) = item.name() {
-            self.defs.push(ir::Def {
+            self.defs.push(ir::Def::new(
                 symbol,
-                kind: ir::DefKind::Type {
+                ir::DefKind::Type {
                     param_count: param_symbols.len(),
                     is_var: false,
                 },
-                vis: ir::Visibility::Module,
-                span: name.token().span(),
-            });
+                ir::Visibility::Module,
+                name,
+            ));
         }
         for case in item.cases() {
             self.resolve_type_case(case, &scope, symbol, &param_symbols);
@@ -91,16 +92,16 @@ impl<'a> Resolver<'a> {
             }
         }
         if let Some(name) = case.name() {
-            self.defs.push(ir::Def {
+            self.defs.push(ir::Def::new(
                 symbol,
-                kind: ir::DefKind::Ctor {
+                ir::DefKind::Ctor {
                     type_symbol,
                     type_params: param_symbols.to_vec(),
                     fields,
                 },
-                vis: ir::Visibility::Module,
-                span: name.token().span(),
-            });
+                ir::Visibility::Module,
+                name,
+            ));
         }
     }
 
@@ -124,10 +125,7 @@ impl<'a> Resolver<'a> {
             node::Type::Named(ty) => {
                 let symbol = if let Some(name) = ty.name() {
                     if let Some(symbol) = scope.lookup_type(name.token().text()) {
-                        self.refs.push(ir::Ref {
-                            symbol,
-                            span: name.token().span(),
-                        });
+                        self.refs.push(ir::Ref::new(symbol, name));
                         Some(symbol)
                     } else {
                         self.emit_error(name.token().span(), "undefined type");
@@ -173,27 +171,21 @@ impl<'a> Resolver<'a> {
             node::Type::Named(ty) => {
                 let symbol = if let Some(name) = ty.name() {
                     if let Some(symbol) = scope.lookup_type(name.token().text()) {
-                        self.refs.push(ir::Ref {
-                            symbol,
-                            span: name.token().span(),
-                        });
+                        self.refs.push(ir::Ref::new(symbol, name));
                         Some(symbol)
                     } else if name.token().text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
                         let symbol = self.symbols.gen();
                         type_vars.push(symbol);
-                        self.defs.push(ir::Def {
+                        self.defs.push(ir::Def::new(
                             symbol,
-                            kind: ir::DefKind::Type {
+                            ir::DefKind::Type {
                                 param_count: 0,
                                 is_var: true,
                             },
-                            vis: ir::Visibility::Local,
-                            span: name.token().span(),
-                        });
-                        self.refs.push(ir::Ref {
-                            symbol,
-                            span: name.token().span(),
-                        });
+                            ir::Visibility::Local,
+                            name,
+                        ));
+                        self.refs.push(ir::Ref::new(symbol, name));
                         scope.types.insert(name.token().text(), symbol);
                         Some(symbol)
                     } else {
@@ -234,15 +226,15 @@ impl<'a> Resolver<'a> {
             } else {
                 ir::Visibility::Module
             };
-            self.defs.push(ir::Def {
-                symbol: self.symbols.gen(),
-                kind: ir::DefKind::Value {
+            self.defs.push(ir::Def::new(
+                self.symbols.gen(),
+                ir::DefKind::Value {
                     ty,
                     type_vars,
                 },
                 vis,
-                span: name.token().span(),  
-            });
+                name,
+            ));
         }
         if let Some(expr) = item.expr() {
             self.resolve_expr(expr, &scope);
@@ -258,10 +250,7 @@ impl<'a> Resolver<'a> {
             node::Expr::Name(expr) => {
                 if let Some(name) = expr.name() {
                     if let Some(symbol) = scope.lookup_value(name.token().text()) {
-                        self.refs.push(ir::Ref {
-                            symbol,
-                            span: name.token().span(),
-                        });
+                        self.refs.push(ir::Ref::new(symbol, name));
                     } else {
                         self.emit_error(name.token().span(), "undefined variable");
                     }
@@ -295,17 +284,16 @@ impl<'a> Resolver<'a> {
                     self.resolve_expr(expr, &scope);
                 }
                 if let Some(name) = expr.name() {
-                    let span = name.token().span();
                     let symbol = self.symbols.gen();
-                    self.defs.push(ir::Def {
+                    self.defs.push(ir::Def::new(
                         symbol,
-                        kind: ir::DefKind::Value {
+                        ir::DefKind::Value {
                             ty,
                             type_vars,
                         },
-                        vis: ir::Visibility::Local,
-                        span,
-                    });
+                        ir::Visibility::Local,
+                        name,
+                    ));
                     scope.values.insert(name.token().text(), symbol);
                 }
                 if let Some(expr) = expr.rest() {
@@ -336,17 +324,16 @@ impl<'a> Resolver<'a> {
             node::Expr::Lambda(expr) => {
                 let mut scope = Scope::with_parent(scope);
                 if let Some(name) = expr.param() {
-                    let span = name.token().span();
                     let symbol = self.symbols.gen();
-                    self.defs.push(ir::Def {
+                    self.defs.push(ir::Def::new(
                         symbol,
-                        kind: ir::DefKind::Value {
+                        ir::DefKind::Value {
                             ty: ir::Type::Infer,
                             type_vars: Vec::new(),
                         },
-                        vis: ir::Visibility::Local,
-                        span,
-                    });
+                        ir::Visibility::Local,
+                        name,
+                    ));
                     scope.values.insert(name.token().text(), symbol);
                 }
                 if let Some(expr) = expr.body() {
@@ -364,10 +351,7 @@ impl<'a> Resolver<'a> {
     fn resolve_match_case(&mut self, case: node::MatchCase, scope: &Scope<'_>) {
         if let Some(name) = case.ctor() {
             if let Some(symbol) = scope.lookup_ctor(name.token().text()) {
-                self.refs.push(ir::Ref {
-                    symbol,
-                    span: name.token().span(),
-                });
+                self.refs.push(ir::Ref::new(symbol, name));
             } else {
                 self.emit_error(name.token().span(), "undefined constructor");
             }
@@ -375,17 +359,16 @@ impl<'a> Resolver<'a> {
         let mut scope = Scope::with_parent(scope);
         if let Some(vars) = case.vars() {
             for var in vars.vars() {
-                let span = var.token().span();
                 let symbol = self.symbols.gen();
-                self.defs.push(ir::Def {
+                self.defs.push(ir::Def::new(
                     symbol,
-                    kind: ir::DefKind::Value {
+                    ir::DefKind::Value {
                         ty: ir::Type::Infer,
                         type_vars: Vec::new(),
                     },
-                    vis: ir::Visibility::Local,
-                    span,
-                });
+                    ir::Visibility::Local,
+                    var,
+                ));
                 scope.values.insert(var.token().text(), symbol);
             }
         }

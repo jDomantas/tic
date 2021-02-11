@@ -16,6 +16,7 @@ use super::{
 macro_rules! nodes {
     () => {};
     ($v:vis enum $name:ident { $($member:ident($t:ident),)* } $($rest:tt)*) => {
+        #[derive(Clone, Copy)]
         $v enum $name<'a> {
             $($member($t<'a>),)*
         }
@@ -41,6 +42,7 @@ macro_rules! nodes {
     };
     
     ($v:vis struct $name:ident { $kind:expr } $($rest:tt)*) => {
+        #[derive(Clone, Copy)]
         $v struct $name<'a> {
             $v syntax : SyntaxNode<'a>,
         }
