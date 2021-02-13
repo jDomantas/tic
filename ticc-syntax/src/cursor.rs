@@ -1,6 +1,8 @@
 use std::fmt;
+use internal_iterator::InternalIterator;
 use crate::{NodeId, Span, SyntaxKind, TokenKind, TriviaKind};
 
+#[derive(Clone, Copy)]
 pub enum SyntaxElement<'a> {
     Node(SyntaxNode<'a>),
     Token(SyntaxToken<'a>),
@@ -91,33 +93,64 @@ impl<'a> SyntaxNode<'a> {
             .filter_map(|e| e.into_node())
     }
 
-    pub fn for_each_descendant(&self, mut f: impl FnMut(&SyntaxNode<'a>)) {
-        self.for_each_descendant_internal(&mut f);
+    pub fn descendants(&self) -> impl InternalIterator<Item = SyntaxNode<'a>> {
+        Descendants { node: *self }
     }
 
-    fn for_each_descendant_internal(&self, f: &mut impl FnMut(&SyntaxNode<'a>)) {
-        f(self);
-        for child in self.children() {
-            child.for_each_descendant_internal(f);
-        }
-    }
-
-    pub fn for_each_descendant_element(&self, mut f: impl FnMut(&SyntaxElement<'a>)) {
-        f(&SyntaxElement::Node(self.clone()));
-        self.for_each_descendant_element_internal(&mut f);
-    }
-
-    fn for_each_descendant_element_internal(&self, f: &mut impl FnMut(&SyntaxElement<'a>)) {
-        for child in self.all_children() {
-            f(&child);
-            if let SyntaxElement::Node(n) = child {
-                n.for_each_descendant_element_internal(f);
-            }
-        }
+    pub fn descendant_elements(&self) -> impl InternalIterator<Item = SyntaxElement<'a>> {
+        DescendantElements { node: *self }
     }
 }
 
-#[derive(Clone)]
+struct Descendants<'a> {
+    node: SyntaxNode<'a>,
+}
+
+impl<'a> InternalIterator for Descendants<'a> {
+    type Item = SyntaxNode<'a>;
+
+    fn find_map<F, R>(self, mut f: F) -> Option<R>
+    where
+        F: FnMut(Self::Item) -> Option<R>
+    {
+        fn go<'b, R>(node: SyntaxNode<'b>, f: &mut impl FnMut(SyntaxNode<'b>) -> Option<R>) -> Option<R> {
+            if let Some(r) = f(node) {
+                Some(r)
+            } else {
+                node.children().find_map(|child| go(child, f))
+            }
+        }
+
+        go(self.node, &mut f)
+    }
+}
+
+struct DescendantElements<'a> {
+    node: SyntaxNode<'a>,
+}
+
+impl<'a> InternalIterator for DescendantElements<'a> {
+    type Item = SyntaxElement<'a>;
+
+    fn find_map<F, R>(self, mut f: F) -> Option<R>
+    where
+        F: FnMut(Self::Item) -> Option<R>
+    {
+        fn go<'b, R>(elem: SyntaxElement<'b>, f: &mut impl FnMut(SyntaxElement<'b>) -> Option<R>) -> Option<R> {
+            if let Some(r) = f(elem) {
+                Some(r)
+            } else if let SyntaxElement::Node(node) = elem {
+                node.all_children().find_map(|child| go(child, f))
+            } else {
+                None
+            }
+        }
+
+        go(SyntaxElement::Node(self.node), &mut f)
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct SyntaxToken<'a> {
     pub(crate) token: &'a crate::SyntaxToken,
     pub(crate) tree: &'a crate::SyntaxTree,
@@ -147,7 +180,7 @@ impl<'a> SyntaxToken<'a> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct TriviaToken<'a> {
     pub(crate) trivia: &'a crate::TriviaToken,
     pub(crate) tree: &'a crate::SyntaxTree,

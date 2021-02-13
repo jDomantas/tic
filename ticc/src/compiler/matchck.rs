@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use internal_iterator::InternalIterator;
 use crate::RawError;
 use crate::compiler::{DefSet, ir};
 use crate::compiler::syntax::{AstNode, NodeId, node};
@@ -8,7 +9,8 @@ pub(crate) fn check_matches(item: &mut ir::Item, defs: &DefSet) {
     let types = &item.types;
     let refs = &item.refs;
     item.syntax.tree.root()
-        .for_each_descendant(|&node| if let Some(expr) = node::MatchExpr::cast(node) {
+        .descendants()
+        .for_each(|node| if let Some(expr) = node::MatchExpr::cast(node) {
             check(expr, defs, refs, types, errors);
         });
 }

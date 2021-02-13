@@ -1,12 +1,14 @@
+use internal_iterator::InternalIterator;
 use crate::RawError;
 use crate::compiler::ir;
 use crate::compiler::syntax::{node, AstNode};
 
 pub(crate) fn check_numbers(item: &mut ir::Item) {
-    let syntax = item.syntax.tree.root();
     let errors = &mut item.errors;
-    syntax.for_each_descendant(|node| {
-        if let Some(num) = node::NumberExpr::cast(node.clone()) {
+    item.syntax.tree.root()
+        .descendants()
+        .filter_map(node::NumberExpr::cast)
+        .for_each(|num| {
             let token = num.token();
             let err = match parse_int(token.text()) {
                 Ok(_) => None,
@@ -19,8 +21,7 @@ pub(crate) fn check_numbers(item: &mut ir::Item) {
                     span: token.span(),
                 });
             }
-        }
-    })
+        });
 }
 
 enum ParseError {

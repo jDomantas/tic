@@ -35,6 +35,11 @@ fn find_def_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Def> {
     None
 }
 
+fn find_def_or_ref_at(compilation: &Compilation, pos: Pos) -> Option<ir::Ref> {
+    find_ref_at(compilation, pos).copied()
+        .or_else(|| find_def_at(compilation, pos).map(|d| d.to_ref()))
+}
+
 fn find_def(compilation: &Compilation, symbol: ir::Symbol) -> Option<&ir::Def> {
     for item in &compilation.items {
         for def in &item.defs {

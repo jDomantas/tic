@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use internal_iterator::{InternalIterator, IteratorExt};
 use ticc_syntax::cursor::SyntaxElement;
 use crate::{Compilation, Span};
 use crate::compiler::syntax::{TriviaKind, TokenKind as Syntax};
@@ -49,33 +50,36 @@ pub(crate) fn tokens(compilation: &mut Compilation) -> impl Iterator<Item = Toke
         })
         .collect::<HashMap<_, _>>();
 
-    let mut tokens = Vec::new();
-
-    for item in &compilation.items {
-        item.syntax.tree.root().for_each_descendant_element(|elem| {
-            match elem {
-                SyntaxElement::Node(_) => {}
-                SyntaxElement::Token(t) => {
-                    let span = t.span();
-                    let kind = symbol_kinds.get(&span).copied();
-                    if let Some(kind) = convert_token(t.kind(), kind) {
-                        tokens.push(Token {
-                            kind,
-                            span,
-                        });
-                    }
+    let tokens = compilation.items
+        .iter()
+        .into_internal()
+        .flat_map(|item| item.syntax.tree.root().descendant_elements())
+        .filter_map(|elem| match elem {
+            SyntaxElement::Node(_) => None,
+            SyntaxElement::Token(t) => {
+                let span = t.span();
+                let kind = symbol_kinds.get(&span).copied();
+                if let Some(kind) = convert_token(t.kind(), kind) {
+                    Some(Token {
+                        kind,
+                        span,
+                    })
+                } else {
+                    None
                 }
-                SyntaxElement::Trivia(t) => {
-                    if t.kind() == TriviaKind::Comment {
-                        tokens.push(Token {
-                            kind: TokenKind::Comment,
-                            span: t.span(),
-                        })
-                    }
+            }
+            SyntaxElement::Trivia(t) => {
+                if t.kind() == TriviaKind::Comment {
+                    Some(Token {
+                        kind: TokenKind::Comment,
+                        span: t.span(),
+                    })
+                } else {
+                    None
                 }
             }
         })
-    }
+        .collect::<Vec<_>>();
 
     tokens.into_iter()
 }

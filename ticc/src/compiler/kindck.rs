@@ -1,3 +1,4 @@
+use internal_iterator::InternalIterator;
 use crate::RawError;
 use crate::compiler::{DefSet, ir, syntax::node};
 use crate::compiler::syntax::AstNode;
@@ -59,7 +60,8 @@ fn report_errors(defs: &DefSet, item: &mut ir::Item) {
     item.syntax
         .tree
         .root()
-        .for_each_descendant(|node| {
+        .descendants()
+        .for_each(|node| {
             if let Some(ty) = node::NamedType::cast(node.clone()) {
                 report_type(defs, refs, errors, ty);
             }
