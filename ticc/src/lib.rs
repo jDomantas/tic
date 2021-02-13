@@ -1,10 +1,14 @@
+#[macro_use]
+pub(crate) mod error;
 pub(crate) mod compiler;
 pub(crate) mod api;
 
 use std::sync::Arc;
 use compiler::{DefSet, Scope, ir, parser};
-pub use api::tokens::{Token, TokenKind};
-pub use api::info::Info;
+pub use ticc_syntax::{Pos, Span};
+pub(crate) use crate::error::RawError;
+pub use crate::api::tokens::{Token, TokenKind};
+pub use crate::api::info::Info;
 
 pub struct Compilation {
     src: Arc<str>,
@@ -76,7 +80,7 @@ impl Compilation {
             defs.add_item(&item);
             compiler::numck::check_numbers(&mut item);
             compiler::kindck::kind_check(&mut item, &defs);
-            compiler::typeck::type_check(self, &mut item, &defs);
+            compiler::typeck::type_check(&mut item, &defs);
             compiler::matchck::check_matches(&mut item, &defs);
             self.items.push(item);
             self.next_symbol.push(symbols.next);
@@ -95,4 +99,3 @@ pub struct Error {
     pub message: String,
 }
 
-pub use ticc_syntax::{Pos, Span};

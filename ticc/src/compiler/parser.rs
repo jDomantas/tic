@@ -6,7 +6,7 @@ use std::iter::Peekable;
 
 use ticc_syntax::{NodeId, SyntaxTree, SyntaxBuilder, TokenKind, TriviaKind};
 
-use crate::{Error, Pos, Span};
+use crate::{RawError, Pos, Span};
 use crate::compiler::{
     ir,
     lexer::{Lexer, TokenKind as LexerToken, lex},
@@ -40,13 +40,12 @@ pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
     }
 }
 
-#[derive(Debug)]
 enum Event {
     StartNode {
         kind: SyntaxKind,
         forward_parent: Option<usize>,
     },
-    Error(Error),
+    Error(RawError),
     AddToken(TokenKind),
     FinishNode,
     Placeholder,
@@ -207,9 +206,9 @@ impl Parser<'_> {
             msg
         };
         let start_pos = self.start_pos;
-        self.events.push(Event::Error(Error {
+        self.events.push(Event::Error(RawError {
             span: self.tokens.peek().map(|t| t.span.from_origin(start_pos)).unwrap_or(self.current_pos),
-            message,
+            message: err_fmt!(message),
         }));
     }
 
@@ -360,7 +359,7 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
     }
 }
 
-fn events_to_node(events: Vec<Event>, start_pos: Pos, source: &str, eat_all: bool) -> (SyntaxTree, Vec<Error>) {
+fn events_to_node(events: Vec<Event>, start_pos: Pos, source: &str, eat_all: bool) -> (SyntaxTree, Vec<RawError>) {
     let mut lexer = lex(source).peekable();
     let mut errors = Vec::new();
     let mut builder = SyntaxBuilder::new(start_pos, source);

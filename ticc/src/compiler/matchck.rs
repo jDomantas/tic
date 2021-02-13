@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::Error;
+use crate::RawError;
 use crate::compiler::{DefSet, ir};
 use crate::compiler::syntax::{AstNode, NodeId, node};
 
@@ -18,7 +18,7 @@ fn check(
     defs: &DefSet,
     refs: &[ir::Ref],
     types: &HashMap<NodeId, ir::Type>,
-    errors: &mut Vec<Error>,
+    errors: &mut Vec<RawError>,
 ) -> Option<()> {
     let discr = expr.discr()?;
     let ty = types.get(&discr.syntax().id())?;
@@ -27,20 +27,24 @@ fn check(
         ir::Type::Folded(t, _) => {
             match &**t {
                 ir::Type::Named(s, _) => *s,
-                _ => {
-                    // FIXME: message
-                    errors.push(Error {
-                        message: "cannot match on ?".to_owned(),
+                ty => {
+                    errors.push(RawError {
+                        message: err_fmt!(
+                            "cannot match on ",
+                            ty.clone(),
+                        ),
                         span: discr.syntax().span(),
                     });
                     return None;
                 }
             }
         }
-        _ => {
-            // FIXME: message
-            errors.push(Error {
-                message: "cannot match on ?".to_owned(),
+        ty => {
+            errors.push(RawError {
+                message: err_fmt!(
+                    "cannot match on ",
+                    ty.clone(),
+                ),
                 span: discr.syntax().span(),
             });
             return None;
@@ -50,9 +54,11 @@ fn check(
     let all_ctors = match &def.kind {
         ir::DefKind::Type { ctors: ir::Ctors::List(ctors), .. } => ctors.clone(),
         ir::DefKind::Type { ctors: ir::Ctors::Opaque, .. } => {
-            // FIXME: message
-            errors.push(Error {
-                message: "cannot match on ?".to_owned(),
+            errors.push(RawError {
+                message: err_fmt!(
+                    "cannot match on ",
+                    ty.clone(),
+                ),
                 span: discr.syntax().span(),
             });
             return None;
@@ -67,8 +73,8 @@ fn check(
             continue;
         }
         if !missing_ctors.contains(&r.symbol) {
-            errors.push(Error {
-                message: "unreachable pattern".to_owned(),
+            errors.push(RawError {
+                message: err_fmt!("unreachable pattern"),
                 span: case.syntax().span(),
             });
         }
@@ -76,10 +82,37 @@ fn check(
     }
     match missing_ctors.as_slice() {
         &[] => {}
-        &[..] => {
-            // FIXME: proper message
-            errors.push(Error {
-                message: "missing patterns".to_owned(),
+        &[ctor] => {
+            errors.push(RawError {
+                message: err_fmt!(
+                    "pattern ",
+                    ctor,
+                    " not covered",
+                ),
+                span: expr.syntax().span(),
+            });
+        }
+        &[ctor1, ctor2] => {
+            errors.push(RawError {
+                message: err_fmt!(
+                    "patterns ",
+                    ctor1,
+                    " and ",
+                    ctor2,
+                    " not covered",
+                ),
+                span: expr.syntax().span(),
+            });
+        }
+        &[ctor, ref rest @ ..] => {
+            errors.push(RawError {
+                message: err_fmt!(
+                    "patterns ",
+                    ctor,
+                    " and ",
+                    rest.len(),
+                    " more not covered",
+                ),
                 span: expr.syntax().span(),
             });
         }

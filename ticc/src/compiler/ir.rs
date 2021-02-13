@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::{Error, Span};
+use crate::{RawError, Span};
 use crate::compiler::syntax::{ItemSyntax, NodeId, node};
 
 use super::syntax::AstNode;
@@ -7,7 +7,7 @@ use super::syntax::AstNode;
 pub(crate) struct Item {
     pub(crate) syntax: ItemSyntax,
     pub(crate) span: Span,
-    pub(crate) errors: Vec<Error>,
+    pub(crate) errors: Vec<RawError>,
     pub(crate) defs: Vec<Def>,
     pub(crate) refs: Vec<Ref>,
     pub(crate) types: HashMap<NodeId, Type>,

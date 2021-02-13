@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::RawError;
 use crate::compiler::{DefSet, ir, syntax::node};
 use crate::compiler::syntax::AstNode;
 
@@ -66,7 +66,7 @@ fn report_errors(defs: &DefSet, item: &mut ir::Item) {
         });
 }
 
-fn report_type(defs: &DefSet, refs: &[ir::Ref], errors: &mut Vec<Error>, ty: node::NamedType) -> Option<()> {
+fn report_type(defs: &DefSet, refs: &[ir::Ref], errors: &mut Vec<RawError>, ty: node::NamedType) -> Option<()> {
     let name_token = ty.name()?.token();
     let span = name_token.span();
     let r = refs.iter().find(|r| r.span == span)?;
@@ -77,9 +77,15 @@ fn report_type(defs: &DefSet, refs: &[ir::Ref], errors: &mut Vec<Error>, ty: nod
     };
     let actual_count = ty.type_args().count();
     if param_count != actual_count {
-        errors.push(Error {
+        errors.push(RawError {
             span,
-            message: format!("expected {} type arguments, got {}", param_count, actual_count),
+            message: err_fmt!(
+                ir::Type::Named(r.symbol, Vec::new()),
+                " expects ",
+                param_count,
+                " type arguments, got ",
+                actual_count,
+            ),
         });
     }
     Some(())

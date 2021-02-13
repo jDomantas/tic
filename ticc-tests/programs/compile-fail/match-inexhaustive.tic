@@ -1,0 +1,8 @@
+type T =
+    | A
+    | B
+    | C;
+
+let x : T -> int =
+    \t -> match t with | A -> 0 end;
+--        ^^^^^^^^^^^^^^^^^^^^^^^^^ ERROR: patterns B and C not covered

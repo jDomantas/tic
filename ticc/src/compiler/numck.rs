@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::RawError;
 use crate::compiler::ir;
 use crate::compiler::syntax::{node, AstNode};
 
@@ -14,8 +14,8 @@ pub(crate) fn check_numbers(item: &mut ir::Item) {
                 Err(ParseError::Overflow) => Some("number is too large"),
             };
             if let Some(err) = err {
-                errors.push(Error {
-                    message: err.to_owned(),
+                errors.push(RawError {
+                    message: err_fmt!(err),
                     span: token.span(),
                 });
             }

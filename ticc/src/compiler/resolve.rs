@@ -1,4 +1,4 @@
-use crate::{Error, Span};
+use crate::{RawError, Span};
 use crate::compiler::{ir, syntax::node, Scope, SymbolGen};
 
 pub(crate) fn resolve(item: &mut ir::Item, scope: &Scope<'_>, symbols: &mut SymbolGen) {
@@ -16,15 +16,15 @@ pub(crate) fn resolve(item: &mut ir::Item, scope: &Scope<'_>, symbols: &mut Symb
 struct Resolver<'a> {
     defs: &'a mut Vec<ir::Def>,
     refs: &'a mut Vec<ir::Ref>,
-    errors: &'a mut Vec<Error>,
+    errors: &'a mut Vec<RawError>,
     symbols: &'a mut SymbolGen,
 }
 
 impl<'a> Resolver<'a> {
-    fn emit_error(&mut self, span: Span, message: impl Into<String>) {
-        self.errors.push(Error {
+    fn emit_error(&mut self, span: Span, message: &'static str) {
+        self.errors.push(RawError {
+            message: err_fmt!(message),
             span,
-            message: message.into(),
         });
     }
 
