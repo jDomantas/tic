@@ -1,21 +1,21 @@
 use std::collections::HashMap;
-use crate::{Compilation, Error};
-use crate::compiler::{Scope, ir};
+use crate::Error;
+use crate::compiler::{DefSet, ir};
 use crate::compiler::syntax::{AstNode, NodeId, node};
 
-pub(crate) fn check_matches(_compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
+pub(crate) fn check_matches(item: &mut ir::Item, defs: &DefSet) {
     let errors = &mut item.errors;
     let types = &item.types;
     let refs = &item.refs;
     item.syntax.tree.root()
         .for_each_descendant(|&node| if let Some(expr) = node::MatchExpr::cast(node) {
-            check(expr, scope, refs, types, errors);
+            check(expr, defs, refs, types, errors);
         });
 }
 
 fn check(
     expr: node::MatchExpr<'_>,
-    scope: &Scope<'_>,
+    defs: &DefSet,
     refs: &[ir::Ref],
     types: &HashMap<NodeId, ir::Type>,
     errors: &mut Vec<Error>,
@@ -46,7 +46,7 @@ fn check(
             return None;
         }
     };
-    let def = scope.lookup_def(ty_symbol);
+    let def = defs.lookup(ty_symbol);
     let all_ctors = match &def.kind {
         ir::DefKind::Type { ctors: ir::Ctors::List(ctors), .. } => ctors.clone(),
         ir::DefKind::Type { ctors: ir::Ctors::Opaque, .. } => {

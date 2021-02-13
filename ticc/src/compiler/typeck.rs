@@ -1,15 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use crate::{Compilation, Error, Span};
-use crate::compiler::{Scope, ir, syntax::node};
+use crate::compiler::{DefSet, ir, syntax::node};
 use crate::compiler::syntax::{AstNode, NodeId, TokenKind};
 
-pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
-    let mut scope = Scope::with_parent(scope);
-    scope.add_item(&compilation.src, item, true);
+pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, defs: &DefSet) {
     let syntax = &item.syntax;
     let mut checker = TypeChecker {
         compilation,
-        scope: &scope,
+        defs,
         unifier: Unifier::default(),
         expr_types: HashMap::new(),
         symbols: HashMap::new(),
@@ -19,7 +17,7 @@ pub(crate) fn type_check(compilation: &Compilation, item: &mut ir::Item, scope: 
     };
     let mut symbol_vars = HashMap::new();
     for r in item.refs.iter().copied().chain(item.defs.iter().map(|d| d.to_ref())) {
-        let def = scope.lookup_def(r.symbol);
+        let def = defs.lookup(r.symbol);
         checker.symbols.insert(r.node, r.symbol);
         match &def.kind {
             ir::DefKind::Value { type_vars, ty } => {
@@ -307,7 +305,7 @@ struct Ctor<'a> {
 
 struct TypeChecker<'a> {
     compilation: &'a Compilation,
-    scope: &'a Scope<'a>,
+    defs: &'a DefSet,
     unifier: Unifier,
     expr_types: HashMap<NodeId, TyIdx>,
     symbols: HashMap<NodeId, ir::Symbol>,
@@ -328,7 +326,7 @@ impl<'a> TypeChecker<'a> {
     fn print_type(&mut self, ty: TyIdx) -> String {
         let mut printer = TypePrinter {
             compilation: self.compilation,
-            scope: self.scope,
+            defs: self.defs,
             name_cache: HashMap::new(),
             used_names: HashSet::new(),
         };
@@ -587,7 +585,7 @@ struct Name<'a> {
 
 struct TypePrinter<'a> {
     compilation: &'a Compilation,
-    scope: &'a Scope<'a>,
+    defs: &'a DefSet,
     name_cache: HashMap<ir::Symbol, Name<'a>>,
     used_names: HashSet<Name<'a>>,
 }
@@ -651,7 +649,7 @@ impl<'a> TypePrinter<'a> {
             return name;
         }
 
-        let def = self.scope.lookup_def(symbol);
+        let def = self.defs.lookup(symbol);
         let name = &self.compilation.src[def.span.source_range()];
         let mut name = Name {
             name,

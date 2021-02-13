@@ -10,23 +10,17 @@ pub(crate) mod typeck;
 
 use std::collections::HashMap;
 
+#[derive(Default)]
 pub(crate) struct Scope<'a> {
     values: HashMap<&'a str, ir::Symbol>,
     types: HashMap<&'a str, ir::Symbol>,
     ctors: HashMap<&'a str, ir::Symbol>,
-    defs: HashMap<ir::Symbol, ir::Def>,
     parent: Option<&'a Scope<'a>>,
 }
 
 impl<'a> Scope<'a> {
     pub(crate) fn new() -> Scope<'a> {
-        Scope {
-            values: HashMap::new(),
-            types: HashMap::new(),
-            ctors: HashMap::new(),
-            defs: HashMap::new(),
-            parent: None,
-        }
+        Scope::default()
     }
 
     pub(crate) fn with_parent(parent: &'a Scope<'a>) -> Scope<'a> {
@@ -41,7 +35,6 @@ impl<'a> Scope<'a> {
             if def.vis == ir::Visibility::Local && !include_local {
                 continue;
             }
-            self.defs.insert(def.symbol, def.clone());
             let span = def.span;
             let name = &source[span.start().source_pos()..span.end().source_pos()];
             match def.kind {
@@ -86,17 +79,6 @@ impl<'a> Scope<'a> {
             parent.lookup_ctor(name)
         } else {
             None
-        }
-    }
-
-    pub fn lookup_def(&self, symbol: ir::Symbol) -> &ir::Def {
-        if let Some(def) = self.defs.get(&symbol) {
-            def
-        } else {
-            if self.parent.is_none() {
-                panic!("undefined symbol: {:?}", symbol);
-            }
-            self.parent.unwrap().lookup_def(symbol)
         }
     }
 }

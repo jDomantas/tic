@@ -76,8 +76,8 @@ impl Compilation {
             defs.add_item(&item);
             compiler::numck::check_numbers(&mut item);
             compiler::kindck::kind_check(&mut item, &defs);
-            compiler::typeck::type_check(self, &mut item, &scope);
-            compiler::matchck::check_matches(self, &mut item, &scope);
+            compiler::typeck::type_check(self, &mut item, &defs);
+            compiler::matchck::check_matches(&mut item, &defs);
             self.items.push(item);
             self.next_symbol.push(symbols.next);
             scope.add_item(&self.src, self.items.last().unwrap(), false);
