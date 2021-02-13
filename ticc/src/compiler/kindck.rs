@@ -1,20 +1,17 @@
-use crate::{Compilation, Error};
-use crate::compiler::{ir, Scope, syntax::node};
+use crate::Error;
+use crate::compiler::{DefSet, ir, syntax::node};
 use crate::compiler::syntax::AstNode;
 
-pub(crate) fn kind_check(compilation: &Compilation, item: &mut ir::Item, scope: &Scope<'_>) {
-    let mut scope = Scope::with_parent(scope);
-    scope.add_item(&compilation.src, item, true);
-
+pub(crate) fn kind_check(item: &mut ir::Item, defs: &DefSet) {
     for def in &mut item.defs {
         match &mut def.kind {
             ir::DefKind::Value { ty, .. } => {
-                check_ty(&scope, ty)
+                check_ty(defs, ty)
             }
             ir::DefKind::Ctor { fields, .. } => {
                 for field in fields {
                     if let ir::Field::Type(ty) = field {
-                        check_ty(&scope, ty);
+                        check_ty(defs, ty);
                     }
                 }
             }
@@ -22,12 +19,12 @@ pub(crate) fn kind_check(compilation: &Compilation, item: &mut ir::Item, scope: 
         }
     }
 
-    report_errors(&scope, item);
+    report_errors(defs, item);
 }
 
 /// Cleans ill-kinded types from ir. Error reporting
 /// is done separately on a syntax tree.
-fn check_ty(scope: &Scope<'_>, ty: &mut ir::Type) {
+fn check_ty(defs: &DefSet, ty: &mut ir::Type) {
     match ty {
         ir::Type::Int |
         ir::Type::Bool |
@@ -36,9 +33,9 @@ fn check_ty(scope: &Scope<'_>, ty: &mut ir::Type) {
         ir::Type::Infer => {}
         ir::Type::Named(s, ts) => {
             for t in ts.iter_mut() {
-                check_ty(scope, t);
+                check_ty(defs, t);
             }
-            let def = scope.lookup_def(*s);
+            let def = defs.lookup(*s);
             match def.kind {
                 ir::DefKind::Type { param_count, .. } => {
                     if ts.len() != param_count {
@@ -50,13 +47,13 @@ fn check_ty(scope: &Scope<'_>, ty: &mut ir::Type) {
         }
         ir::Type::Fn(a, b) |
         ir::Type::Folded(a, b) => {
-            check_ty(scope, a);
-            check_ty(scope, b);
+            check_ty(defs, a);
+            check_ty(defs, b);
         }
     }
 }
 
-fn report_errors(scope: &Scope<'_>, item: &mut ir::Item) {
+fn report_errors(defs: &DefSet, item: &mut ir::Item) {
     let refs = &item.refs;
     let errors = &mut item.errors;
     item.syntax
@@ -64,16 +61,16 @@ fn report_errors(scope: &Scope<'_>, item: &mut ir::Item) {
         .root()
         .for_each_descendant(|node| {
             if let Some(ty) = node::NamedType::cast(node.clone()) {
-                report_type(scope, refs, errors, ty);
+                report_type(defs, refs, errors, ty);
             }
         });
 }
 
-fn report_type(scope: &Scope<'_>, refs: &[ir::Ref], errors: &mut Vec<Error>, ty: node::NamedType) -> Option<()> {
+fn report_type(defs: &DefSet, refs: &[ir::Ref], errors: &mut Vec<Error>, ty: node::NamedType) -> Option<()> {
     let name_token = ty.name()?.token();
     let span = name_token.span();
     let r = refs.iter().find(|r| r.span == span)?;
-    let def = scope.lookup_def(r.symbol);
+    let def = defs.lookup(r.symbol);
     let param_count = match def.kind {
         ir::DefKind::Type { param_count, .. } => param_count,
         _ => unreachable!(),

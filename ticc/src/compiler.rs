@@ -112,3 +112,24 @@ impl SymbolGen {
         symbol
     }
 }
+
+#[derive(Default)]
+pub(crate) struct DefSet {
+    pub(crate) defs: HashMap<ir::Symbol, ir::Def>,
+}
+
+impl DefSet {
+    pub(crate) fn new() -> DefSet {
+        DefSet::default()
+    }
+
+    pub(crate) fn add_item(&mut self, item: &ir::Item) {
+        for def in item.defs.iter() {
+            self.defs.insert(def.symbol, def.clone());
+        }
+    }
+
+    pub(crate) fn lookup(&self, symbol: ir::Symbol) -> &ir::Def {
+        &self.defs[&symbol]
+    }
+}

@@ -2,7 +2,7 @@ pub(crate) mod compiler;
 pub(crate) mod api;
 
 use std::sync::Arc;
-use compiler::{Scope, ir, parser};
+use compiler::{DefSet, Scope, ir, parser};
 pub use api::tokens::{Token, TokenKind};
 pub use api::info::Info;
 
@@ -55,8 +55,10 @@ impl Compilation {
         }
 
         let mut scope = Scope::new();
+        let mut defs = DefSet::new();
         for item in &self.items {
             scope.add_item(&self.src, item, false);
+            defs.add_item(item);
         }
 
         loop {
@@ -71,8 +73,9 @@ impl Compilation {
             let next_symbol = self.next_symbol.last().copied().unwrap_or(ir::Symbol(0));
             let mut symbols = compiler::SymbolGen { next: next_symbol };
             compiler::resolve::resolve(&mut item, &scope, &mut symbols);
+            defs.add_item(&item);
             compiler::numck::check_numbers(&mut item);
-            compiler::kindck::kind_check(self, &mut item, &scope);
+            compiler::kindck::kind_check(&mut item, &defs);
             compiler::typeck::type_check(self, &mut item, &scope);
             compiler::matchck::check_matches(self, &mut item, &scope);
             self.items.push(item);
