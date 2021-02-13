@@ -553,6 +553,7 @@ impl<'a> TypeChecker<'a> {
                     self.taint(expected);
                 }
             }
+            node::Expr::Hole(_) => {}
         }
     }
 

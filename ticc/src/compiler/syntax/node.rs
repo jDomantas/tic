@@ -113,6 +113,7 @@ nodes! {
         Number(NumberExpr),
         Lambda(LambdaExpr),
         Paren(ParenExpr),
+        Hole(HoleExpr),
     }
 
     pub(crate) struct NameExpr { SyntaxKind::NameExpr }
@@ -125,6 +126,7 @@ nodes! {
     pub(crate) struct NumberExpr { SyntaxKind::NumberExpr }
     pub(crate) struct LambdaExpr { SyntaxKind::LambdaExpr }
     pub(crate) struct ParenExpr { SyntaxKind::ParenExpr }
+    pub(crate) struct HoleExpr { SyntaxKind::HoleExpr }
 
     pub(crate) struct MatchCase { SyntaxKind::MatchCase }
     pub(crate) struct MatchVars { SyntaxKind::MatchVars }
@@ -267,6 +269,10 @@ impl<'a> ParenExpr<'a> {
     pub(crate) fn left_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::LeftParen) }
     pub(crate) fn inner(&self) -> Option<Expr<'a>> { child(&self.syntax) }
     pub(crate) fn right_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::RightParen) }
+}
+
+impl<'a> HoleExpr<'a> {
+    pub(crate) fn token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Hole) }
 }
 
 impl<'a> MatchCase<'a> {

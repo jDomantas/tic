@@ -127,7 +127,7 @@ fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenK
             Some(ir::DefKind::Type { is_var: false, .. }) => TokenKind::Type,
             None => TokenKind::Value,
         }),
+        Syntax::Hole => Some(TokenKind::Value),
         Syntax::Error => None,
-        // Token::Comment => Some(TokenKind::Comment),
     }
 }

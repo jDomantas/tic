@@ -351,6 +351,7 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
         LexerToken::Comma => TokenOrTrivia::Token(TokenKind::Comma),
         LexerToken::Semicolon => TokenOrTrivia::Token(TokenKind::Semicolon),
         LexerToken::Name => TokenOrTrivia::Token(TokenKind::Ident),
+        LexerToken::Hole => TokenOrTrivia::Token(TokenKind::Hole),
         LexerToken::Number => TokenOrTrivia::Token(TokenKind::Number),
         LexerToken::Space => TokenOrTrivia::Trivia(TriviaKind::Space),
         LexerToken::Newline => TokenOrTrivia::Trivia(TriviaKind::Newline),
@@ -463,6 +464,7 @@ impl ParseHint {
                 TokenKind::LeftBracket |
                 TokenKind::Backslash |
                 TokenKind::Ident |
+                TokenKind::Hole |
                 TokenKind::Number => true,
                 _ => false,
             },

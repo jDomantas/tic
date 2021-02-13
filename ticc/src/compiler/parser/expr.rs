@@ -122,6 +122,10 @@ fn atom_expr(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         let m = p.start();
         p.bump_name();
         Some(m.complete(p, SyntaxKind::NameExpr))
+    } else if p.at(TokenKind::Hole) {
+        let m = p.start();
+        p.bump(TokenKind::Hole);
+        Some(m.complete(p, SyntaxKind::HoleExpr))
     } else {
         None
     }

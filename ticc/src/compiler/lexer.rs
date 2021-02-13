@@ -79,6 +79,8 @@ pub(crate) enum TokenKind {
     Semicolon,
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*")]
     Name,
+    #[regex("\\?[a-zA-Z0-9_]+")]
+    Hole,
     #[regex("[0-9][a-zA-Z0-9_]*")]
     Number,
     #[regex(" +")]

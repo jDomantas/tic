@@ -27,6 +27,7 @@ pub enum SyntaxKind {
     NumberExpr,
     LambdaExpr,
     ParenExpr,
+    HoleExpr,
     MatchCase,
     MatchVars,
     BinaryOp,
@@ -64,6 +65,7 @@ pub enum TokenKind {
     False,
     Number,
     Ident,
+    Hole,
     Backslash,
     Fold,
     Plus,
@@ -127,6 +129,7 @@ impl TokenKind {
             TokenKind::Comma => "`,`",
             TokenKind::Semicolon => "`;`",
             TokenKind::Ident => "name",
+            TokenKind::Hole => "hole",
             TokenKind::Number => "number",
             TokenKind::Error => "bad token",
         }

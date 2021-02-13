@@ -352,6 +352,7 @@ impl<'a> Resolver<'a> {
                     self.resolve_expr(inner, scope);
                 }
             }
+            node::Expr::Hole(_) => {}
         }
     }
 
