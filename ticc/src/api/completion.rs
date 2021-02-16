@@ -7,11 +7,6 @@ pub struct Completion {
 }
 
 pub fn completions_at(compilation: &mut Compilation, pos: Pos) -> Option<Vec<Completion>> {
-    let temporary_identifier = "ticc_autocomplete_hack";
-    let source_prefix = &compilation.src.get(..pos.source_pos())?;
-    let source_suffix = &compilation.src.get(pos.source_pos()..)?;
-    let source = format!("{}{}{}", source_prefix, temporary_identifier, source_suffix);
-    let mut compilation = Compilation::from_source(&source);
     compilation.compile_up_to(pos.source_pos());
     let (index, item) = compilation.items
         .iter()
@@ -21,11 +16,16 @@ pub fn completions_at(compilation: &mut Compilation, pos: Pos) -> Option<Vec<Com
     for item in &compilation.items[..index] {
         scope.add_item(&compilation.src, item, false);
     }
+    let temporary_identifier = "ticc_autocomplete_hack";
+    let source_prefix = &compilation.src.get(item.span.start().source_pos()..pos.source_pos())?;
+    let source_suffix = &compilation.src.get(pos.source_pos()..item.span.end().source_pos())?;
+    let source = format!("{}{}{}", source_prefix, temporary_identifier, source_suffix);
+    let parsed = crate::compiler::parser::parse_one_item(&source, item.span.start());
     let mut resolver = Resolver {
         pos,
         results: None,
     };
-    resolve::resolve_raw(&item.syntax, &scope, &mut resolver);
+    resolve::resolve_raw(&parsed.syntax, &scope, &mut resolver);
     resolver.results
 }
 
