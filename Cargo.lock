@@ -96,9 +96,9 @@ dependencies = [
 
 [[package]]
 name = "internal-iterator"
-version = "0.0.1"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e287e8b4f8a021cbfae88dd118cd9e1536fbcf4f40a9eb51774724eabe789d92"
+checksum = "7b6426ccbbd070e6323ef45c2d11c4ef8f84f5fb7ec4bceeec633555ea9bd80c"
 
 [[package]]
 name = "itoa"

@@ -109,7 +109,7 @@ struct Descendants<'a> {
 impl<'a> InternalIterator for Descendants<'a> {
     type Item = SyntaxNode<'a>;
 
-    fn find_map<F, R>(self, mut f: F) -> Option<R>
+    fn find_map<R, F>(self, mut f: F) -> Option<R>
     where
         F: FnMut(Self::Item) -> Option<R>
     {
@@ -132,7 +132,7 @@ struct DescendantElements<'a> {
 impl<'a> InternalIterator for DescendantElements<'a> {
     type Item = SyntaxElement<'a>;
 
-    fn find_map<F, R>(self, mut f: F) -> Option<R>
+    fn find_map<R, F>(self, mut f: F) -> Option<R>
     where
         F: FnMut(Self::Item) -> Option<R>
     {
