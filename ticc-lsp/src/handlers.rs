@@ -71,6 +71,16 @@ fn hover(
     crate::hover::hover(compilation, pos)
 }
 
+fn completions(
+    server: &mut TicServer,
+    params: lsp_types::CompletionParams,
+) -> Option<lsp_types::CompletionResponse> {
+    let key = FileKey::from(params.text_document_position.text_document.uri);
+    let compilation = server.compilations.get_mut(&key).unwrap();
+    let pos = params.text_document_position.position;
+    crate::completions::completions(compilation, pos)
+}
+
 fn on_open(
     server: &mut TicServer,
     params: lsp_types::DidOpenTextDocumentParams,
@@ -128,6 +138,7 @@ pub(crate) fn handlers() -> Handlers {
     handlers.add_for_request::<request::GotoDeclaration>(go_to_definition);
     handlers.add_for_request::<request::References>(find_references);
     handlers.add_for_request::<request::HoverRequest>(hover);
+    handlers.add_for_request::<request::Completion>(completions);
 
     handlers.add_for_notification::<notification::DidOpenTextDocument>(on_open);
     handlers.add_for_notification::<notification::DidChangeTextDocument>(on_change);

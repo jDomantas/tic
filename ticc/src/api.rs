@@ -1,3 +1,4 @@
+pub(crate) mod completion;
 pub(crate) mod errors;
 pub(crate) mod info;
 pub(crate) mod navigation;

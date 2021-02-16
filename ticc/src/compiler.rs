@@ -12,10 +12,10 @@ use std::collections::HashMap;
 
 #[derive(Default)]
 pub(crate) struct Scope<'a> {
-    values: HashMap<&'a str, ir::Symbol>,
-    types: HashMap<&'a str, ir::Symbol>,
-    ctors: HashMap<&'a str, ir::Symbol>,
-    parent: Option<&'a Scope<'a>>,
+    pub(crate) values: HashMap<&'a str, ir::Symbol>,
+    pub(crate) types: HashMap<&'a str, ir::Symbol>,
+    pub(crate) ctors: HashMap<&'a str, ir::Symbol>,
+    pub(crate) parent: Option<&'a Scope<'a>>,
 }
 
 impl<'a> Scope<'a> {

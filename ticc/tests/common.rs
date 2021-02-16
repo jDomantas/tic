@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use ticc::{Pos, Span};
 
 pub fn extract_spans(source: &str) -> (String, Vec<Span>) {

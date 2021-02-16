@@ -1,3 +1,4 @@
+mod completions;
 mod diagnostics;
 mod find_references;
 mod go_to_definition;
@@ -9,6 +10,7 @@ mod utils;
 use std::collections::HashMap;
 use crossbeam_channel::Sender;
 use lsp_types::{
+    CompletionOptions,
     DeclarationCapability,
     InitializeParams,
     HoverProviderCapability,
@@ -212,6 +214,13 @@ fn server_capabilities() -> ServerCapabilities {
     capabilities.definition_provider = Some(OneOf::Left(true));
     capabilities.references_provider = Some(OneOf::Left(true));
     capabilities.hover_provider = Some(HoverProviderCapability::Simple(true));
+    capabilities.completion_provider = Some(CompletionOptions {
+        resolve_provider: Some(false),
+        trigger_characters: Some(vec![" ".to_owned()]),
+        work_done_progress_options: WorkDoneProgressOptions {
+            work_done_progress: Some(false),
+        },
+    });
     capabilities
 }
 

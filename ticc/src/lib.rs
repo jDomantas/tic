@@ -9,6 +9,7 @@ pub use ticc_syntax::{Pos, Span};
 pub(crate) use crate::error::RawError;
 pub use crate::api::tokens::{Token, TokenKind};
 pub use crate::api::info::Info;
+pub use crate::api::completion::Completion;
 
 pub struct Compilation {
     src: Arc<str>,
@@ -47,6 +48,10 @@ impl Compilation {
 
     pub fn info(&mut self, pos: Pos) -> Option<Info> {
         api::info::info_at(self, pos)
+    }
+
+    pub fn completions(&mut self, pos: Pos) -> Option<Vec<Completion>> {
+        api::completion::completions_at(self, pos)
     }
 
     fn compile_to_end(&mut self) {

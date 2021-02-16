@@ -1,5 +1,5 @@
 use crate::RawError;
-use crate::compiler::{ir, syntax::node, Scope, SymbolGen};
+use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope, SymbolGen};
 
 pub(crate) fn resolve(item: &mut ir::Item, scope: &Scope<'_>, symbols: &mut SymbolGen) {
     let mut resolver = Resolver {
@@ -8,9 +8,21 @@ pub(crate) fn resolve(item: &mut ir::Item, scope: &Scope<'_>, symbols: &mut Symb
         errors: &mut item.errors,
         symbols,
     };
-    if let Some(item) = item.syntax.item() {
-        resolve_item(&mut resolver, item, scope);
+    resolve_raw(&item.syntax, scope, &mut resolver);
+}
+
+pub(crate) fn resolve_raw(syntax: &ItemSyntax, scope: &Scope<'_>, sink: &mut impl ResolveSink) {
+    if let Some(item) = syntax.item() {
+        resolve_item(sink, item, scope);
     }
+}
+
+pub(crate) trait ResolveSink {
+    fn record_def(&mut self, def: ir::Def);
+    fn record_ref(&mut self, r: ir::Ref);
+    fn record_error(&mut self, err: RawError);
+    fn generate_symbol(&mut self) -> ir::Symbol;
+    fn on_name(&mut self, name: node::Name<'_>, usage: NameUsage, scope: &Scope<'_>);
 }
 
 #[derive(Clone, Copy)]
@@ -415,12 +427,4 @@ fn resolve_match_case(sink: &mut impl ResolveSink, case: node::MatchCase, scope:
     if let Some(expr) = case.body() {
         resolve_expr(sink, expr, &scope);
     }
-}
-
-pub(crate) trait ResolveSink {
-    fn record_def(&mut self, def: ir::Def);
-    fn record_ref(&mut self, r: ir::Ref);
-    fn record_error(&mut self, err: RawError);
-    fn generate_symbol(&mut self) -> ir::Symbol;
-    fn on_name(&mut self, name: node::Name<'_>, usage: NameUsage, scope: &Scope<'_>);
 }
