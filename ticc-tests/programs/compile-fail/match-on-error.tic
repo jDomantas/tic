@@ -1,0 +1,5 @@
+let a : What = 0;
+--      ^^^^ ERROR: undefined type
+
+let b = match a with end;
+-- no error, a has error type

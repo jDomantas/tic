@@ -29,6 +29,7 @@ fn check(
         ir::Type::Folded(t, _) => {
             match &**t {
                 ir::Type::Named(s, _) => *s,
+                ir::Type::Error => return None,
                 ty => {
                     errors.push(RawError {
                         message: err_fmt!(
@@ -41,6 +42,7 @@ fn check(
                 }
             }
         }
+        ir::Type::Error => return None,
         ty => {
             errors.push(RawError {
                 message: err_fmt!(
