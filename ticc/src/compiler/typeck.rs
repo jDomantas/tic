@@ -247,7 +247,6 @@ impl Unifier {
                 let b = self.instantiate(b, vars);
                 self.allocate(Ty::Fn(a, b))
             }
-            ir::Type::Rec |
             ir::Type::Error => self.allocate(Ty::Error),
             ir::Type::Infer => self.fresh_var(),
             ir::Type::Folded(a, b) => {

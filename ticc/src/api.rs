@@ -101,7 +101,6 @@ impl<'a> TypePrinter<'a> {
                     to.push(')');
                 }
             }
-            ir::Type::Rec => to.push_str("rec"),
             ir::Type::Error => to.push_str("?"),
             ir::Type::Infer => to.push_str("_"),
             ir::Type::Folded(a, b) => {

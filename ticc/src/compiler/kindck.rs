@@ -29,7 +29,6 @@ fn check_ty(defs: &DefSet, ty: &mut ir::Type) {
     match ty {
         ir::Type::Int |
         ir::Type::Bool |
-        ir::Type::Rec |
         ir::Type::Error |
         ir::Type::Infer => {}
         ir::Type::Named(s, ts) => {

@@ -113,7 +113,6 @@ pub(crate) enum Type {
     Bool,
     Named(Symbol, Vec<Type>),
     Fn(Box<Type>, Box<Type>),
-    Rec,
     Error,
     Infer,
     Folded(Box<Type>, Box<Type>),
