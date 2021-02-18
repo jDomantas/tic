@@ -1,27 +1,33 @@
+use codespan_reporting as cr;
+
 type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-use codespan_reporting as cr;
-
 fn main() -> Result<()> {
-    let args = std::env::args().collect::<Vec<_>>();
+    let args = std::env::args_os().collect::<Vec<_>>();
     let file = match args.as_slice() {
         [] => {
             eprintln!("usage: ticc <file>");
             std::process::exit(1);
         }
         [e] | [e, _, _, ..] => {
-            eprintln!("usage: {} <file>", e);
+            eprintln!("usage: {} <file>", e.to_string_lossy());
             std::process::exit(1);
         }
-        [_, f] => f,
+        [_, f] => f.as_os_str(),
     };
-    let source = std::fs::read_to_string(file)?;
+    let path = std::path::PathBuf::from(file);
+    let source = std::fs::read_to_string(&path)?;
+    let output = path.with_extension("js");
 
     let mut compilation = ticc::Compilation::from_source(&source);
 
     if compilation.errors().next().is_some() {
-        print_errors(file, &source, compilation.errors())?;
+        print_errors(&file.to_string_lossy(), &source, compilation.errors())?;
+        std::process::exit(1);
+    } else {
+        let js = compilation.emit_js();
+        std::fs::write(&output, js.as_bytes())?;
     }
 
     Ok(())

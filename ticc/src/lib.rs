@@ -1,5 +1,6 @@
 #[macro_use]
 pub(crate) mod error;
+pub(crate) mod codegen;
 pub(crate) mod compiler;
 pub(crate) mod api;
 
@@ -52,6 +53,10 @@ impl Compilation {
 
     pub fn completions(&mut self, pos: Pos) -> Option<Vec<Completion>> {
         api::completion::completions_at(self, pos)
+    }
+
+    pub fn emit_js(&mut self) -> String {
+        codegen::emit_js(self)
     }
 
     fn compile_to_end(&mut self) {
