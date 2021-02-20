@@ -93,8 +93,9 @@ fn resolve_type_item(sink: &mut impl ResolveSink, item: node::TypeItem<'_>, scop
         }
     }
     let mut ctors = Vec::new();
+    let mut ctor_names = Vec::new();
     for case in item.cases() {
-        let sym = resolve_type_case(sink, case, &scope, symbol, &param_symbols);
+        let sym = resolve_type_case(sink, case, &scope, symbol, &param_symbols, &mut ctor_names);
         ctors.extend(sym);
     }
     if let Some(name) = item.name() {
@@ -111,7 +112,14 @@ fn resolve_type_item(sink: &mut impl ResolveSink, item: node::TypeItem<'_>, scop
     }
 }
 
-fn resolve_type_case(sink: &mut impl ResolveSink, case: node::TypeCase<'_>, scope: &Scope<'_>, type_symbol: ir::Symbol, param_symbols: &[ir::Symbol]) -> Option<ir::Symbol> {
+fn resolve_type_case<'a>(
+    sink: &mut impl ResolveSink,
+    case: node::TypeCase<'a>,
+    scope: &Scope<'_>,
+    type_symbol: ir::Symbol,
+    param_symbols: &[ir::Symbol],
+    ctor_names: &mut Vec<&'a str>,
+) -> Option<ir::Symbol> {
     let mut fields = Vec::new();
     for field in case.fields() {
         match field {
@@ -126,18 +134,28 @@ fn resolve_type_case(sink: &mut impl ResolveSink, case: node::TypeCase<'_>, scop
         }
     }
     if let Some(name) = case.name() {
-        let symbol = sink.generate_symbol();
-        sink.record_def(ir::Def::new(
-            symbol,
-            ir::DefKind::Ctor {
-                type_symbol,
-                type_params: param_symbols.to_vec(),
-                fields,
-            },
-            ir::Visibility::Module,
-            name,
-        ));
-        Some(symbol)
+        let name_text = name.token().text();
+        if ctor_names.contains(&name_text) {
+            sink.record_error(RawError {
+                span: name.token().span(),
+                message: err_fmt!("duplicate constructor ", name_text.to_owned()),
+            });
+            None
+        } else {
+            ctor_names.push(name_text);
+            let symbol = sink.generate_symbol();
+            sink.record_def(ir::Def::new(
+                symbol,
+                ir::DefKind::Ctor {
+                    type_symbol,
+                    type_params: param_symbols.to_vec(),
+                    fields,
+                },
+                ir::Visibility::Module,
+                name,
+            ));
+            Some(symbol)
+        }
     } else {
         None
     }

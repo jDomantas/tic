@@ -1,0 +1,2 @@
+type Foo = A | A;
+--             ^ ERROR: duplicate constructor A
