@@ -34,7 +34,7 @@ fn main() -> Result<()> {
 }
 
 fn print_errors(file: &str, source: &str, errors: impl Iterator<Item = ticc::Error>) -> Result<()> {
-    let stream = cr::term::termcolor::StandardStream::stdout(cr::term::termcolor::ColorChoice::Auto);
+    let stream = cr::term::termcolor::StandardStream::stderr(cr::term::termcolor::ColorChoice::Auto);
     let mut stream = stream.lock();
     
     let chars = codespan_reporting::term::Chars {
