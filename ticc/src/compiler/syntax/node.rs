@@ -272,7 +272,7 @@ impl<'a> ParenExpr<'a> {
 }
 
 impl<'a> HoleExpr<'a> {
-    pub(crate) fn token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Hole) }
+    pub(crate) fn token(&self) -> SyntaxToken<'a> { child_token(&self.syntax, TokenKind::Hole).unwrap() }
 }
 
 impl<'a> MatchCase<'a> {

@@ -198,6 +198,11 @@ impl<'a> Codegen<'a> {
                 self.code.push(')');
                 self.indent -= 1;
             },
+            cir::Expr::Trap(msg) => {
+                self.code.push_str("fail(\"");
+                self.code.push_str(msg);
+                self.code.push_str("\")");
+            }
         }
     }
 
@@ -220,4 +225,5 @@ impl<'a> Codegen<'a> {
 const INTERNALS: &str = "\
 \"use strict\";
 const bind = (x, f) => f(x);
+const fail(msg) => { throw new Error(msg); };
 ";

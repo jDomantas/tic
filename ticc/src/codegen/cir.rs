@@ -31,6 +31,7 @@ pub(crate) enum Expr {
     Match(Box<Expr>, Vec<Branch>),
     Construct(Ctor, Vec<Expr>),
     Let(Name, Box<Expr>, Box<Expr>),
+    Trap(String),
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -274,7 +274,7 @@ impl<'a> Generator<'a> {
                 cir::Expr::Lambda(param, Box::new(body))
             }
             node::Expr::Paren(e) => self.gen_expr(e.inner().unwrap()),
-            node::Expr::Hole(_) => panic!("found hole during codegen"),
+            node::Expr::Hole(e) => cir::Expr::Trap(format!("encountered hole {}", e.token().text())),
         }
     }
 
