@@ -1,4 +1,4 @@
-mod common;
+use crate::common;
 
 fn check_def_span(source: &str, expected: &str) {
     let (source, pos) = common::extract_single_pos(source);
