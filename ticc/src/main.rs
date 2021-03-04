@@ -20,9 +20,11 @@ struct Opt {
     #[structopt(long)]
     emit_ir: bool,
     #[structopt(long)]
+    optimize: bool,
+    #[structopt(long)]
     optimize_lambda: bool,
     #[structopt(long)]
-    optimize: bool,
+    optimize_apply: bool,
 }
 
 fn main() -> Result<()> {
@@ -33,6 +35,7 @@ fn main() -> Result<()> {
 
     let options = ticc::Options {
         optimize_lambda: opt.optimize_lambda || opt.optimize,
+        reduce_apply: opt.optimize_apply || opt.optimize,
     };
 
     let mut compilation = ticc::Compilation::from_source_and_options(&source, options);

@@ -8,12 +8,14 @@ use crate::Compilation;
 #[derive(Debug, Clone, Copy)]
 pub struct Options {
     pub optimize_lambda: bool,
+    pub reduce_apply: bool,
 }
 
 impl Default for Options {
     fn default() -> Options {
         Options {
             optimize_lambda: true,
+            reduce_apply: true,
         }
     }
 }

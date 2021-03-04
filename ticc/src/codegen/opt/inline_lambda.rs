@@ -3,10 +3,11 @@
 //!     ... (\b -> e) ...
 
 use crate::codegen::cir;
+use crate::codegen::opt;
 
 pub(crate) fn optimize(program: &mut cir::Program) {
     for (_, e) in &mut program.values {
-        optimize_expr(e);
+        opt::walk_expressions(e, optimize_expr);
     }
 }
 
