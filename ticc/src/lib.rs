@@ -55,6 +55,10 @@ impl Compilation {
         api::completion::completions_at(self, pos)
     }
 
+    pub fn emit_ir(&mut self) -> String {
+        codegen::emit_ir(self)
+    }
+
     fn compile_to_end(&mut self) {
         self.compile_up_to(self.src.len());
     }

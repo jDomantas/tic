@@ -9,3 +9,5 @@ ticc-syntax = { path = "../ticc-syntax" }
 logos = "0.11.4"
 codespan-reporting = "0.11.0"
 internal-iterator = "0.1.1"
+formatter = { path = "../formatter" }
+structopt = "0.3.21"

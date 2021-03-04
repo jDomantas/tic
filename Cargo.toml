@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "formatter",
     "ticc",
     "ticc-lsp",
     "ticc-syntax",

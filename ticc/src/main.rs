@@ -1,30 +1,47 @@
+use std::path::PathBuf;
 use codespan_reporting as cr;
+use structopt::StructOpt;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
+#[derive(StructOpt)]
+struct Opt {
+    /// Input file
+    #[structopt(parse(from_os_str))]
+    input: PathBuf,
+    /// Output file, will use the same filename as input if not specified
+    #[structopt(short, long, parse(from_os_str))]
+    output: Option<PathBuf>,
+    /// Only check for compile errors
+    #[structopt(short, long)]
+    check: bool,
+    /// Emit intermediate representation
+    #[structopt(long)]
+    emit_ir: bool,
+}
+
 fn main() -> Result<()> {
-    let args = std::env::args_os().collect::<Vec<_>>();
-    let file = match args.as_slice() {
-        [] => {
-            eprintln!("usage: ticc <file>");
-            std::process::exit(1);
-        }
-        [e] | [e, _, _, ..] => {
-            eprintln!("usage: {} <file>", e.to_string_lossy());
-            std::process::exit(1);
-        }
-        [_, f] => f.as_os_str(),
-    };
-    let path = std::path::PathBuf::from(file);
+    let opt = Opt::from_args();
+
+    let path = std::path::PathBuf::from(opt.input);
     let source = std::fs::read_to_string(&path)?;
-    let output = path.with_extension("js");
 
     let mut compilation = ticc::Compilation::from_source(&source);
 
     if compilation.errors().next().is_some() {
-        print_errors(&file.to_string_lossy(), &source, compilation.errors())?;
+        print_errors(&path.to_string_lossy(), &source, compilation.errors())?;
         std::process::exit(1);
+    }
+
+    if opt.check {
+        return Ok(());
+    }
+
+    if opt.emit_ir {
+        let ir = compilation.emit_ir();
+        let output_file = opt.output.unwrap_or_else(|| path.with_extension("cir"));
+        std::fs::write(&output_file, ir.as_bytes())?;
     }
 
     Ok(())
