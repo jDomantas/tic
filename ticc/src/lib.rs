@@ -11,19 +11,26 @@ pub(crate) use crate::error::RawError;
 pub use crate::api::tokens::{Token, TokenKind};
 pub use crate::api::info::Info;
 pub use crate::api::completion::Completion;
+pub use crate::codegen::Options;
 
 pub struct Compilation {
     src: Arc<str>,
     items: Vec<ir::Item>,
     next_symbol: Vec<ir::Symbol>,
+    options: Options,
 }
 
 impl Compilation {
     pub fn from_source(src: &str) -> Compilation {
+        Compilation::from_source_and_options(src, Options::default())
+    }
+
+    pub fn from_source_and_options(src: &str, options: Options) -> Compilation {
         Compilation {
             src: src.into(),
             items: Vec::new(),
             next_symbol: Vec::new(),
+            options,
         }
     }
 

@@ -19,6 +19,10 @@ struct Opt {
     /// Emit intermediate representation
     #[structopt(long)]
     emit_ir: bool,
+    #[structopt(long)]
+    optimize_lambda: bool,
+    #[structopt(long)]
+    optimize: bool,
 }
 
 fn main() -> Result<()> {
@@ -27,7 +31,11 @@ fn main() -> Result<()> {
     let path = opt.input;
     let source = std::fs::read_to_string(&path)?;
 
-    let mut compilation = ticc::Compilation::from_source(&source);
+    let options = ticc::Options {
+        optimize_lambda: opt.optimize_lambda || opt.optimize,
+    };
+
+    let mut compilation = ticc::Compilation::from_source_and_options(&source, options);
 
     if compilation.errors().next().is_some() {
         print_errors(&path.to_string_lossy(), &source, compilation.errors())?;
