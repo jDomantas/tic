@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use codespan_reporting as cr;
 use structopt::StructOpt;
 
@@ -24,7 +24,7 @@ struct Opt {
 fn main() -> Result<()> {
     let opt = Opt::from_args();
 
-    let path = std::path::PathBuf::from(opt.input);
+    let path = opt.input;
     let source = std::fs::read_to_string(&path)?;
 
     let mut compilation = ticc::Compilation::from_source(&source);
@@ -41,7 +41,11 @@ fn main() -> Result<()> {
     if opt.emit_ir {
         let ir = compilation.emit_ir();
         let output_file = opt.output.unwrap_or_else(|| path.with_extension("cir"));
-        std::fs::write(&output_file, ir.as_bytes())?;
+        if output_file == Path::new("-") {
+            println!("{}", ir);
+        } else {
+            std::fs::write(&output_file, ir.as_bytes())?;
+        }
     }
 
     Ok(())
