@@ -11,7 +11,7 @@ pub(crate) fn generate_cir(compilation: &Compilation) -> cir::Program<'_> {
         next_name: 0,
         symbols: HashMap::new(),
         name_symbols: HashMap::new(),
-        folds: HashMap::new(),
+        fmaps: HashMap::new(),
         types: HashMap::new(),
     };
     for item in &compilation.items {
@@ -39,7 +39,7 @@ struct Generator<'a> {
     next_name: u32,
     symbols: HashMap<ir::Symbol, cir::Name>,
     name_symbols: HashMap<NodeId, ir::Symbol>,
-    folds: HashMap<ir::Symbol, cir::Name>,
+    fmaps: HashMap<ir::Symbol, cir::Name>,
     types: HashMap<NodeId, &'a ir::Type>,
 }
 
@@ -67,10 +67,10 @@ impl<'a> Generator<'a> {
             let ctor = self.make_ctor(name, case.fields().count());
             self.define(name, ctor);
         }
-        self.make_fold(item);
+        self.make_fmap(item);
     }
 
-    fn make_fmap(&mut self, ty: node::TypeItem<'a>) -> cir::Expr {
+    fn make_fmap(&mut self, ty: node::TypeItem<'a>) {
         let f = self.make_name("f");
         let value = self.make_name("val");
         let mut branches = Vec::new();
@@ -102,7 +102,7 @@ impl<'a> Generator<'a> {
                 value: cir::Expr::Construct(ctor, fields),
             });
         }
-        cir::Expr::Lambda(
+        let body = cir::Expr::Lambda(
             f,
             Box::new(cir::Expr::Lambda(
                 value,
@@ -111,39 +111,12 @@ impl<'a> Generator<'a> {
                     branches,
                 )),
             )),
-        )
-    }
-
-    fn make_fold(&mut self, ty: node::TypeItem<'a>) {
-        let fmap_name = self.make_name("fmap");
-        let fmap = self.make_fmap(ty);
-        self.define(fmap_name, fmap);
-        let fold_name = self.make_name("fold");
-        let f = self.make_name("f");
-        let val = self.make_name("val");
-        let body = cir::Expr::Lambda(
-            f,
-            Box::new(cir::Expr::Lambda(
-                val,
-                Box::new(cir::Expr::Call(
-                    Box::new(cir::Expr::Name(f)),
-                    Box::new(cir::Expr::Call(
-                        Box::new(cir::Expr::Call(
-                            Box::new(cir::Expr::Name(fmap_name)),
-                            Box::new(cir::Expr::Call(
-                                Box::new(cir::Expr::Name(fold_name)),
-                                Box::new(cir::Expr::Name(f)),
-                            )),
-                        )),
-                        Box::new(cir::Expr::Name(val)),
-                    )),
-                )),
-            )),
         );
-        self.define(fold_name, body);
+        let fmap_name = self.make_name("fmap");
+        self.define(fmap_name, body);
         let type_name = ty.name().unwrap();
         let type_sym = self.name_symbols[&type_name.syntax().id()];
-        self.folds.insert(type_sym, fold_name);
+        self.fmaps.insert(type_sym, fmap_name);
     }
 
     fn make_ctor(&mut self, name: cir::Name, fields: usize) -> cir::Expr {
@@ -174,7 +147,7 @@ impl<'a> Generator<'a> {
         cir_name
     }
 
-    fn get_fold(&mut self, node: NodeId) -> Option<cir::Name> {
+    fn get_fmap(&mut self, node: NodeId) -> Option<cir::Name> {
         let ty = self.types[&node];
         let ty = if let ir::Type::Fn(ty, _) = ty {
             &**ty
@@ -184,7 +157,7 @@ impl<'a> Generator<'a> {
         match ty {
             ir::Type::Int => None,
             ir::Type::Bool => None,
-            ir::Type::Named(s, _) => self.folds.get(s).copied(),
+            ir::Type::Named(s, _) => self.fmaps.get(s).copied(),
             ir::Type::Fn(_, _) => None,
             ir::Type::Error => panic!("type error in codegen"),
             ir::Type::Infer => panic!("infer var in codegen"),
@@ -256,13 +229,37 @@ impl<'a> Generator<'a> {
                 cir::Expr::Int(value)
             }
             node::Expr::Lambda(e) if e.is_fold() => {
+                // let folder = lambda;
+                // let rec fold = \x -> folder (fmap fold x);
+                // fold
                 let param = self.gen_name(e.param().unwrap());
                 let body = self.gen_expr(e.body().unwrap());
                 let lambda = cir::Expr::Lambda(param, Box::new(body));
-                if let Some(fold) = self.get_fold(e.syntax().id()) {
-                    cir::Expr::Call(
-                        Box::new(cir::Expr::Name(fold)),
+                if let Some(fmap) = self.get_fmap(e.syntax().id()) {
+                    let folder = self.make_name("folder");
+                    let fold = self.make_name("fold");
+                    let x = self.make_name("x");
+                    let fold_body = cir::Expr::Lambda(
+                        x,
+                        Box::new(cir::Expr::Call(
+                            Box::new(cir::Expr::Name(folder)),
+                            Box::new(cir::Expr::Call(
+                                Box::new(cir::Expr::Call(
+                                    Box::new(cir::Expr::Name(fmap)),
+                                    Box::new(cir::Expr::Name(fold)),
+                                )),
+                                Box::new(cir::Expr::Name(x)),
+                            )),
+                        )),
+                    );
+                    cir::Expr::Let(
+                        folder,
                         Box::new(lambda),
+                        Box::new(cir::Expr::LetRec(
+                            fold,
+                            Box::new(fold_body),
+                            Box::new(cir::Expr::Name(fold)),
+                        )),
                     )
                 } else {
                     lambda

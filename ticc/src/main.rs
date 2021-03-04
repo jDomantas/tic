@@ -25,9 +25,6 @@ fn main() -> Result<()> {
     if compilation.errors().next().is_some() {
         print_errors(&file.to_string_lossy(), &source, compilation.errors())?;
         std::process::exit(1);
-    } else {
-        let js = compilation.emit_js();
-        std::fs::write(&output, js.as_bytes())?;
     }
 
     Ok(())

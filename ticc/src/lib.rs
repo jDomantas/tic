@@ -55,10 +55,6 @@ impl Compilation {
         api::completion::completions_at(self, pos)
     }
 
-    pub fn emit_js(&mut self) -> String {
-        codegen::emit_js(self)
-    }
-
     fn compile_to_end(&mut self) {
         self.compile_up_to(self.src.len());
     }
