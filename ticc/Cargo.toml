@@ -4,6 +4,14 @@ version = "0.1.0"
 authors = ["djade <djadenkus@gmail.com>"]
 edition = "2018"
 
+[lib]
+doctest = false
+
+[[bin]]
+name = "ticc"
+path = "src/main.rs"
+doctest = false
+
 [dependencies]
 ticc-syntax = { path = "../ticc-syntax" }
 logos = "0.11.4"
