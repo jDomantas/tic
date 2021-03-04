@@ -88,6 +88,9 @@ impl Format<'_> {
         let node = expr_node(expr);
         self.builder.start_node(node);
         let expr_prec = expr_prec(expr);
+        if matches!(expr, cir::Expr::Let(..) | cir::Expr::LetRec(..)) {
+            self.builder.add_newline();
+        }
         if expr_prec < prec {
             self.builder.add_sticky_token("(", Sticky::Next);
         }
@@ -151,7 +154,6 @@ impl Format<'_> {
                 }
             }
             cir::Expr::Let(x, v, e) => {
-                self.builder.add_newline();
                 self.builder.add_token("let");
                 self.write_name(x);
                 self.builder.add_token("=");
@@ -161,7 +163,6 @@ impl Format<'_> {
                 self.write_expr(e, Prec::Min);
             }
             cir::Expr::LetRec(x, v, e) => {
-                self.builder.add_newline();
                 self.builder.add_token("let");
                 self.builder.add_token("rec");
                 self.write_name(x);
