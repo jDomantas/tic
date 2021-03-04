@@ -26,7 +26,7 @@ fn optimize_expr(e: &mut cir::Expr) {
 }
 
 fn take_apart(e: &mut cir::Expr) -> (cir::Name, cir::Expr, cir::Expr) {
-    if let cir::Expr::Let(x, b, r) = std::mem::replace(e, cir::Expr::Bool(false)) {
+    if let cir::Expr::Let(x, b, r) = std::mem::replace(e, cir::Expr::Trap(String::new())) {
         (x, *b, *r)
     } else {
         unreachable!()
