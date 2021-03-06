@@ -156,9 +156,11 @@ impl Format<'_> {
             cir::Expr::Let(x, v, e) => {
                 self.builder.add_token("let");
                 self.write_name(x);
+                self.builder.start_node(Node { large: false, indents: true });
                 self.builder.add_token("=");
                 self.write_expr(v, Prec::Min);
                 self.builder.add_sticky_token(";", Sticky::Prev);
+                self.builder.finish_node();
                 self.builder.add_newline();
                 self.write_expr(e, Prec::Min);
             }
@@ -167,8 +169,10 @@ impl Format<'_> {
                 self.builder.add_token("rec");
                 self.write_name(x);
                 self.builder.add_token("=");
+                self.builder.start_node(Node { large: false, indents: true });
                 self.write_expr(v, Prec::Min);
                 self.builder.add_sticky_token(";", Sticky::Prev);
+                self.builder.finish_node();
                 self.builder.add_newline();
                 self.write_expr(e, Prec::Min);
             }
