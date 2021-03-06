@@ -1,20 +1,160 @@
 #![allow(unused)]
 use std::collections::HashMap;
-use crate::codegen::cir;
-use crate::codegen::opt;
+use crate::codegen::{cir, opt};
 
 // for a function to be inlinable it needs to use each argument at most once
 // for a value to be inlinable it must be a name, or a constant (nullary ctors
 // are not constants)
 
 pub(crate) fn optimize(program: &mut cir::Program) {
-    let mut inlinables = HashMap::new();
+    let mut inlinables = HashMap::<cir::Name, Inlinable>::new();
+    let mut names = NameGen::for_program(&program.values, &mut program.debug_info);
     for &n in &program.order {
         let e = program.values.get_mut(&n).unwrap();
-        walk_expressions(e, |x| inline_functions(x, &mut inlinables));
+        walk_expressions(e, |x| inline_functions(x, &mut names, &mut inlinables));
         if let Some(args) = check_inlinable(e, false) {
-            inlinables.insert(n, (e.clone(), args));
+            inlinables.insert(n, Inlinable::new(e, args));
         }
+    }
+}
+
+struct NameGen<'a, 'b> {
+    debug: &'a mut HashMap<cir::Name, &'b str>,
+    next_free: cir::Name,
+}
+
+impl<'a, 'b> NameGen<'a, 'b> {
+    fn next(&mut self, original: cir::Name) -> cir::Name {
+        let debug = self.debug[&original];
+        let name = self.next_free;
+        self.debug.insert(name, debug);
+        self.next_free.id += 1;
+        name
+    }
+
+    fn for_program(
+        values: &HashMap<cir::Name, cir::Expr>,
+        debug: &'a mut HashMap<cir::Name, &'b str>,
+    ) -> NameGen<'a, 'b> {
+        let mut next_free = 0;
+        for (n, v) in values {
+            next_free = next_free.max(n.id + 1);
+            opt::walk_expressions(v, |e| {
+                match e {
+                    cir::Expr::Lambda(n, _) => {}
+                    cir::Expr::Let(n, _, _) => {}
+                    cir::Expr::LetRec(n, _, _) => {
+                        next_free = next_free.max(n.id + 1);
+                    }
+                    cir::Expr::Match(_, br) => {
+                        for b in br {
+                            for n in &b.bindings {
+                                next_free = next_free.max(n.id + 1);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            });
+        }
+        NameGen {
+            debug,
+            next_free: cir::Name {
+                id: next_free,
+            },
+        }
+    }
+}
+
+struct Inlinable {
+    expr: cir::Expr,
+    args: usize,
+}
+
+impl Inlinable {
+    fn new(expr: &cir::Expr, args: usize) -> Inlinable {
+        Inlinable { expr: expr.clone(), args }
+    }
+
+    fn create_copy(&self, names: &mut NameGen) -> cir::Expr {
+        fn copy(expr: &cir::Expr, names: &mut NameGen, rewrite: &mut HashMap<cir::Name, cir::Name>) -> cir::Expr {
+            match expr {
+                cir::Expr::Bool(b) => cir::Expr::Bool(*b),
+                cir::Expr::Int(i) => cir::Expr::Int(*i),
+                cir::Expr::Name(n) => cir::Expr::Name(rewrite.get(n).copied().unwrap_or(*n)),
+                cir::Expr::Call(a, b) => {
+                    cir::Expr::Call(
+                        Box::new(copy(a, names, rewrite)),
+                        Box::new(copy(b, names, rewrite)),
+                    )
+                }
+                cir::Expr::If(a, b, c) => {
+                    cir::Expr::If(
+                        Box::new(copy(a, names, rewrite)),
+                        Box::new(copy(b, names, rewrite)),
+                        Box::new(copy(c, names, rewrite)),
+                    )
+                }
+                cir::Expr::Op(a, op, b) => {
+                    cir::Expr::Op(
+                        Box::new(copy(a, names, rewrite)),
+                        *op,
+                        Box::new(copy(b, names, rewrite)),
+                    )
+                }
+                cir::Expr::Lambda(n, a) => {
+                    let r = names.next(*n);
+                    rewrite.insert(*n, r);
+                    cir::Expr::Lambda(
+                        r,
+                        Box::new(copy(a, names, rewrite)),
+                    )
+                }
+                cir::Expr::Match(a, bs) => {
+                    let a = copy(a, names, rewrite);
+                    let mut branches = Vec::new();
+                    for b in bs {
+                        let mut bindings = Vec::new();
+                        for &bind in &b.bindings {
+                            let r = names.next(bind);
+                            rewrite.insert(bind, r);
+                            bindings.push(r);
+                        }
+                        branches.push(cir::Branch {
+                            ctor: b.ctor,
+                            bindings,
+                            value: copy(&b.value, names, rewrite),
+                        });
+                    }
+                    cir::Expr::Match(Box::new(a), branches)
+                }
+                cir::Expr::Construct(c, a) => {
+                    let a = a.iter().map(|e| copy(e, names, rewrite)).collect();
+                    cir::Expr::Construct(*c, a)
+                }
+                cir::Expr::Let(n, a, b) => {
+                    let r = names.next(*n);
+                    rewrite.insert(*n, r);
+                    cir::Expr::Let(
+                        r,
+                        Box::new(copy(a, names, rewrite)),
+                        Box::new(copy(b, names, rewrite)),
+                    )
+                }
+                cir::Expr::LetRec(n, a, b) => {
+                    let r = names.next(*n);
+                    rewrite.insert(*n, r);
+                    cir::Expr::LetRec(
+                        r,
+                        Box::new(copy(a, names, rewrite)),
+                        Box::new(copy(b, names, rewrite)),
+                    )
+                }
+                cir::Expr::Trap(msg) => cir::Expr::Trap(msg.clone()),
+            }
+        }
+        let mut rewrite = HashMap::new();
+        copy(&self.expr, names, &mut rewrite)
     }
 }
 
@@ -70,19 +210,19 @@ fn walk_expressions(
 
 fn inline_functions(
     expr: &mut cir::Expr,
-    inlinables: &mut HashMap<cir::Name, (cir::Expr, usize)>,
+    names: &mut NameGen,
+    inlinables: &mut HashMap<cir::Name, Inlinable>,
 ) {
-    
     if let cir::Expr::Let(n, v, e) = expr {
         if let Some(args) = check_inlinable(v, false) {
-            inlinables.insert(*n, ((**v).clone(), args));
+            inlinables.insert(*n, Inlinable::new(v, args));
         }
     }
 
     if let Some((name, args)) = check_for_inline(expr) {
-        if let Some((value, cnt)) = inlinables.get(&name) {
-            if args == *cnt {
-                inline(expr, value.clone());
+        if let Some(inlinable) = inlinables.get(&name) {
+            if inlinable.args == args {
+                inline(expr, inlinable.create_copy(names));
             }
         }
     }
