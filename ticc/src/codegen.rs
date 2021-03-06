@@ -7,15 +7,19 @@ use crate::Compilation;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Options {
+    pub inline: bool,
     pub optimize_lambda: bool,
     pub reduce_apply: bool,
+    pub remove_dead_code: bool,
 }
 
 impl Default for Options {
     fn default() -> Options {
         Options {
+            inline: true,
             optimize_lambda: true,
             reduce_apply: true,
+            remove_dead_code: true,
         }
     }
 }

@@ -7,7 +7,7 @@ use crate::codegen::opt;
 
 pub(crate) fn optimize(program: &mut cir::Program) {
     for (_, e) in &mut program.values {
-        opt::walk_expressions(e, optimize_expr);
+        opt::walk_expressions_mut(e, optimize_expr);
     }
 }
 
