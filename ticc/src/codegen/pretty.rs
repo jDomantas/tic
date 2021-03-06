@@ -4,10 +4,14 @@ use crate::codegen::cir;
 
 pub(crate) fn pretty_print_cir(program: &cir::Program<'_>) -> String {
     let mut result = String::new();
-
+    let mut exports = HashMap::new();
+    for export in &program.exports {
+        exports.insert(export.name, export.public_name.as_str());
+    }
     for name in &program.order {
         let mut format = Format {
             builder: FormatBuilder::new(),
+            exports: &exports,
             debug: &program.debug_info,
         };
         format.write_def(name, &program.values[name]);
@@ -45,12 +49,18 @@ impl Prec {
 
 struct Format<'a> {
     builder: FormatBuilder,
+    exports: &'a HashMap<cir::Name, &'a str>,
     debug: &'a HashMap<cir::Name, &'a str>,
 }
 
 impl Format<'_> {
     fn write_def(&mut self, name: &cir::Name, value: &cir::Expr) {
         self.builder.start_node(Node { large: true, indents: true });
+        if let Some(export_name) = self.exports.get(name) {
+            self.builder.add_sticky_token("export(", Sticky::Next);
+            self.builder.add_token(export_name);
+            self.builder.add_sticky_token(")", Sticky::Prev);
+        }
         self.builder.add_token("let");
         self.write_name(name);
         self.builder.add_token("=");
