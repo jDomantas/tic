@@ -31,11 +31,15 @@ struct Opt {
     optimize_dce: bool,
 }
 
-fn main() -> Result<()> {
+fn main() {
     let opt = Opt::from_args();
 
     let path = opt.input;
-    let source = std::fs::read_to_string(&path)?;
+    let source = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        eprintln!("error: cannot open {}", path.display());
+        eprintln!("    {}", e);
+        std::process::exit(1);
+    });
 
     let options = ticc::Options {
         optimize_lambda: opt.optimize_lambda || opt.optimize,
@@ -47,12 +51,12 @@ fn main() -> Result<()> {
     let mut compilation = ticc::Compilation::from_source_and_options(&source, options);
 
     if compilation.errors().next().is_some() {
-        print_errors(&path.to_string_lossy(), &source, compilation.errors())?;
+        let _ = print_errors(&path.to_string_lossy(), &source, compilation.errors());
         std::process::exit(1);
     }
 
     if opt.check {
-        return Ok(());
+        return;
     }
 
     if opt.emit_ir {
@@ -61,11 +65,13 @@ fn main() -> Result<()> {
         if output_file == Path::new("-") {
             println!("{}", ir);
         } else {
-            std::fs::write(&output_file, ir.as_bytes())?;
+            std::fs::write(&output_file, ir.as_bytes()).unwrap_or_else(|e| {
+                eprintln!("error: cannot write {}", path.display());
+                eprintln!("    {}", e);
+                std::process::exit(1);
+            });
         }
     }
-
-    Ok(())
 }
 
 fn print_errors(file: &str, source: &str, errors: impl Iterator<Item = ticc::Error>) -> Result<()> {
