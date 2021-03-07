@@ -29,6 +29,8 @@ struct Opt {
     optimize_inline: bool,
     #[structopt(long)]
     optimize_dce: bool,
+    #[structopt(long)]
+    verify_ir: bool,
 }
 
 fn main() {
@@ -42,6 +44,7 @@ fn main() {
     });
 
     let options = ticc::Options {
+        verify: opt.verify_ir,
         optimize_lambda: opt.optimize_lambda || opt.optimize,
         reduce_apply: opt.optimize_apply || opt.optimize,
         inline: opt.optimize_inline || opt.optimize,

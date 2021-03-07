@@ -5,24 +5,34 @@ mod reduce_apply;
 
 use crate::codegen::{cir, Options};
 
-pub(crate) fn optimize(options: Options, program: &mut cir::Program) {
+pub(crate) fn optimize(
+    options: Options,
+    verify: impl Fn(&cir::Program),
+    program: &mut cir::Program,
+) {
+    verify(program);
     if options.inline {
         inline::optimize(program);
     }
+    verify(program);
     if options.optimize_lambda {
         inline_lambda::optimize(program);
     }
+    verify(program);
     if options.reduce_apply {
         reduce_apply::optimize(program);
     }
+    verify(program);
     // reductions rewrite `(\x -> e) a` to `let x = a; e`,
     // so inline again to simplify those
     if options.inline {
         inline::optimize(program);
     }
+    verify(program);
     if options.remove_dead_code {
         dce::optimize(program);
     }
+    verify(program);
 }
 
 fn walk_expressions<'a>(expr: &'a cir::Expr, mut f: impl FnMut(&'a cir::Expr)) {
