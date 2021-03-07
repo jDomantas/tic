@@ -41,8 +41,8 @@ impl<'a, 'b> NameGen<'a, 'b> {
             next_free = next_free.max(n.id + 1);
             opt::walk_expressions(v, |e| {
                 match e {
-                    cir::Expr::Lambda(n, _) => {}
-                    cir::Expr::Let(n, _, _) => {}
+                    cir::Expr::Lambda(n, _) |
+                    cir::Expr::Let(n, _, _) |
                     cir::Expr::LetRec(n, _, _) => {
                         next_free = next_free.max(n.id + 1);
                     }
