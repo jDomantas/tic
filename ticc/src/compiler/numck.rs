@@ -1,10 +1,10 @@
 use internal_iterator::InternalIterator;
-use crate::RawError;
+use crate::{RawDiagnostic, Severity};
 use crate::compiler::ir;
 use crate::compiler::syntax::{node, AstNode};
 
 pub(crate) fn check_numbers(item: &mut ir::Item) {
-    let errors = &mut item.errors;
+    let diagnostics = &mut item.diagnostics;
     item.syntax.tree.root()
         .descendants()
         .filter_map(node::NumberExpr::cast)
@@ -16,8 +16,9 @@ pub(crate) fn check_numbers(item: &mut ir::Item) {
                 Err(ParseError::Overflow) => Some("number is too large"),
             };
             if let Some(err) = err {
-                errors.push(RawError {
+                diagnostics.push(RawDiagnostic {
                     message: err_fmt!(err),
+                    severity: Severity::Error,
                     span: token.span(),
                 });
             }

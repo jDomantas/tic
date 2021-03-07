@@ -1,5 +1,5 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity};
-use ticc::Compilation;
+use ticc::{Compilation, Severity};
 use crate::utils::LocationTranslator;
 
 pub fn get_diagnostics(compilation: &mut Compilation) -> Vec<Diagnostic> {
@@ -7,10 +7,13 @@ pub fn get_diagnostics(compilation: &mut Compilation) -> Vec<Diagnostic> {
     let mut translator = LocationTranslator::for_source(&source);
 
     compilation
-        .errors()
+        .diagnostics()
         .map(|e| Diagnostic {
             range: translator.to_lsp(e.span),
-            severity: Some(DiagnosticSeverity::Error),
+            severity: Some(match e.severity {
+                Severity::Warning => DiagnosticSeverity::Warning,
+                Severity::Error => DiagnosticSeverity::Error,
+            }),
             code: None,
             code_description: None,
             source: Some("ticc".to_owned()),

@@ -1,25 +1,26 @@
 use std::fmt::Write;
-use crate::{Compilation, Error};
+use crate::{Compilation, Diagnostic};
 use crate::error::{RawMessage, RawSegment};
 use crate::api::TypePrinter;
 
-pub(crate) fn errors<'a>(compilation: &'a mut Compilation) -> impl Iterator<Item = Error> + 'a {
+pub(crate) fn diagnostics<'a>(compilation: &'a mut Compilation) -> impl Iterator<Item = Diagnostic> + 'a {
     compilation.compile_to_end();
     let compilation = &*compilation;
     let mut printer = TypePrinter::new(compilation);
     compilation.items
         .iter()
-        .flat_map(|item| item.errors.iter())
+        .flat_map(|item| item.diagnostics.iter())
         .map(move |err| {
-            let message = format_error(compilation, &mut printer, &err.message);
-            Error {
+            let message = format_message(compilation, &mut printer, &err.message);
+            Diagnostic {
                 message,
+                severity: err.severity,
                 span: err.span,
             }
         })
 }
 
-fn format_error(
+fn format_message(
     compilation: &Compilation,
     type_printer: &mut TypePrinter<'_>,
     err: &RawMessage,

@@ -53,8 +53,11 @@ fn main() {
 
     let mut compilation = ticc::Compilation::from_source_and_options(&source, options);
 
-    if compilation.errors().next().is_some() {
-        let _ = print_errors(&path.to_string_lossy(), &source, compilation.errors());
+    if print_diagnostics(&path.to_string_lossy(), &source, compilation.diagnostics()).is_err() {
+        std::process::exit(1);
+    }
+
+    if compilation.diagnostics().any(|e| e.severity == ticc::Severity::Error) {
         std::process::exit(1);
     }
 
@@ -77,7 +80,11 @@ fn main() {
     }
 }
 
-fn print_errors(file: &str, source: &str, errors: impl Iterator<Item = ticc::Error>) -> Result<()> {
+fn print_diagnostics(
+    file: &str,
+    source: &str,
+    diagnostics: impl Iterator<Item = ticc::Diagnostic>,
+) -> Result<()> {
     let stream = cr::term::termcolor::StandardStream::stderr(cr::term::termcolor::ColorChoice::Auto);
     let mut stream = stream.lock();
     
@@ -107,11 +114,15 @@ fn print_errors(file: &str, source: &str, errors: impl Iterator<Item = ticc::Err
     };
     let mut files = cr::files::SimpleFiles::new();
     let file = files.add(file, source);
-    for error in errors {
-        let diagnostic = cr::diagnostic::Diagnostic::error()
-            .with_message(error.message)
+    for diagnostic in diagnostics {
+        let severity = match diagnostic.severity {
+            ticc::Severity::Warning => cr::diagnostic::Severity::Warning,
+            ticc::Severity::Error => cr::diagnostic::Severity::Error,
+        };
+        let diagnostic = cr::diagnostic::Diagnostic::new(severity)
+            .with_message(diagnostic.message)
             .with_labels(vec![
-                cr::diagnostic::Label::primary(file, error.span.source_range()),
+                cr::diagnostic::Label::primary(file, diagnostic.span.source_range()),
             ]);
         
         cr::term::emit(&mut stream, &config, &files, &diagnostic)?;

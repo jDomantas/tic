@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::{RawError, Span};
+use crate::{RawDiagnostic, Severity, Span};
 use crate::compiler::{DefSet, ir, syntax::node};
 use crate::compiler::syntax::{AstNode, NodeId, TokenKind};
 
@@ -11,7 +11,7 @@ pub(crate) fn type_check(item: &mut ir::Item, defs: &DefSet) {
         symbols: HashMap::new(),
         ctors: HashMap::new(),
         symbol_types: HashMap::new(),
-        errors: &mut item.errors,
+        diagnostics: &mut item.diagnostics,
     };
     let mut symbol_vars = HashMap::new();
     for r in item.refs.iter().copied().chain(item.defs.iter().map(|d| d.to_ref())) {
@@ -306,7 +306,7 @@ struct TypeChecker<'a> {
     symbols: HashMap<NodeId, ir::Symbol>,
     ctors: HashMap<ir::Symbol, Ctor<'a>>,
     symbol_types: HashMap<ir::Symbol, NameTy<'a>>,
-    errors: &'a mut Vec<RawError>,
+    diagnostics: &'a mut Vec<RawDiagnostic>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -325,8 +325,9 @@ impl<'a> TypeChecker<'a> {
                 self.unifier.rollback();
                 let expected = self.unifier.to_ir(expected);
                 let actual = self.unifier.to_ir(actual);
-                self.errors.push(RawError {
+                self.diagnostics.push(RawDiagnostic {
                     message: err_fmt!("expected ", expected, ", got ", actual),
+                    severity: Severity::Error,
                     span,
                 });
             }
@@ -472,13 +473,14 @@ impl<'a> TypeChecker<'a> {
                                     .and_then(|v| v.vars().last().map(|v| v.token().span().end()))
                                     .unwrap_or(ctor_name.token().span().end());
                                 let span = Span::new(ctor_name.token().span().start(), end);
-                                self.errors.push(RawError {
+                                self.diagnostics.push(RawDiagnostic {
                                     message: err_fmt!(
                                         "expected ",
                                         ctor.fields.len(),
                                         " fields, got ",
                                         field_count,
                                     ),
+                                    severity: Severity::Error,
                                     span,
                                 });
                             } else if let Some(vars) = case.vars() {

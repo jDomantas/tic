@@ -1,4 +1,4 @@
-use ticc::{Compilation, Error, Pos, Span};
+use ticc::{Compilation, Diagnostic, Pos, Severity, Span};
 use std::path::{Path, PathBuf};
 
 fn read(path: &Path) -> String {
@@ -8,12 +8,15 @@ fn read(path: &Path) -> String {
     }
 }
 
-fn compile_program(path: &Path) -> Vec<Error> {
+fn compile_program(path: &Path) -> Vec<Diagnostic> {
     let source = read(path);
-    Compilation::from_source(&source).errors().collect()
+    Compilation::from_source(&source)
+        .diagnostics()
+        .filter(|e| e.severity == Severity::Error)
+        .collect()
 }
 
-fn extract_expected_errors(path: &Path) -> Vec<Error> {
+fn extract_expected_errors(path: &Path) -> Vec<Diagnostic> {
     const ERROR_MARKER: &str = "ERROR: ";
     let source = read(path);
     let mut prev_line_pos: Option<usize> = None;
@@ -33,7 +36,7 @@ fn extract_expected_errors(path: &Path) -> Vec<Error> {
             let span_end = line[..error_idx].rfind('^').unwrap() + 1;
             let span_end = Pos::new((prev_line_pos + span_end) as u32);
             let span = Span::new(span_start, span_end);
-            errors.push(Error { span, message });
+            errors.push(Diagnostic { span, message, severity: Severity::Error });
         } else if line.contains("ERROR") {
             panic!("incorrect error marker at {}:{}", path.display(), index + 1);
         }
@@ -106,7 +109,7 @@ fn matches_span(expected: Span, actual: Span) -> bool {
         actual.start() == expected.start()
 }
 
-fn matches(expected: &Error, actual: &Error) -> bool {
+fn matches(expected: &Diagnostic, actual: &Diagnostic) -> bool {
     if !matches_span(expected.span, actual.span) {
         false
     } else {
@@ -117,8 +120,8 @@ fn matches(expected: &Error, actual: &Error) -> bool {
 pub struct Test {
     pub path: PathBuf,
     pub source: String,
-    pub expected_errors: Vec<Error>,
-    pub actual_errors: Vec<Error>,
+    pub expected_errors: Vec<Diagnostic>,
+    pub actual_errors: Vec<Diagnostic>,
 }
 
 impl Test {
@@ -168,9 +171,9 @@ impl Test {
 
 pub struct Outcome {
     pub success: bool,
-    pub extra_errors: Vec<Error>,
-    pub missing_errors: Vec<Error>,
-    pub wrong_messages: Vec<(Error, Error)>,
+    pub extra_errors: Vec<Diagnostic>,
+    pub missing_errors: Vec<Diagnostic>,
+    pub wrong_messages: Vec<(Diagnostic, Diagnostic)>,
 }
 
 #[test]

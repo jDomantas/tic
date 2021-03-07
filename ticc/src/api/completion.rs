@@ -1,5 +1,5 @@
 use ticc_syntax::Pos;
-use crate::{Compilation, RawError};
+use crate::{Compilation, RawDiagnostic};
 use crate::compiler::{Scope, ir, resolve, syntax::{AstNode, node}};
 
 pub struct Completion {
@@ -39,7 +39,7 @@ impl resolve::ResolveSink for Resolver {
 
     fn record_ref(&mut self, _r: ir::Ref) {}
 
-    fn record_error(&mut self, _err: RawError) {}
+    fn record_error(&mut self, _err: RawDiagnostic) {}
 
     fn generate_symbol(&mut self) -> ir::Symbol {
         // these symbols will not be visible anywhere and

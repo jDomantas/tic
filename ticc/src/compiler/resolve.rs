@@ -1,11 +1,11 @@
-use crate::RawError;
+use crate::{RawDiagnostic, Severity};
 use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope, SymbolGen};
 
 pub(crate) fn resolve(item: &mut ir::Item, scope: &Scope<'_>, symbols: &mut SymbolGen) {
     let mut resolver = Resolver {
         defs: &mut item.defs,
         refs: &mut item.refs,
-        errors: &mut item.errors,
+        diagnostics: &mut item.diagnostics,
         symbols,
     };
     resolve_raw(&item.syntax, scope, &mut resolver);
@@ -20,7 +20,7 @@ pub(crate) fn resolve_raw(syntax: &ItemSyntax, scope: &Scope<'_>, sink: &mut imp
 pub(crate) trait ResolveSink {
     fn record_def(&mut self, def: ir::Def);
     fn record_ref(&mut self, r: ir::Ref);
-    fn record_error(&mut self, err: RawError);
+    fn record_error(&mut self, err: RawDiagnostic);
     fn generate_symbol(&mut self) -> ir::Symbol;
     fn on_name(&mut self, name: node::Name<'_>, usage: NameUsage, scope: &Scope<'_>);
 }
@@ -35,7 +35,7 @@ pub(crate) enum NameUsage {
 struct Resolver<'a> {
     defs: &'a mut Vec<ir::Def>,
     refs: &'a mut Vec<ir::Ref>,
-    errors: &'a mut Vec<RawError>,
+    diagnostics: &'a mut Vec<RawDiagnostic>,
     symbols: &'a mut SymbolGen,
 }
 
@@ -48,8 +48,8 @@ impl<'a> ResolveSink for Resolver<'a> {
         self.refs.push(r);
     }
 
-    fn record_error(&mut self, err: RawError) {
-        self.errors.push(err);
+    fn record_error(&mut self, err: RawDiagnostic) {
+        self.diagnostics.push(err);
     }
 
     fn generate_symbol(&mut self) -> ir::Symbol {
@@ -136,8 +136,9 @@ fn resolve_type_case<'a>(
     if let Some(name) = case.name() {
         let name_text = name.token().text();
         if ctor_names.contains(&name_text) {
-            sink.record_error(RawError {
+            sink.record_error(RawDiagnostic {
                 span: name.token().span(),
+                severity: Severity::Error,
                 message: err_fmt!("duplicate constructor ", name_text.to_owned()),
             });
             None
@@ -185,8 +186,9 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
                     sink.record_ref(ir::Ref::new(symbol, name));
                     Some(symbol)
                 } else {
-                    sink.record_error(RawError {
+                    sink.record_error(RawDiagnostic {
                         span: name.token().span(),
+                        severity: Severity::Error,
                         message: err_fmt!("undefined type"),
                     });
                     None
@@ -250,8 +252,9 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, ty: node::Type<'a>, s
                     scope.types.insert(name.token().text(), symbol);
                     Some(symbol)
                 } else {
-                    sink.record_error(RawError {
+                    sink.record_error(RawDiagnostic {
                         span: name.token().span(),
+                        severity: Severity::Error,
                         message: err_fmt!("undefined type"),
                     });
                     None
@@ -314,8 +317,9 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
                 if let Some(symbol) = scope.lookup_value(name.token().text()) {
                     sink.record_ref(ir::Ref::new(symbol, name));
                 } else {
-                    sink.record_error(RawError {
+                    sink.record_error(RawDiagnostic {
                         span: name.token().span(),
+                        severity: Severity::Error,
                         message: err_fmt!("undefined variable"),
                     });
                 }
@@ -420,8 +424,9 @@ fn resolve_match_case(sink: &mut impl ResolveSink, case: node::MatchCase, scope:
         if let Some(symbol) = scope.lookup_ctor(name.token().text()) {
             sink.record_ref(ir::Ref::new(symbol, name));
         } else {
-            sink.record_error(RawError {
+            sink.record_error(RawDiagnostic {
                 span: name.token().span(),
+                severity: Severity::Error,
                 message: err_fmt!("undefined constructor"),
             });
         }

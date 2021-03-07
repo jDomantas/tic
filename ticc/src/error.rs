@@ -1,8 +1,9 @@
-use crate::Span;
+use crate::{Severity, Span};
 use crate::compiler::ir;
 
-pub(crate) struct RawError {
+pub(crate) struct RawDiagnostic {
     pub(crate) span: Span,
+    pub(crate) severity: Severity,
     pub(crate) message: RawMessage,
 }
 

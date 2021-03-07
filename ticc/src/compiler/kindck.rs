@@ -1,5 +1,5 @@
 use internal_iterator::InternalIterator;
-use crate::RawError;
+use crate::{RawDiagnostic, Severity};
 use crate::compiler::{DefSet, ir, syntax::node};
 use crate::compiler::syntax::AstNode;
 
@@ -55,19 +55,19 @@ fn check_ty(defs: &DefSet, ty: &mut ir::Type) {
 
 fn report_errors(defs: &DefSet, item: &mut ir::Item) {
     let refs = &item.refs;
-    let errors = &mut item.errors;
+    let diagnostics = &mut item.diagnostics;
     item.syntax
         .tree
         .root()
         .descendants()
         .for_each(|node| {
             if let Some(ty) = node::NamedType::cast(node.clone()) {
-                report_type(defs, refs, errors, ty);
+                report_type(defs, refs, diagnostics, ty);
             }
         });
 }
 
-fn report_type(defs: &DefSet, refs: &[ir::Ref], errors: &mut Vec<RawError>, ty: node::NamedType) -> Option<()> {
+fn report_type(defs: &DefSet, refs: &[ir::Ref], diagnostics: &mut Vec<RawDiagnostic>, ty: node::NamedType) -> Option<()> {
     let name_token = ty.name()?.token();
     let span = name_token.span();
     let r = refs.iter().find(|r| r.span == span)?;
@@ -78,8 +78,9 @@ fn report_type(defs: &DefSet, refs: &[ir::Ref], errors: &mut Vec<RawError>, ty: 
     };
     let actual_count = ty.type_args().count();
     if param_count != actual_count {
-        errors.push(RawError {
+        diagnostics.push(RawDiagnostic {
             span,
+            severity: Severity::Error,
             message: err_fmt!(
                 ir::Type::Named(r.symbol, Vec::new()),
                 " expects ",

@@ -7,7 +7,7 @@ pub(crate) mod api;
 use std::sync::Arc;
 use compiler::{DefSet, Scope, ir, parser};
 pub use ticc_syntax::{Pos, Span};
-pub(crate) use crate::error::RawError;
+pub(crate) use crate::error::RawDiagnostic;
 pub use crate::api::tokens::{Token, TokenKind};
 pub use crate::api::info::Info;
 pub use crate::api::completion::Completion;
@@ -42,8 +42,8 @@ impl Compilation {
         api::tokens::tokens(self)
     }
 
-    pub fn errors(&mut self) -> impl Iterator<Item = Error> + '_ {
-        api::errors::errors(self)
+    pub fn diagnostics(&mut self) -> impl Iterator<Item = Diagnostic> + '_ {
+        api::errors::diagnostics(self)
     }
 
     pub fn find_definition(&mut self, pos: Pos) -> Option<Span> {
@@ -110,9 +110,16 @@ impl Compilation {
     }
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum Severity {
+    Warning,
+    Error,
+}
+
 #[derive(Debug, Clone)]
-pub struct Error {
+pub struct Diagnostic {
     pub span: Span,
+    pub severity: Severity,
     pub message: String,
 }
 

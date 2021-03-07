@@ -13,7 +13,7 @@ fn no_errors() {
                 end;
     "#);
 
-    let diagnostics = compilation.errors().collect::<Vec<_>>();
+    let diagnostics = compilation.diagnostics().collect::<Vec<_>>();
 
     assert!(diagnostics.is_empty());
 }

@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 use internal_iterator::InternalIterator;
-use crate::RawError;
+use crate::{RawDiagnostic, Severity};
 use crate::compiler::{DefSet, ir};
 use crate::compiler::syntax::{AstNode, NodeId, node};
 
 pub(crate) fn check_matches(item: &mut ir::Item, defs: &DefSet) {
-    let errors = &mut item.errors;
+    let diagnostics = &mut item.diagnostics;
     let types = &item.types;
     let refs = &item.refs;
     item.syntax.tree.root()
         .descendants()
         .for_each(|node| if let Some(expr) = node::MatchExpr::cast(node) {
-            check(expr, defs, refs, types, errors);
+            check(expr, defs, refs, types, diagnostics);
         });
 }
 
@@ -20,7 +20,7 @@ fn check(
     defs: &DefSet,
     refs: &[ir::Ref],
     types: &HashMap<NodeId, ir::Type>,
-    errors: &mut Vec<RawError>,
+    diagnostics: &mut Vec<RawDiagnostic>,
 ) -> Option<()> {
     let discr = expr.discr()?;
     let ty = types.get(&discr.syntax().id())?;
@@ -31,11 +31,12 @@ fn check(
                 ir::Type::Named(s, _) => *s,
                 ir::Type::Error => return None,
                 ty => {
-                    errors.push(RawError {
+                    diagnostics.push(RawDiagnostic {
                         message: err_fmt!(
                             "cannot match on ",
                             ty.clone(),
                         ),
+                        severity: Severity::Error,
                         span: discr.syntax().span(),
                     });
                     return None;
@@ -44,11 +45,12 @@ fn check(
         }
         ir::Type::Error => return None,
         ty => {
-            errors.push(RawError {
+            diagnostics.push(RawDiagnostic {
                 message: err_fmt!(
                     "cannot match on ",
                     ty.clone(),
                 ),
+                severity: Severity::Error,
                 span: discr.syntax().span(),
             });
             return None;
@@ -58,11 +60,12 @@ fn check(
     let all_ctors = match &def.kind {
         ir::DefKind::Type { ctors: ir::Ctors::List(ctors), .. } => ctors.clone(),
         ir::DefKind::Type { ctors: ir::Ctors::Opaque, .. } => {
-            errors.push(RawError {
+            diagnostics.push(RawDiagnostic {
                 message: err_fmt!(
                     "cannot match on ",
                     ty.clone(),
                 ),
+                severity: Severity::Error,
                 span: discr.syntax().span(),
             });
             return None;
@@ -77,8 +80,9 @@ fn check(
             continue;
         }
         if !missing_ctors.contains(&r.symbol) {
-            errors.push(RawError {
+            diagnostics.push(RawDiagnostic {
                 message: err_fmt!("unreachable pattern"),
+                severity: Severity::Error,
                 span: case.syntax().span(),
             });
         }
@@ -87,17 +91,18 @@ fn check(
     match missing_ctors.as_slice() {
         &[] => {}
         &[ctor] => {
-            errors.push(RawError {
+            diagnostics.push(RawDiagnostic {
                 message: err_fmt!(
                     "pattern ",
                     ctor,
                     " not covered",
                 ),
+                severity: Severity::Error,
                 span: expr.syntax().span(),
             });
         }
         &[ctor1, ctor2] => {
-            errors.push(RawError {
+            diagnostics.push(RawDiagnostic {
                 message: err_fmt!(
                     "patterns ",
                     ctor1,
@@ -105,11 +110,12 @@ fn check(
                     ctor2,
                     " not covered",
                 ),
+                severity: Severity::Error,
                 span: expr.syntax().span(),
             });
         }
         &[ctor, ref rest @ ..] => {
-            errors.push(RawError {
+            diagnostics.push(RawDiagnostic {
                 message: err_fmt!(
                     "patterns ",
                     ctor,
@@ -117,6 +123,7 @@ fn check(
                     rest.len(),
                     " more not covered",
                 ),
+                severity: Severity::Error,
                 span: expr.syntax().span(),
             });
         }

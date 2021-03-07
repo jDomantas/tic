@@ -20,12 +20,12 @@ fn main() {
             println!("test {} ... FAILED", path.display());
             if !outcome.extra_errors.is_empty() {
                 println!("compiler reported {} extra errors", outcome.extra_errors.len());
-                print_errors(&path.display().to_string(), &test.source, outcome.extra_errors.iter().cloned()).unwrap();
+                print_diagnostics(&path.display().to_string(), &test.source, outcome.extra_errors.iter().cloned()).unwrap();
                 println!();
             }
             if !outcome.missing_errors.is_empty() {
                 println!("compiler missed {} errors", outcome.missing_errors.len());
-                print_errors(&path.display().to_string(), &test.source, outcome.missing_errors.iter().cloned()).unwrap();
+                print_diagnostics(&path.display().to_string(), &test.source, outcome.missing_errors.iter().cloned()).unwrap();
                 println!();
             }
             if !outcome.wrong_messages.is_empty() {
@@ -36,15 +36,19 @@ fn main() {
                         actual.message += &format!(" (checked for: {:?})", expected.message);
                         actual
                     });
-                print_errors(&path.display().to_string(), &test.source, errors).unwrap();
+                print_diagnostics(&path.display().to_string(), &test.source, errors).unwrap();
                 println!();
             }
         }
     }
 }
 
-fn print_errors(file: &str, source: &str, errors: impl Iterator<Item = ticc::Error>) -> Result<()> {
-    let stream = cr::term::termcolor::StandardStream::stdout(cr::term::termcolor::ColorChoice::Auto);
+fn print_diagnostics(
+    file: &str,
+    source: &str,
+    diagnostics: impl Iterator<Item = ticc::Diagnostic>,
+) -> Result<()> {
+    let stream = cr::term::termcolor::StandardStream::stderr(cr::term::termcolor::ColorChoice::Auto);
     let mut stream = stream.lock();
     
     let chars = codespan_reporting::term::Chars {
@@ -73,11 +77,15 @@ fn print_errors(file: &str, source: &str, errors: impl Iterator<Item = ticc::Err
     };
     let mut files = cr::files::SimpleFiles::new();
     let file = files.add(file, source);
-    for error in errors {
-        let diagnostic = cr::diagnostic::Diagnostic::error()
-            .with_message(error.message)
+    for diagnostic in diagnostics {
+        let severity = match diagnostic.severity {
+            ticc::Severity::Warning => cr::diagnostic::Severity::Warning,
+            ticc::Severity::Error => cr::diagnostic::Severity::Error,
+        };
+        let diagnostic = cr::diagnostic::Diagnostic::new(severity)
+            .with_message(diagnostic.message)
             .with_labels(vec![
-                cr::diagnostic::Label::primary(file, error.span.source_range()),
+                cr::diagnostic::Label::primary(file, diagnostic.span.source_range()),
             ]);
         
         cr::term::emit(&mut stream, &config, &files, &diagnostic)?;

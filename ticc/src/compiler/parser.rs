@@ -6,7 +6,7 @@ use std::iter::Peekable;
 
 use ticc_syntax::{NodeId, SyntaxTree, SyntaxBuilder, TokenKind, TriviaKind};
 
-use crate::{RawError, Pos, Span};
+use crate::{RawDiagnostic, Pos, Severity, Span};
 use crate::compiler::{
     ir,
     lexer::{Lexer, TokenKind as LexerToken, lex},
@@ -28,12 +28,12 @@ pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
     }
     let eat_all = parser.at_eof();
     let events = parser.finish();
-    let (syntax, errors) = events_to_node(events, start_pos, source, eat_all);
+    let (syntax, diagnostics) = events_to_node(events, start_pos, source, eat_all);
     let span = syntax.root().full_span();
     ir::Item {
         syntax: super::syntax::ItemSyntax::new(syntax),
         span,
-        errors,
+        diagnostics,
         defs: Vec::new(),
         refs: Vec::new(),
         types: Default::default(),
@@ -45,7 +45,7 @@ enum Event {
         kind: SyntaxKind,
         forward_parent: Option<usize>,
     },
-    Error(RawError),
+    Error(RawDiagnostic),
     AddToken(TokenKind),
     FinishNode,
     Placeholder,
@@ -206,8 +206,9 @@ impl Parser<'_> {
             msg
         };
         let start_pos = self.start_pos;
-        self.events.push(Event::Error(RawError {
+        self.events.push(Event::Error(RawDiagnostic {
             span: self.tokens.peek().map(|t| t.span.from_origin(start_pos)).unwrap_or(self.current_pos),
+            severity: Severity::Error,
             message: err_fmt!(message),
         }));
     }
@@ -360,7 +361,7 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
     }
 }
 
-fn events_to_node(events: Vec<Event>, start_pos: Pos, source: &str, eat_all: bool) -> (SyntaxTree, Vec<RawError>) {
+fn events_to_node(events: Vec<Event>, start_pos: Pos, source: &str, eat_all: bool) -> (SyntaxTree, Vec<RawDiagnostic>) {
     let mut lexer = lex(source).peekable();
     let mut errors = Vec::new();
     let mut builder = SyntaxBuilder::new(start_pos, source);
@@ -588,7 +589,7 @@ mod tests {
 
         let items = parse_file(source);
         assert!(
-            items.iter().all(|i| i.errors.is_empty()),
+            items.iter().all(|i| i.diagnostics.is_empty()),
             "should have no errors in unmodified source",
         );
         assert_eq!(source, parse_roundtrip(source));
