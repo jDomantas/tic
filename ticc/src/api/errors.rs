@@ -5,8 +5,20 @@ use crate::api::TypePrinter;
 
 pub(crate) fn diagnostics<'a>(compilation: &'a mut Compilation) -> impl Iterator<Item = Diagnostic> + 'a {
     compilation.compile_to_end();
+    let lints = crate::lint::lints(compilation);
     let compilation = &*compilation;
     let mut printer = TypePrinter::new(compilation);
+    let lints = lints
+        .into_iter()
+        .map(|err| {
+            let message = format_message(compilation, &mut printer, &err.message);
+            Diagnostic {
+                message,
+                severity: err.severity,
+                span: err.span,
+            }
+        })
+        .collect::<Vec<_>>();
     compilation.items
         .iter()
         .flat_map(|item| item.diagnostics.iter())
@@ -18,6 +30,7 @@ pub(crate) fn diagnostics<'a>(compilation: &'a mut Compilation) -> impl Iterator
                 span: err.span,
             }
         })
+        .chain(lints)
 }
 
 fn format_message(

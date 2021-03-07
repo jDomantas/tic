@@ -2,6 +2,7 @@
 pub(crate) mod error;
 pub(crate) mod codegen;
 pub(crate) mod compiler;
+pub(crate) mod lint;
 pub(crate) mod api;
 
 use std::sync::Arc;
