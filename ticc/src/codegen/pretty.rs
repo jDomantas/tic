@@ -113,7 +113,17 @@ impl Format<'_> {
                 self.write_expr(a, Prec::Apply);
                 self.write_expr(b, Prec::Atom);
             }
-            cir::Expr::If(_, _, _) => {}
+            cir::Expr::If(a, b, c) => {
+                self.builder.add_token("if");
+                self.write_expr(a, Prec::Apply);
+                self.builder.add_token("then");
+                self.builder.add_large_newline();
+                self.write_expr(b, Prec::Min);
+                self.builder.add_large_newline();
+                self.builder.add_token("else");
+                self.builder.add_large_newline();
+                self.write_expr(c, Prec::Min);
+            }
             cir::Expr::Op(a, op, b) => {
                 self.write_expr(a, expr_prec.next());
                 self.builder.add_token(match op {
@@ -230,9 +240,31 @@ fn expr_node(e: &cir::Expr) -> Node {
         cir::Expr::Op(_, _, _) |
         cir::Expr::Lambda(_, _) |
         cir::Expr::Trap(_) => Node { large: false, indents: true },
-        cir::Expr::If(_, _, _) |
         cir::Expr::Match(_, _) => Node { large: true, indents: false },
         cir::Expr::Let(_, _, _) |
         cir::Expr::LetRec(_, _, _) => Node { large: true, indents: false },
+        cir::Expr::If(_, t, e) => {
+            Node {
+                large: !is_atom(t) || !is_atom(e),
+                indents: true,
+            }
+        }
+    }
+}
+
+fn is_atom(e: &cir::Expr) -> bool {
+    match e {
+        cir::Expr::Bool(_) |
+        cir::Expr::Int(_) |
+        cir::Expr::Name(_) |
+        cir::Expr::Trap(_) => true,
+        cir::Expr::Call(_, _) |
+        cir::Expr::If(_, _, _) |
+        cir::Expr::Op(_, _, _) |
+        cir::Expr::Lambda(_, _) |
+        cir::Expr::Match(_, _) |
+        cir::Expr::Construct(_, _) |
+        cir::Expr::Let(_, _, _) |
+        cir::Expr::LetRec(_, _, _) => false,
     }
 }
