@@ -21,12 +21,13 @@ pub(crate) fn lints(compilation: &mut Compilation) -> Vec<RawDiagnostic> {
     let mut lints = Vec::new();
     for item in &compilation.items {
         for d in &item.defs {
-            if !used.contains(&d.symbol) {
+            let name = &compilation.src[d.span.source_range()];
+            if !used.contains(&d.symbol) && name.chars().next() != Some('_') {
                 lints.push(RawDiagnostic {
                     span: d.span,
                     severity: Severity::Warning,
                     message: err_fmt!(d.symbol, " is never used"),
-                })
+                });
             }
         }
     }
