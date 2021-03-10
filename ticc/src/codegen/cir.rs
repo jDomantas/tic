@@ -13,13 +13,23 @@ pub(crate) struct Program<'a> {
     pub(crate) exports: Vec<Export>,
 }
 
-#[derive(Debug, Clone)]
+impl<'a> std::hash::Hash for Program<'a> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.exports.hash(state);
+        for &key in &self.order {
+            key.hash(state);
+            self.values[&key].hash(state);
+        }
+    }
+}
+
+#[derive(Debug, Hash, Clone)]
 pub(crate) struct Export {
     pub(crate) name: Name,
     pub(crate) public_name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Hash, Clone)]
 pub(crate) enum Expr {
     Bool(bool),
     Int(u64),
@@ -40,14 +50,14 @@ pub(crate) struct Ctor {
     pub(crate) name: Name,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Hash, Clone)]
 pub(crate) struct Branch {
     pub(crate) ctor: Ctor,
     pub(crate) bindings: Vec<Name>,
     pub(crate) value: Expr,
 }
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Hash, Copy, Clone)]
 pub(crate) enum Op {
     Add,
     Subtract,

@@ -5,11 +5,34 @@ mod merge_match;
 mod move_match;
 mod reduce_apply;
 
+use std::hash::{Hash, Hasher};
 use crate::codegen::{cir, Options};
 
 pub(crate) fn optimize(
     options: Options,
     verify: impl Fn(&cir::Program),
+    program: &mut cir::Program,
+) {
+    let mut hash = hash_program(program);
+    for _ in 0..10 {
+        optimize_iteration(options, &verify, program);
+        let new_hash = hash_program(program);
+        if new_hash == hash {
+            break;
+        }
+        hash = new_hash;
+    }
+}
+
+fn hash_program(program: &cir::Program) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    program.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn optimize_iteration(
+    options: Options,
+    verify: &impl Fn(&cir::Program),
     program: &mut cir::Program,
 ) {
     verify(program);
