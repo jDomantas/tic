@@ -1,6 +1,8 @@
 mod dce;
 mod inline;
-mod inline_lambda;
+mod inline_simple;
+mod merge_match;
+mod move_match;
 mod reduce_apply;
 
 use crate::codegen::{cir, Options};
@@ -15,8 +17,12 @@ pub(crate) fn optimize(
         inline::optimize(program);
     }
     verify(program);
-    if options.optimize_lambda {
-        inline_lambda::optimize(program);
+    if options.move_match {
+        move_match::optimize(program);
+    }
+    verify(program);
+    if options.inline_simple {
+        inline_simple::optimize(program);
     }
     verify(program);
     if options.reduce_apply {
@@ -31,6 +37,14 @@ pub(crate) fn optimize(
     verify(program);
     if options.remove_dead_code {
         dce::optimize(program);
+    }
+    verify(program);
+    if options.inline_simple {
+        inline_simple::optimize(program);
+    }
+    verify(program);
+    if options.inline_simple {
+        merge_match::optimize(program);
     }
     verify(program);
 }

@@ -11,9 +11,10 @@ pub struct Options {
     pub verify: bool,
     // optimization options
     pub inline: bool,
-    pub optimize_lambda: bool,
+    pub inline_simple: bool,
     pub reduce_apply: bool,
     pub remove_dead_code: bool,
+    pub move_match: bool,
 }
 
 impl Default for Options {
@@ -21,9 +22,10 @@ impl Default for Options {
         Options {
             verify: true,
             inline: true,
-            optimize_lambda: true,
+            inline_simple: true,
             reduce_apply: true,
             remove_dead_code: true,
+            move_match: true,
         }
     }
 }

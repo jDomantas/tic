@@ -13,8 +13,22 @@ pub(crate) fn optimize(program: &mut cir::Program) {
 
 fn optimize_expr(e: &mut cir::Expr) {
     if let cir::Expr::Let(x, b, r) = e {
+        let inline = if matches!(**b, cir::Expr::Lambda(..)) {
+            count_uses(r, x, true) == 1
+        } else {
+            count_uses(r, x, false) == 1
+        };
+        if inline {
+            let (name, value, mut rest) = take_apart(e);
+            let value = &mut Some(value);
+            replace_use(&mut rest, &name, value);
+            assert!(value.is_none());
+            *e = rest;
+        }
+    }
+    if let cir::Expr::Let(x, b, r) = e {
         if matches!(**b, cir::Expr::Lambda(..)) {
-            if count_uses(r, x) == 1 {
+            if count_uses(r, x, true) == 1 {
                 let (name, value, mut rest) = take_apart(e);
                 let value = &mut Some(value);
                 replace_use(&mut rest, &name, value);
@@ -33,7 +47,7 @@ fn take_apart(e: &mut cir::Expr) -> (cir::Name, cir::Expr, cir::Expr) {
     }
 }
 
-fn count_uses(e: &cir::Expr, name: &cir::Name) -> usize {
+fn count_uses(e: &cir::Expr, name: &cir::Name, lambda_single: bool) -> usize {
     match e {
         cir::Expr::Bool(_) |
         cir::Expr::Int(_) |
@@ -42,13 +56,19 @@ fn count_uses(e: &cir::Expr, name: &cir::Name) -> usize {
         cir::Expr::Call(a, b) |
         cir::Expr::Op(a, _, b) |
         cir::Expr::Let(_, a, b) |
-        cir::Expr::LetRec(_, a, b) => count_uses(a, name) + count_uses(b, name),
-        cir::Expr::If(a, b, c) => count_uses(a, name) + count_uses(b, name) + count_uses(c, name),
-        cir::Expr::Lambda(_, a) => count_uses(a, name),
+        cir::Expr::LetRec(_, a, b) => count_uses(a, name,lambda_single) + count_uses(b, name,lambda_single),
+        cir::Expr::If(a, b, c) => count_uses(a, name,lambda_single) + count_uses(b, name,lambda_single) + count_uses(c, name,lambda_single),
+        cir::Expr::Lambda(_, a) => if lambda_single {
+            count_uses(a, name,lambda_single)
+        } else if count_uses(a, name,lambda_single) == 0 {
+            0
+        } else {
+            1000
+        },
         cir::Expr::Match(a, b) => {
-            count_uses(a, name) + b.iter().map(|b| count_uses(&b.value, name)).sum::<usize>()
+            count_uses(a, name,lambda_single) + b.iter().map(|b| count_uses(&b.value, name,lambda_single)).sum::<usize>()
         }
-        cir::Expr::Construct(_, a) => a.iter().map(|e| count_uses(e, name)).sum(),
+        cir::Expr::Construct(_, a) => a.iter().map(|e| count_uses(e, name,lambda_single)).sum(),
     }
 }
 

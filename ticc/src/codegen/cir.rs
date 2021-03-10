@@ -35,7 +35,7 @@ pub(crate) enum Expr {
     Trap(String),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
 pub(crate) struct Ctor {
     pub(crate) name: Name,
 }
