@@ -85,7 +85,7 @@ fn main() {
         }
     } else if opt.emit_js {
         let ir = compilation.emit_js();
-        let output_file = opt.output.unwrap_or_else(|| path.with_extension("cir"));
+        let output_file = opt.output.unwrap_or_else(|| path.with_extension("js"));
         if output_file == Path::new("-") {
             println!("{}", ir);
         } else {
