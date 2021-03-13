@@ -53,9 +53,18 @@ impl<'a> Generator<'a> {
         let name = self.gen_name(item.name().unwrap());
         let body = self.gen_expr(item.expr().unwrap());
         self.define(name, body);
+        fn count_params(ty: node::Type<'_>) -> u32 {
+            if let node::Type::Fn(f) = ty {
+                1 + f.to().map(count_params).unwrap_or(0)
+            } else {
+                0
+            }
+        }
         if item.export_token().is_some() {
+            let params = item.type_().map(count_params).unwrap_or(0);
             self.program.exports.push(cir::Export {
                 name,
+                params,
                 public_name: item.name().unwrap().token().text().to_owned(),
             });
         }

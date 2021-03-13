@@ -26,6 +26,7 @@ impl<'a> std::hash::Hash for Program<'a> {
 #[derive(Debug, Hash, Clone)]
 pub(crate) struct Export {
     pub(crate) name: Name,
+    pub(crate) params: u32,
     pub(crate) public_name: String,
 }
 

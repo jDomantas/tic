@@ -1,5 +1,6 @@
 pub(crate) mod cir;
 mod gen_cir;
+mod gen_js;
 mod pretty;
 mod opt;
 mod verify;
@@ -31,10 +32,21 @@ impl Default for Options {
 }
 
 pub(crate) fn emit_ir(compilation: &mut Compilation) -> String {
+    let program = emit_raw_ir(compilation);
+    let pretty = pretty::pretty_print_cir(&program);
+    pretty
+}
+
+pub(crate) fn emit_js(compilation: &mut Compilation) -> String {
+    let program = emit_raw_ir(compilation);
+    let js = gen_js::generate_js(program);
+    js
+}
+
+fn emit_raw_ir(compilation: &mut Compilation) -> cir::Program<'_> {
     compilation.compile_to_end();
     let mut program = gen_cir::generate_cir(compilation);
     let verify = |p: &cir::Program| if compilation.options.verify { verify::verify(p); };
     opt::optimize(compilation.options, verify, &mut program);
-    let pretty = pretty::pretty_print_cir(&program);
-    pretty
+    program
 }

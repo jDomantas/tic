@@ -35,41 +35,26 @@ fn optimize_iteration(
     verify: &impl Fn(&cir::Program),
     program: &mut cir::Program,
 ) {
+    let optimizations: &[(fn(&mut _), bool)] = &[
+        (inline::optimize, options.inline),
+        (move_match::optimize, options.move_match),
+        (inline_simple::optimize, options.inline_simple),
+        (reduce_apply::optimize, options.reduce_apply),
+        // reductions rewrite `(\x -> e) a` to `let x = a; e`,
+        // so immediately inline again to simplify those
+        (inline::optimize, options.inline && options.reduce_apply),
+        (dce::optimize, options.remove_dead_code),
+        (inline_simple::optimize, options.inline_simple),
+        (merge_match::optimize, options.inline_simple),
+    ];
+
     verify(program);
-    if options.inline {
-        inline::optimize(program);
+    for &(opt, enabled) in optimizations {
+        if enabled {
+            opt(program);
+            verify(program);
+        }
     }
-    verify(program);
-    if options.move_match {
-        move_match::optimize(program);
-    }
-    verify(program);
-    if options.inline_simple {
-        inline_simple::optimize(program);
-    }
-    verify(program);
-    if options.reduce_apply {
-        reduce_apply::optimize(program);
-    }
-    verify(program);
-    // reductions rewrite `(\x -> e) a` to `let x = a; e`,
-    // so inline again to simplify those
-    if options.inline {
-        inline::optimize(program);
-    }
-    verify(program);
-    if options.remove_dead_code {
-        dce::optimize(program);
-    }
-    verify(program);
-    if options.inline_simple {
-        inline_simple::optimize(program);
-    }
-    verify(program);
-    if options.inline_simple {
-        merge_match::optimize(program);
-    }
-    verify(program);
 }
 
 fn walk_expressions<'a>(expr: &'a cir::Expr, mut f: impl FnMut(&'a cir::Expr)) {

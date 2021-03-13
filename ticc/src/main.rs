@@ -19,6 +19,9 @@ struct Opt {
     /// Emit intermediate representation
     #[structopt(long)]
     emit_ir: bool,
+    /// Emit js
+    #[structopt(long)]
+    emit_js: bool,
     #[structopt(long)]
     optimize: bool,
     #[structopt(long)]
@@ -70,6 +73,18 @@ fn main() {
 
     if opt.emit_ir {
         let ir = compilation.emit_ir();
+        let output_file = opt.output.unwrap_or_else(|| path.with_extension("cir"));
+        if output_file == Path::new("-") {
+            println!("{}", ir);
+        } else {
+            std::fs::write(&output_file, ir.as_bytes()).unwrap_or_else(|e| {
+                eprintln!("error: cannot write {}", path.display());
+                eprintln!("    {}", e);
+                std::process::exit(1);
+            });
+        }
+    } else if opt.emit_js {
+        let ir = compilation.emit_js();
         let output_file = opt.output.unwrap_or_else(|| path.with_extension("cir"));
         if output_file == Path::new("-") {
             println!("{}", ir);
