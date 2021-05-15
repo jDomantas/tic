@@ -102,7 +102,7 @@ impl Generator<'_> {
             ir::BlockEnd::Match(a, b) => {
                 self.output.push_str("switch (");
                 self.emit_name(a);
-                self.output.push_str(") {\n");
+                self.output.push_str("[0]) {\n");
                 self.indent += 1;
                 for b in b {
                     self.emit_indent();
