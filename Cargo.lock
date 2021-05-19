@@ -414,6 +414,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ticc-core"
+version = "0.1.0"
+dependencies = [
+ "formatter",
+]
+
+[[package]]
 name = "ticc-lsp"
 version = "0.1.0"
 dependencies = [

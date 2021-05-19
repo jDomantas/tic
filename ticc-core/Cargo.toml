@@ -1,0 +1,8 @@
+[package]
+name = "ticc-core"
+version = "0.1.0"
+authors = ["djade <djadenkus@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+formatter = { path = "../formatter" }
