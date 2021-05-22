@@ -1,0 +1,7 @@
+let _id : a -> a = \_x -> 1;
+--                        ^ ERROR: expected a, got int
+
+let _nest : int =
+    let id : a -> a = \_x -> 1;
+--                           ^ ERROR: expected a, got int
+    id 3;

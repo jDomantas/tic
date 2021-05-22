@@ -1,2 +1,2 @@
-let x : int = ?x;
-let f : a -> (b -> a) = \a -> ?fnBody;
+let _x : int = ?x;
+let _f : a -> (b -> a) = \_a -> ?fnBody;
