@@ -340,7 +340,6 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
         LexerToken::GreaterEq => TokenOrTrivia::Token(TokenKind::GreaterEq),
         LexerToken::EqEq => TokenOrTrivia::Token(TokenKind::EqEq),
         LexerToken::NotEq => TokenOrTrivia::Token(TokenKind::NotEq),
-        LexerToken::Cons => TokenOrTrivia::Token(TokenKind::Cons),
         LexerToken::ArgPipe => TokenOrTrivia::Token(TokenKind::ArgPipe),
         LexerToken::LeftParen => TokenOrTrivia::Token(TokenKind::LeftParen),
         LexerToken::RightParen => TokenOrTrivia::Token(TokenKind::RightParen),
@@ -479,7 +478,6 @@ impl ParseHint {
                 TokenKind::GreaterEq |
                 TokenKind::EqEq |
                 TokenKind::NotEq |
-                TokenKind::Cons |
                 TokenKind::ArgPipe => true,
                 _ => false,
             },

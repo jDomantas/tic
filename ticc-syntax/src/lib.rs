@@ -77,7 +77,6 @@ pub enum TokenKind {
     GreaterEq,
     EqEq,
     NotEq,
-    Cons,
     ArgPipe,
     Error,
 }
@@ -117,7 +116,6 @@ impl TokenKind {
             TokenKind::GreaterEq => "`>=`",
             TokenKind::EqEq => "`==`",
             TokenKind::NotEq => "`!=`",
-            TokenKind::Cons => "`::`",
             TokenKind::ArgPipe => "`|>`",
             TokenKind::LeftParen => "`(`",
             TokenKind::RightParen => "`)`",

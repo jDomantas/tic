@@ -144,7 +144,6 @@ fn binding_power(op: TokenKind) -> Option<(u32, u32)> {
         TokenKind::EqEq |
         TokenKind::NotEq => Some((3, 4)),
         TokenKind::ArgPipe => Some((1, 2)),
-        TokenKind::Cons => Some((5, 5)),
         _ => None,
     }
 }

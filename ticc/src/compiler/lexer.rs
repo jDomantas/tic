@@ -55,8 +55,6 @@ pub(crate) enum TokenKind {
     EqEq,
     #[token("!=")]
     NotEq,
-    #[token("::")]
-    Cons,
     #[token("|>")]
     ArgPipe,
     #[token("(")]

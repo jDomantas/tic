@@ -418,7 +418,6 @@ impl<'a> TypeChecker<'a> {
                         let b = self.allocate(Ty::Bool);
                         self.unify(expected, b, span);
                     }
-                    Some(TokenKind::Cons) => todo!("cons operator"),
                     Some(TokenKind::ArgPipe) => {
                         let arg = self.fresh_var();
                         if let Some(e) = expr.lhs() {

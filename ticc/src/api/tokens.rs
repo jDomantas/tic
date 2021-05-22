@@ -121,7 +121,6 @@ fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenK
         Syntax::GreaterEq |
         Syntax::EqEq |
         Syntax::NotEq |
-        Syntax::Cons |
         Syntax::ArgPipe => Some(TokenKind::Operator),
         Syntax::Number => Some(TokenKind::Number),
         Syntax::Ident => Some(match def_kind {

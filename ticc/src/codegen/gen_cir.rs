@@ -200,7 +200,6 @@ impl<'a> Generator<'a> {
                     TokenKind::GreaterEq => cir::Op::GreaterEq,
                     TokenKind::EqEq => cir::Op::Equal,
                     TokenKind::NotEq => cir::Op::NotEqual,
-                    TokenKind::Cons => todo!("codegen cons"),
                     TokenKind::ArgPipe => {
                         return cir::Expr::Call(Box::new(rhs), Box::new(lhs));
                     }
