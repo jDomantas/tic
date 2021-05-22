@@ -107,8 +107,6 @@ fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenK
         Syntax::Arrow |
         Syntax::LeftParen |
         Syntax::RightParen |
-        Syntax::LeftBracket |
-        Syntax::RightBracket |
         Syntax::Colon |
         Syntax::Semicolon |
         Syntax::Backslash => Some(TokenKind::Punctuation),

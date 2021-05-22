@@ -61,10 +61,6 @@ pub(crate) enum TokenKind {
     LeftParen,
     #[token(")")]
     RightParen,
-    #[token("[")]
-    LeftBracket,
-    #[token("]")]
-    RightBracket,
     #[token("\\")]
     Backslash,
     #[token("->")]

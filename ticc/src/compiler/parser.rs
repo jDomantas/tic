@@ -343,8 +343,6 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
         LexerToken::ArgPipe => TokenOrTrivia::Token(TokenKind::ArgPipe),
         LexerToken::LeftParen => TokenOrTrivia::Token(TokenKind::LeftParen),
         LexerToken::RightParen => TokenOrTrivia::Token(TokenKind::RightParen),
-        LexerToken::LeftBracket => TokenOrTrivia::Token(TokenKind::LeftBracket),
-        LexerToken::RightBracket => TokenOrTrivia::Token(TokenKind::RightBracket),
         LexerToken::Backslash => TokenOrTrivia::Token(TokenKind::Backslash),
         LexerToken::Arrow => TokenOrTrivia::Token(TokenKind::Arrow),
         LexerToken::Pipe => TokenOrTrivia::Token(TokenKind::Pipe),
@@ -461,7 +459,6 @@ impl ParseHint {
                 TokenKind::True |
                 TokenKind::False |
                 TokenKind::LeftParen |
-                TokenKind::LeftBracket |
                 TokenKind::Backslash |
                 TokenKind::Ident |
                 TokenKind::Hole |
