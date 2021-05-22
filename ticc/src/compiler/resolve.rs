@@ -145,12 +145,28 @@ fn resolve_type_case<'a>(
         } else {
             ctor_names.push(name_text);
             let symbol = sink.generate_symbol();
+            let mut fn_ty = ir::Type::Named(
+                type_symbol,
+                param_symbols.iter().map(|&s| ir::Type::Named(s, Vec::new())).collect(),
+            );
+            let whole_ty = fn_ty.clone();
+            for field in fields.iter().rev() {
+                let field_ty = match field {
+                    ir::Field::Rec => whole_ty.clone(),
+                    ir::Field::Type(t) => t.clone(),
+                };
+                fn_ty = ir::Type::Fn(
+                    Box::new(field_ty),
+                    Box::new(fn_ty),
+                );
+            }
             sink.record_def(ir::Def::new(
                 symbol,
                 ir::DefKind::Ctor {
                     type_symbol,
                     type_params: param_symbols.to_vec(),
                     fields,
+                    fn_ty,
                 },
                 ir::Visibility::Module,
                 name,

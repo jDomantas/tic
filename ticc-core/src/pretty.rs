@@ -56,6 +56,8 @@ impl Format<'_> {
         }
         self.builder.add_token("let");
         self.write_name(&def.name);
+        self.builder.add_token(":");
+        self.write_ty(&def.ty, Prec::Min);
         self.builder.add_token("=");
         self.write_expr(&def.value, Prec::Min);
         self.builder.add_sticky_token(";", Sticky::Prev);
@@ -190,7 +192,7 @@ impl Format<'_> {
                 match tys.as_slice() {
                     [] => {}
                     [first, rest @ ..] => {
-                        self.builder.add_sticky_token("[", Sticky::Next);
+                        self.builder.add_sticky_token("[", Sticky::Both);
                         self.write_ty(first, Prec::Min);
                         for t in rest {
                             self.builder.add_sticky_token(",", Sticky::Prev);
@@ -249,7 +251,7 @@ impl Format<'_> {
             ir::Expr::Pi(var, expr) => {
                 self.builder.add_token("Pi");
                 self.write_ty(&ir::Ty::Var(*var), Prec::Min);
-                self.builder.add_token(" -> ");
+                self.builder.add_token("->");
                 self.write_expr(expr, Prec::Min);
             }
             ir::Expr::PiApply(expr, ty) => {
@@ -271,7 +273,11 @@ impl Format<'_> {
         self.write_ty(&param.ty, Prec::Min);
     }
 
-    fn write_ty(&mut self, ty: &ir::Ty, _prec: Prec) {
+    fn write_ty(&mut self, ty: &ir::Ty, prec: Prec) {
+        let ty_prec = ty_prec(ty);
+        if ty_prec < prec {
+            self.builder.add_sticky_token("(", Sticky::Next);
+        }
         match ty {
             ir::Ty::Bool => {
                 self.builder.add_token("bool");
@@ -279,10 +285,41 @@ impl Format<'_> {
             ir::Ty::Int => {
                 self.builder.add_token("int");
             }
-            ir::Ty::Var(_) => todo!(),
-            ir::Ty::Named(_, _) => todo!(),
-            ir::Ty::Fn(_, _) => todo!(),
-            ir::Ty::Abs(_, _) => todo!(),
+            ir::Ty::Var(v) => {
+                self.builder.add_sticky_token("t", Sticky::Next);
+                self.write_number(v.0);
+            }
+            ir::Ty::Named(n, args) => {
+                self.write_name(n);
+                for t in args {
+                    self.write_ty(t, Prec::Atom);
+                }
+            }
+            ir::Ty::Fn(params, out) => {
+                self.builder.add_sticky_token("(", Sticky::Next);
+                match params.as_slice() {
+                    [] => {}
+                    [first, rest @ ..] => {
+                        self.write_ty(first, Prec::Min);
+                        for t in rest {
+                            self.builder.add_sticky_token(",", Sticky::Prev);
+                            self.write_ty(t, Prec::Min);
+                        }
+                    }
+                }
+                self.builder.add_sticky_token(")", Sticky::Prev);
+                self.builder.add_token("->");
+                self.write_ty(out, Prec::Min);
+            }
+            ir::Ty::Abs(var, ty) => {
+                self.builder.add_token("for");
+                self.write_ty(&ir::Ty::Var(*var), Prec::Min);
+                self.builder.add_token(".");
+                self.write_ty(ty, Prec::Min);
+            }
+        }
+        if ty_prec < prec {
+            self.builder.add_sticky_token(")", Sticky::Prev);
         }
     }
 }
@@ -354,5 +391,16 @@ fn is_atom(e: &ir::Expr) -> bool {
         ir::Expr::Let(_, _, _, _) |
         ir::Expr::LetRec(_, _, _, _) |
         ir::Expr::Pi(_, _) => false,
+    }
+}
+
+fn ty_prec(ty: &ir::Ty) -> Prec {
+    match ty {
+        ir::Ty::Bool |
+        ir::Ty::Int |
+        ir::Ty::Var(_) => Prec::Atom,
+        ir::Ty::Named(_, _) |
+        ir::Ty::Fn(_, _) |
+        ir::Ty::Abs(_, _) => Prec::Apply,
     }
 }

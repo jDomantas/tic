@@ -75,6 +75,7 @@ pub struct TyCase {
 pub struct ValueDef {
     pub name: Name,
     pub export_name: Option<String>,
+    pub ty: Ty,
     pub value: Expr,
 }
 

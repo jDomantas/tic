@@ -37,6 +37,7 @@ pub(crate) fn parse_one_item(source: &str, start_pos: Pos) -> ir::Item {
         defs: Vec::new(),
         refs: Vec::new(),
         types: Default::default(),
+        type_insts: Default::default(),
     }
 }
 

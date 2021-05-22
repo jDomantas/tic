@@ -410,6 +410,7 @@ dependencies = [
  "internal-iterator",
  "logos",
  "structopt",
+ "ticc-core",
  "ticc-syntax",
 ]
 

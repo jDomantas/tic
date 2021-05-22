@@ -11,6 +11,7 @@ pub(crate) struct Item {
     pub(crate) defs: Vec<Def>,
     pub(crate) refs: Vec<Ref>,
     pub(crate) types: HashMap<NodeId, Type>,
+    pub(crate) type_insts: HashMap<NodeId, Vec<Type>>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
@@ -26,6 +27,7 @@ pub(crate) enum DefKind {
         type_symbol: Symbol,
         type_params: Vec<Symbol>,
         fields: Vec<Field>,
+        fn_ty: Type,
     },
     Type {
         param_count: usize,

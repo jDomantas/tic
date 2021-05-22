@@ -19,7 +19,10 @@ pub fn assert_valid(program: &ir::Program<'_>) {
         validator.check_ty_def(ty_def);
     }
     for def in &program.values {
+        validator.check_ty(&def.ty);
         let ty = validator.check_expr(&def.value);
+        assert_fits(&ty, &def.ty);
+        validator.names.enter(def.name);
         validator.types.insert(def.name, ty);
     }
 }
@@ -244,7 +247,7 @@ impl Validator {
                         self.names.exit(bind);
                     }
                 }
-                ty.unwrap()
+                ty.expect("match must have at least one branch")
             }
             ir::Expr::Construct(ctor, tys, fields) => {
                 let ctor = self.ctors[ctor].clone();
@@ -310,7 +313,30 @@ impl Validator {
 }
 
 fn assert_fits(actual: &ir::Ty, expected: &ir::Ty) {
-    if actual != expected {
+    fn check(actual: &ir::Ty, expected: &ir::Ty, pairs: &mut Vec<(ir::TyVar, ir::TyVar)>) -> bool {
+        match (actual, expected) {
+            (ir::Ty::Bool, ir::Ty::Bool) |
+            (ir::Ty::Int, ir::Ty::Int) => true,
+            (ir::Ty::Var(a), ir::Ty::Var(b)) => {
+                a == b || pairs.contains(&(*a, *b))
+            }
+            (ir::Ty::Named(a, ax), ir::Ty::Named(b, bx)) => {
+                a == b && ax.len() == bx.len() && ax.iter().zip(bx).all(|(a, b)| check(a, b, pairs))
+            }
+            (ir::Ty::Fn(a1, a2), ir::Ty::Fn(b1, b2)) => {
+                a1.len() == b1.len()
+                && a1.iter().zip(b1).all(|(a, b)| check(a, b, pairs))
+                && check(a2, b2, pairs)
+            }
+            (ir::Ty::Abs(a, at), ir::Ty::Abs(b, bt)) => {
+                pairs.push((*a, *b));
+                check(at, bt, pairs)
+            }
+            _ => false,
+        }
+    }
+    let mut pairs = Vec::new();
+    if !check(actual, expected, &mut pairs) {
         panic!("expected {:?}, got {:?}", expected, actual);
     }
 }

@@ -23,24 +23,9 @@ fn def_info(compilation: &Compilation, pos: Pos) -> Option<Info> {
             type_printer.print_type(ty, &mut doc);
             doc
         }
-        ir::DefKind::Ctor { type_symbol, type_params, fields } => {
+        ir::DefKind::Ctor { fn_ty, .. } => {
             let mut doc = format!("{}: ", name);
-            for field in fields.iter() {
-                match field {
-                    ir::Field::Rec => {
-                        doc += "rec";
-                    }
-                    ir::Field::Type(ty) => {
-                        type_printer.print_type_prec(ty, 1, &mut doc);
-                    }
-                }
-                doc.push_str(" -> ");
-            }
-            type_printer.print_type(&ir::Type::Named(*type_symbol, Vec::new()), &mut doc);
-            for param in type_params {
-                doc.push(' ');
-                type_printer.print_type(&ir::Type::Named(*param, Vec::new()), &mut doc);
-            }
+            type_printer.print_type(fn_ty, &mut doc);
             doc
         }
         ir::DefKind::Type { param_count, .. } => {

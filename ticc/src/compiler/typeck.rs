@@ -12,6 +12,7 @@ pub(crate) fn type_check(item: &mut ir::Item, defs: &DefSet) {
         ctors: HashMap::new(),
         symbol_types: HashMap::new(),
         diagnostics: &mut item.diagnostics,
+        insts: HashMap::new(),
     };
     let mut symbol_vars = HashMap::new();
     for r in item.refs.iter().copied().chain(item.defs.iter().map(|d| d.to_ref())) {
@@ -22,26 +23,14 @@ pub(crate) fn type_check(item: &mut ir::Item, defs: &DefSet) {
                 if let ir::Type::Infer = ty {
                     let var = *symbol_vars.entry(def.symbol).or_insert_with(|| checker.fresh_var());
                     checker.symbol_types.insert(r.symbol, NameTy::Infer(var));
+                    // println!("symbol given {:?}", NameTy::Infer(var));
                 } else {
+                    // println!("symbol given {:?}", ty);
                     checker.symbol_types.insert(r.symbol, NameTy::Inst(ty, type_vars));
                 }
             }
-            ir::DefKind::Ctor { type_symbol, type_params, fields } => {
-                let mut ty = ir::Type::Named(
-                    *type_symbol,
-                    type_params.iter().copied().map(|s| ir::Type::Named(s, Vec::new())).collect(),
-                );
-                let whole = ty.clone();
-                for field in fields.iter().rev() {
-                    ty = ir::Type::Fn(
-                        Box::new(match field {
-                            ir::Field::Rec => whole.clone(),
-                            ir::Field::Type(t) => t.clone(),
-                        }),
-                        Box::new(ty),
-                    );
-                }
-                checker.symbol_types.insert(r.symbol, NameTy::InstOwn(ty, type_params));
+            ir::DefKind::Ctor { type_symbol, type_params, fields, fn_ty } => {
+                checker.symbol_types.insert(r.symbol, NameTy::Inst(fn_ty, type_params));
                 checker.ctors.insert(r.symbol, Ctor {
                     type_symbol: *type_symbol,
                     type_vars: type_params,
@@ -75,19 +64,25 @@ pub(crate) fn type_check(item: &mut ir::Item, defs: &DefSet) {
     for (&node, &ty) in &checker.expr_types {
         item.types.insert(node, checker.unifier.to_ir(ty));
     }
+    for (&node, tys) in &checker.insts {
+        let tys = tys.iter().map(|&ty| checker.unifier.to_ir(ty)).collect();
+        item.type_insts.insert(node, tys);
+    }
     for def in &mut item.defs {
         if let ir::DefKind::Value { ty, .. } = &mut def.kind {
+            // println!("typeck, ty: {:?}", ty);
             if let Some(&NameTy::Infer(inf)) = checker.symbol_types.get(&def.symbol) {
                 *ty = checker.unifier.to_ir(inf);
+                // println!("replaced with {:?}", ty);
             }
         }
     }
 }
 
+#[derive(Debug)]
 enum NameTy<'a> {
     Infer(TyIdx),
     Inst(&'a ir::Type, &'a [ir::Symbol]),
-    InstOwn(ir::Type, &'a [ir::Symbol]),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -177,6 +172,11 @@ impl Unifier {
         if final_1 == final_2 {
             return Ok(());
         }
+        // println!(
+        //     "unify {:?} ~ {:?}",
+        //     self.normalize(final_1).as_ref().map(|x| x as &dyn std::fmt::Debug).unwrap_or(&final_1),
+        //     self.normalize(final_2).as_ref().map(|x| x as &dyn std::fmt::Debug).unwrap_or(&final_2),
+        // );
         match (self.normalize(final_1), self.normalize(final_2)) {
             (Some(Ty::Error), Some(_)) |
             (Some(_), Some(Ty::Error)) |
@@ -307,6 +307,7 @@ struct TypeChecker<'a> {
     ctors: HashMap<ir::Symbol, Ctor<'a>>,
     symbol_types: HashMap<ir::Symbol, NameTy<'a>>,
     diagnostics: &'a mut Vec<RawDiagnostic>,
+    insts: HashMap<NodeId, Vec<TyIdx>>,
 }
 
 impl<'a> TypeChecker<'a> {
@@ -349,13 +350,6 @@ impl<'a> TypeChecker<'a> {
                     .collect::<Vec<_>>();
                 unifier.instantiate(ty, &inst)
             }
-            Some(NameTy::InstOwn(ty, vars)) => {
-                let inst = vars
-                    .iter()
-                    .map(|v| (*v, unifier.fresh_var()))
-                    .collect::<Vec<_>>();
-                unifier.instantiate(ty, &inst)
-            }
             None => self.allocate(Ty::Error),
         }
     }
@@ -363,11 +357,25 @@ impl<'a> TypeChecker<'a> {
     fn lookup_name_opaque(&mut self, symbol: ir::Symbol) -> TyIdx {
         match self.symbol_types.get(&symbol) {
             Some(NameTy::Infer(idx)) => *idx,
-            Some(NameTy::Inst(ty, _)) => {
-                self.unifier.instantiate(ty, &[])
-            }
-            Some(NameTy::InstOwn(ty, _)) => {
-                self.unifier.instantiate(ty, &[])
+            Some(NameTy::Inst(ty, _)) => self.unifier.instantiate(ty, &[]),
+            None => self.allocate(Ty::Error),
+        }
+    }
+
+    fn instantiate_name(&mut self, symbol: ir::Symbol, syntax: NodeId) -> TyIdx {
+        let unifier = &mut self.unifier;
+        match self.symbol_types.get(&symbol) {
+            Some(NameTy::Infer(idx)) => {
+                self.insts.insert(syntax, Vec::new());
+                *idx
+            },
+            Some(NameTy::Inst(ty, vars)) => {
+                let inst = vars
+                    .iter()
+                    .map(|v| (*v, unifier.fresh_var()))
+                    .collect::<Vec<_>>();
+                self.insts.insert(syntax, inst.iter().map(|&(_, x)| x).collect());
+                unifier.instantiate(ty, &inst)
             }
             None => self.allocate(Ty::Error),
         }
@@ -381,7 +389,7 @@ impl<'a> TypeChecker<'a> {
                 if let Some(name) = expr.name() {
                     let span = name.token().span();
                     if let Some(&sym) = self.symbols.get(&name.syntax().id()) {
-                        let ty = self.lookup_name(sym);
+                        let ty = self.instantiate_name(sym, name.syntax().id());
                         self.unify(expected, ty, span);
                     }
                 }

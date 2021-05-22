@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::collections::HashMap;
 use formatter::{FormatBuilder, Node, Sticky};
 use crate::codegen::cir;
