@@ -360,6 +360,19 @@ impl<'a> TypeChecker<'a> {
         }
     }
 
+    fn lookup_name_opaque(&mut self, symbol: ir::Symbol) -> TyIdx {
+        match self.symbol_types.get(&symbol) {
+            Some(NameTy::Infer(idx)) => *idx,
+            Some(NameTy::Inst(ty, _)) => {
+                self.unifier.instantiate(ty, &[])
+            }
+            Some(NameTy::InstOwn(ty, _)) => {
+                self.unifier.instantiate(ty, &[])
+            }
+            None => self.allocate(Ty::Error),
+        }
+    }
+
     fn check_expr(&mut self, expr: node::Expr<'_>, expected: TyIdx) {
         let span = expr.syntax().span();
         self.expr_types.insert(expr.syntax().id(), expected);
@@ -431,7 +444,7 @@ impl<'a> TypeChecker<'a> {
             node::Expr::Let(expr) => {
                 let bound_ty = if let Some(name) = expr.name() {
                     if let Some(&sym) = self.symbols.get(&name.syntax().id()) {
-                        self.lookup_name(sym)
+                        self.lookup_name_opaque(sym)
                     } else {
                         self.allocate(Ty::Error)
                     }
