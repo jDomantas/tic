@@ -266,11 +266,9 @@ impl Validator {
                     tys.clone(),
                 )
             }
-            ir::Expr::Let(n, ty, a, b) => {
-                self.check_ty(ty);
-                self.types.insert(*n, ty.clone());
+            ir::Expr::Let(n, a, b) => {
                 let a = self.check_expr(a);
-                assert_fits(&a, ty);
+                self.types.insert(*n, a);
                 self.names.enter(*n);
                 let b = self.check_expr(b);
                 self.names.exit(*n);

@@ -11,7 +11,7 @@ fn optimize_expr(expr: &mut ir::Expr) {
     if let ir::Expr::LetRec(f, _, def, _) = expr {
         if let ir::Expr::Lambda(_, body) = &mut **def {
             let body = unwrap_lambdas(body);
-            if let ir::Expr::Let(_, _, val, rest) = body {
+            if let ir::Expr::Let(_, val, rest) = body {
                 if let ir::Expr::Lambda(_, _) = &**rest {
                     if is_simple(val, *f) {
                         move_let(body);
@@ -26,12 +26,12 @@ fn optimize_expr(expr: &mut ir::Expr) {
 
 fn move_let(expr: &mut ir::Expr) {
     match std::mem::replace(expr, ir::Expr::Trap(String::new(), ir::Ty::Int)) {
-        ir::Expr::Let(bind, ty, val, rest) => {
+        ir::Expr::Let(bind, val, rest) => {
             match *rest {
                 ir::Expr::Lambda(params, body) => {
                     *expr = ir::Expr::Lambda(
                         params,
-                        Box::new(ir::Expr::Let(bind, ty, val, body)),
+                        Box::new(ir::Expr::Let(bind, val, body)),
                     );
                 }
                 _ => unreachable!(),
@@ -58,7 +58,7 @@ fn is_simple(expr: &ir::Expr, allowed_fn: ir::Name) -> bool {
         ir::Expr::If(_, _, _) |
         ir::Expr::Op(_, _, _) |
         ir::Expr::Lambda(_, _) |
-        ir::Expr::Let(_, _, _, _) |
+        ir::Expr::Let(_, _, _) |
         ir::Expr::LetRec(_, _, _, _) => false,
         ir::Expr::Construct(_, _, f) => f.iter().all(|e| is_simple(e, allowed_fn)),
         ir::Expr::Match(x, br) => is_simple(x, allowed_fn) && br.iter().all(|b| is_simple(&b.value, allowed_fn)),

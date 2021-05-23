@@ -214,11 +214,9 @@ impl Format<'_> {
                 }
                 self.builder.add_sticky_token(")", Sticky::Prev);
             }
-            ir::Expr::Let(x, ty, v, e) => {
+            ir::Expr::Let(x, v, e) => {
                 self.builder.add_token("let");
                 self.write_name(x);
-                self.builder.add_token(":");
-                self.write_ty(ty, Prec::Min);
                 self.builder.start_node(Node { large: false, indents: true });
                 self.builder.add_token("=");
                 self.write_expr(v, Prec::Min);
@@ -343,7 +341,7 @@ fn expr_prec(e: &ir::Expr) -> Prec {
         ir::Expr::If(_, _, _) |
         ir::Expr::Lambda(_, _) |
         ir::Expr::Match(_, _) |
-        ir::Expr::Let(_, _, _, _) |
+        ir::Expr::Let(_, _, _) |
         ir::Expr::LetRec(_, _, _, _) => Prec::Min,
         ir::Expr::Trap(_, _) => Prec::Atom,
         ir::Expr::Pi(_, _) => Prec::Min,
@@ -364,7 +362,7 @@ fn expr_node(e: &ir::Expr) -> Node {
         ir::Expr::Pi(_, _) |
         ir::Expr::PiApply(_, _) => Node { large: false, indents: true },
         ir::Expr::Match(_, _) => Node { large: true, indents: false },
-        ir::Expr::Let(_, _, _, _) |
+        ir::Expr::Let(_, _, _) |
         ir::Expr::LetRec(_, _, _, _) => Node { large: true, indents: false },
         ir::Expr::If(_, t, e) => {
             Node {
@@ -388,7 +386,7 @@ fn is_atom(e: &ir::Expr) -> bool {
         ir::Expr::Lambda(_, _) |
         ir::Expr::Match(_, _) |
         ir::Expr::Construct(_, _, _) |
-        ir::Expr::Let(_, _, _, _) |
+        ir::Expr::Let(_, _, _) |
         ir::Expr::LetRec(_, _, _, _) |
         ir::Expr::Pi(_, _) => false,
     }

@@ -12,7 +12,7 @@ pub(crate) fn optimize(program: &mut ir::Program) {
 }
 
 fn optimize_expr(e: &mut ir::Expr) {
-    if let ir::Expr::Let(x, _, b, r) = e {
+    if let ir::Expr::Let(x, b, r) = e {
         let inline = if matches!(**b, ir::Expr::Lambda(..)) {
             count_uses(r, x, true) == 1
         } else {
@@ -26,7 +26,7 @@ fn optimize_expr(e: &mut ir::Expr) {
             *e = rest;
         }
     }
-    if let ir::Expr::Let(x, _, b, r) = e {
+    if let ir::Expr::Let(x, b, r) = e {
         if matches!(**b, ir::Expr::Lambda(..)) {
             if count_uses(r, x, true) == 1 {
                 let (name, value, mut rest) = take_apart(e);
@@ -40,7 +40,7 @@ fn optimize_expr(e: &mut ir::Expr) {
 }
 
 fn take_apart(e: &mut ir::Expr) -> (ir::Name, ir::Expr, ir::Expr) {
-    if let ir::Expr::Let(x, _, b, r) = std::mem::replace(e, ir::Expr::Trap(String::new(), ir::Ty::Int)) {
+    if let ir::Expr::Let(x, b, r) = std::mem::replace(e, ir::Expr::Trap(String::new(), ir::Ty::Int)) {
         (x, *b, *r)
     } else {
         unreachable!()
@@ -61,7 +61,7 @@ fn count_uses(e: &ir::Expr, name: &ir::Name, lambda_single: bool) -> usize {
             total
         }
         ir::Expr::Op(a, _, b) |
-        ir::Expr::Let(_, _, a, b) |
+        ir::Expr::Let(_, a, b) |
         ir::Expr::LetRec(_, _, a, b) => count_uses(a, name, lambda_single) + count_uses(b, name, lambda_single),
         ir::Expr::If(a, b, c) => count_uses(a, name, lambda_single) + count_uses(b, name, lambda_single) + count_uses(c, name, lambda_single),
         ir::Expr::Lambda(_, a) => if lambda_single {

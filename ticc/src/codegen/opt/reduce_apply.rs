@@ -32,7 +32,7 @@ fn take_apart_call(e: &mut ir::Expr) -> (ir::Expr, Vec<ir::Expr>) {
 fn can_apply(e: &mut ir::Expr) -> bool {
     match e {
         ir::Expr::Lambda(_, _) => true,
-        ir::Expr::Let(_, _, _, e) => can_apply(e),
+        ir::Expr::Let(_, _, e) => can_apply(e),
         _ => false,
     }
 }
@@ -44,11 +44,11 @@ fn apply(e: &mut ir::Expr, args: Vec<ir::Expr>) {
             assert_eq!(params.len(), args.len());
             let mut result = body;
             for (param, arg) in params.into_iter().zip(args).rev() {
-                result = ir::Expr::Let(param.name, param.ty, Box::new(arg), Box::new(result));
+                result = ir::Expr::Let(param.name, Box::new(arg), Box::new(result));
             }
             *e = result;
         },
-        ir::Expr::Let(_, _, _, e) => apply(e, args),
+        ir::Expr::Let(_, _, e) => apply(e, args),
         _ => unreachable!(),
     }
 }

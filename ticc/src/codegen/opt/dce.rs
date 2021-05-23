@@ -17,7 +17,7 @@ pub(crate) fn optimize(program: &mut ir::Program) {
         all_defs.insert(v.name, &v.value);
         opt::walk_expressions(&v.value, |e| {
             match e {
-                ir::Expr::Let(n, _, v, _) => {
+                ir::Expr::Let(n, v, _) => {
                     all_defs.insert(*n, v);
                 }
                 _ => {}
@@ -43,7 +43,7 @@ pub(crate) fn optimize(program: &mut ir::Program) {
 fn remove_unused_locals(expr: &mut ir::Expr, used: &HashSet<ir::Name>) {
     walk_expressions_mut(expr, |e| {
         loop {
-            if let ir::Expr::Let(n, _, _, r) = e {
+            if let ir::Expr::Let(n, _, r) = e {
                 if !used.contains(&n) {
                     let r = std::mem::replace(&mut **r, ir::Expr::Trap(String::new(), ir::Ty::Bool));
                     *e = r;

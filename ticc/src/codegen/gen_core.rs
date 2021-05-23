@@ -350,8 +350,7 @@ impl<'a, 'b> Generator<'a, 'b> {
             node::Expr::Let(e) => {
                 let name = self.gen_name(e.name().unwrap());
                 let sym = self.name_symbols[&e.name().unwrap().syntax().id()];
-                let (vars, ty) = self.symbol_types[&sym];
-                let ty = self.inst_ty(vars, ty);
+                let (vars, _) = self.symbol_types[&sym];
                 self.fresh_inst(vars);
                 let mut value = self.gen_expr(e.value().unwrap());
                 for &var in vars.iter().rev() {
@@ -359,7 +358,7 @@ impl<'a, 'b> Generator<'a, 'b> {
                     value = cir::Expr::Pi(var, Box::new(value));
                 }
                 let rest = self.gen_expr(e.rest().unwrap());
-                cir::Expr::Let(name, ty, Box::new(value), Box::new(rest))
+                cir::Expr::Let(name, Box::new(value), Box::new(rest))
             }
             node::Expr::Match(e) => {
                 let discr = self.gen_expr(e.discr().unwrap());
@@ -423,10 +422,6 @@ impl<'a, 'b> Generator<'a, 'b> {
                 assert_eq!(param_ty.len(), 1);
                 let param_ty = param_ty.remove(0);
                 let real_param_name = self.gen_name(l.param().unwrap());
-                let real_param_sym = self.name_symbols[&l.param().unwrap().syntax().id()];
-                let (real_param_vars, real_param_ty) = self.symbol_types[&real_param_sym];
-                assert_eq!(real_param_vars.len(), 0, "lambda params must be monomorphic");
-                let real_param_ty = self.gen_ty(real_param_ty);
                 let temp_param_name = self.program.names.next_synthetic();
                 let fold_name = self.program.names.new_fresh("fold");
                 let body = self.gen_expr(l.body().unwrap());
@@ -476,7 +471,6 @@ impl<'a, 'b> Generator<'a, 'b> {
                         }],
                         Box::new(cir::Expr::Let(
                             real_param_name,
-                            real_param_ty,
                             Box::new(rec_fold),
                             Box::new(body),
                         )),

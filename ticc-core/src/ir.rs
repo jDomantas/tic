@@ -12,7 +12,7 @@ pub enum Expr {
     Lambda(Vec<LambdaParam>, Box<Expr>),
     Match(Box<Expr>, Vec<Branch>),
     Construct(Name, Vec<Ty>, Vec<Expr>),
-    Let(Name, Ty, Box<Expr>, Box<Expr>),
+    Let(Name, Box<Expr>, Box<Expr>),
     LetRec(Name, Ty, Box<Expr>, Box<Expr>),
     Pi(TyVar, Box<Expr>),
     PiApply(Box<Expr>, Ty),
