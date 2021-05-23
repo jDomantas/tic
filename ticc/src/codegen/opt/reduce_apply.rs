@@ -2,17 +2,17 @@
 //! -->
 //!     let a = c; b
 
-use crate::codegen::cir;
+use ticc_core::ir;
 use crate::codegen::opt;
 
-pub(crate) fn optimize(program: &mut cir::Program) {
-    for (_, e) in &mut program.values {
-        opt::walk_expressions_postorder_mut(e, optimize_expr);
+pub(crate) fn optimize(program: &mut ir::Program) {
+    for v in &mut program.values {
+        opt::walk_expressions_postorder_mut(&mut v.value, optimize_expr);
     }
 }
 
-fn optimize_expr(e: &mut cir::Expr) {
-    if let cir::Expr::Call(a, _) = e {
+fn optimize_expr(e: &mut ir::Expr) {
+    if let ir::Expr::Call(a, _) = e {
         if can_apply(a) {
             let (mut a, b) = take_apart_call(e);
             apply(&mut a, b);
@@ -21,35 +21,40 @@ fn optimize_expr(e: &mut cir::Expr) {
     }
 }
 
-fn take_apart_call(e: &mut cir::Expr) -> (cir::Expr, cir::Expr) {
-    if let cir::Expr::Call(a, b) = std::mem::replace(e, cir::Expr::Trap(String::new())) {
-        (*a, *b)
+fn take_apart_call(e: &mut ir::Expr) -> (ir::Expr, Vec<ir::Expr>) {
+    if let ir::Expr::Call(a, b) = std::mem::replace(e, ir::Expr::Trap(String::new(), ir::Ty::Int)) {
+        (*a, b)
     } else {
         unreachable!()
     }
 }
 
-fn can_apply(e: &mut cir::Expr) -> bool {
+fn can_apply(e: &mut ir::Expr) -> bool {
     match e {
-        cir::Expr::Lambda(_, _) => true,
-        cir::Expr::Let(_, _, e) => can_apply(e),
+        ir::Expr::Lambda(_, _) => true,
+        ir::Expr::Let(_, _, _, e) => can_apply(e),
         _ => false,
     }
 }
 
-fn apply(e: &mut cir::Expr, arg: cir::Expr) {
+fn apply(e: &mut ir::Expr, args: Vec<ir::Expr>) {
     match e {
-        cir::Expr::Lambda(_, _) => {
-            let (param, body) = take_apart_lambda(e);
-            *e = cir::Expr::Let(param, Box::new(arg), Box::new(body));
+        ir::Expr::Lambda(_, _) => {
+            let (params, body) = take_apart_lambda(e);
+            assert_eq!(params.len(), args.len());
+            let mut result = body;
+            for (param, arg) in params.into_iter().zip(args).rev() {
+                result = ir::Expr::Let(param.name, param.ty, Box::new(arg), Box::new(result));
+            }
+            *e = result;
         },
-        cir::Expr::Let(_, _, e) => apply(e, arg),
+        ir::Expr::Let(_, _, _, e) => apply(e, args),
         _ => unreachable!(),
     }
 }
 
-fn take_apart_lambda(e: &mut cir::Expr) -> (cir::Name, cir::Expr) {
-    if let cir::Expr::Lambda(n, a) = std::mem::replace(e, cir::Expr::Trap(String::new())) {
+fn take_apart_lambda(e: &mut ir::Expr) -> (Vec<ir::LambdaParam>, ir::Expr) {
+    if let ir::Expr::Lambda(n, a) = std::mem::replace(e, ir::Expr::Trap(String::new(), ir::Ty::Int)) {
         (n, *a)
     } else {
         unreachable!()
