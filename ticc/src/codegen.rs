@@ -4,7 +4,7 @@ mod gen_core;
 mod gen_js;
 mod pretty;
 mod opt;
-mod verify;
+// mod verify;
 
 use crate::Compilation;
 
@@ -46,19 +46,17 @@ pub(crate) fn emit_js(compilation: &mut Compilation) -> String {
 
 fn emit_raw_ir(compilation: &mut Compilation) -> cir::Program<'_> {
     compilation.compile_to_end();
-    let mut program = gen_cir::generate_cir(compilation);
-    let verify = |p: &cir::Program| if compilation.options.verify { verify::verify(p); };
-    opt::optimize(compilation.options, verify, &mut program);
+    let program = gen_cir::generate_cir(compilation);
+    // let verify = |p: &cir::Program| if compilation.options.verify { verify::verify(p); };
+    // opt::optimize(compilation.options, verify, &mut program);
     program
 }
 
 fn emit_raw_ir2(compilation: &mut Compilation) -> ticc_core::ir::Program<'_> {
     compilation.compile_to_end();
-    let program = gen_core::generate_core(compilation);
-    if compilation.options.verify {
-        ticc_core::assert_valid(&program);
-    }
-    // let verify = |p: &cir::Program| if compilation.options.verify { verify::verify(p); };
-    // opt::optimize(compilation.options, verify, &mut program);
+    let mut program = gen_core::generate_core(compilation);
+    let verify = |p: &ticc_core::ir::Program| if compilation.options.verify { ticc_core::assert_valid(p); };
+    verify(&program);
+    opt::optimize(compilation.options, verify, &mut program);
     program
 }

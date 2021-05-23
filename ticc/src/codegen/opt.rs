@@ -1,17 +1,18 @@
 mod dce;
-mod inline;
-mod inline_simple;
-mod merge_match;
-mod move_match;
-mod reduce_apply;
+// mod inline;
+// mod inline_simple;
+// mod merge_match;
+// mod move_match;
+// mod reduce_apply;
 
 use std::hash::{Hash, Hasher};
-use crate::codegen::{cir, Options};
+use ticc_core::ir;
+use crate::codegen::Options;
 
 pub(crate) fn optimize(
     options: Options,
-    verify: impl Fn(&cir::Program),
-    program: &mut cir::Program,
+    verify: impl Fn(&ir::Program<'_>),
+    program: &mut ir::Program,
 ) {
     let mut hash = hash_program(program);
     for _ in 0..10 {
@@ -24,7 +25,7 @@ pub(crate) fn optimize(
     }
 }
 
-fn hash_program(program: &cir::Program) -> u64 {
+fn hash_program(program: &ir::Program) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     program.hash(&mut hasher);
     hasher.finish()
@@ -32,20 +33,20 @@ fn hash_program(program: &cir::Program) -> u64 {
 
 fn optimize_iteration(
     options: Options,
-    verify: &impl Fn(&cir::Program),
-    program: &mut cir::Program,
+    verify: &impl Fn(&ir::Program),
+    program: &mut ir::Program,
 ) {
     let optimizations: &[(fn(&mut _), bool)] = &[
-        (inline::optimize, options.inline),
-        (move_match::optimize, options.move_match),
-        (inline_simple::optimize, options.inline_simple),
-        (reduce_apply::optimize, options.reduce_apply),
+        // (inline::optimize, options.inline),
+        // (move_match::optimize, options.move_match),
+        // (inline_simple::optimize, options.inline_simple),
+        // (reduce_apply::optimize, options.reduce_apply),
         // reductions rewrite `(\x -> e) a` to `let x = a; e`,
         // so immediately inline again to simplify those
-        (inline::optimize, options.inline && options.reduce_apply),
+        // (inline::optimize, options.inline && options.reduce_apply),
         (dce::optimize, options.remove_dead_code),
-        (inline_simple::optimize, options.inline_simple),
-        (merge_match::optimize, options.inline_simple),
+        // (inline_simple::optimize, options.inline_simple),
+        // (merge_match::optimize, options.inline_simple),
     ];
 
     verify(program);
@@ -57,36 +58,43 @@ fn optimize_iteration(
     }
 }
 
-fn walk_expressions<'a>(expr: &'a cir::Expr, mut f: impl FnMut(&'a cir::Expr)) {
-    fn go<'a>(expr: &'a cir::Expr, f: &mut impl FnMut(&'a cir::Expr)) {
+fn walk_expressions<'a>(expr: &'a ir::Expr, mut f: impl FnMut(&'a ir::Expr)) {
+    fn go<'a>(expr: &'a ir::Expr, f: &mut impl FnMut(&'a ir::Expr)) {
         f(expr);
         match expr {
-            cir::Expr::Bool(_) |
-            cir::Expr::Int(_) |
-            cir::Expr::Name(_) |
-            cir::Expr::Trap(_) => {}
-            cir::Expr::Call(a, b) |
-            cir::Expr::Op(a, _, b) |
-            cir::Expr::Let(_, a, b) |
-            cir::Expr::LetRec(_, a, b) => {
+            ir::Expr::Bool(_) |
+            ir::Expr::Int(_) |
+            ir::Expr::Name(_) |
+            ir::Expr::Trap(_, _) => {}
+            ir::Expr::Call(a, b) => {
+                go(a, f);
+                for b in b {
+                    go(b, f);
+                }
+            }
+            ir::Expr::Op(a, _, b) |
+            ir::Expr::Let(_, _, a, b) |
+            ir::Expr::LetRec(_, _, a, b) => {
                 go(a, f);
                 go(b, f);
             }
-            cir::Expr::If(a, b, c) => {
+            ir::Expr::If(a, b, c) => {
                 go(a, f);
                 go(b, f);
                 go(c, f);
             }
-            cir::Expr::Lambda(_, a) => {
+            ir::Expr::Lambda(_, a) |
+            ir::Expr::Pi(_, a) |
+            ir::Expr::PiApply(a, _) => {
                 go(a, f);
             }
-            cir::Expr::Match(a, bs) => {
+            ir::Expr::Match(a, bs) => {
                 go(a, f);
                 for b in bs {
                     go(&b.value, f);
                 }
             }
-            cir::Expr::Construct(_, xs) => {
+            ir::Expr::Construct(_, _, xs) => {
                 for a in xs {
                     go(a, f);
                 }
@@ -96,36 +104,43 @@ fn walk_expressions<'a>(expr: &'a cir::Expr, mut f: impl FnMut(&'a cir::Expr)) {
     go(expr, &mut f);
 }
 
-fn walk_expressions_mut(expr: &mut cir::Expr, mut f: impl FnMut(&mut cir::Expr)) {
-    fn go(expr: &mut cir::Expr, f: &mut impl FnMut(&mut cir::Expr)) {
+fn walk_expressions_mut(expr: &mut ir::Expr, mut f: impl FnMut(&mut ir::Expr)) {
+    fn go(expr: &mut ir::Expr, f: &mut impl FnMut(&mut ir::Expr)) {
         f(expr);
         match expr {
-            cir::Expr::Bool(_) |
-            cir::Expr::Int(_) |
-            cir::Expr::Name(_) |
-            cir::Expr::Trap(_) => {}
-            cir::Expr::Call(a, b) |
-            cir::Expr::Op(a, _, b) |
-            cir::Expr::Let(_, a, b) |
-            cir::Expr::LetRec(_, a, b) => {
+            ir::Expr::Bool(_) |
+            ir::Expr::Int(_) |
+            ir::Expr::Name(_) |
+            ir::Expr::Trap(_, _) => {}
+            ir::Expr::Call(a, b) => {
+                go(a, f);
+                for b in b {
+                    go(b, f);
+                }
+            }
+            ir::Expr::Op(a, _, b) |
+            ir::Expr::Let(_, _, a, b) |
+            ir::Expr::LetRec(_, _, a, b) => {
                 go(a, f);
                 go(b, f);
             }
-            cir::Expr::If(a, b, c) => {
+            ir::Expr::If(a, b, c) => {
                 go(a, f);
                 go(b, f);
                 go(c, f);
             }
-            cir::Expr::Lambda(_, a) => {
+            ir::Expr::Lambda(_, a) |
+            ir::Expr::Pi(_, a) |
+            ir::Expr::PiApply(a, _) => {
                 go(a, f);
             }
-            cir::Expr::Match(a, bs) => {
+            ir::Expr::Match(a, bs) => {
                 go(a, f);
                 for b in bs {
                     go(&mut b.value, f);
                 }
             }
-            cir::Expr::Construct(_, xs) => {
+            ir::Expr::Construct(_, _, xs) => {
                 for a in xs {
                     go(a, f);
                 }
@@ -135,35 +150,42 @@ fn walk_expressions_mut(expr: &mut cir::Expr, mut f: impl FnMut(&mut cir::Expr))
     go(expr, &mut f);
 }
 
-fn walk_expressions_postorder_mut(expr: &mut cir::Expr, mut f: impl FnMut(&mut cir::Expr)) {
-    fn go(expr: &mut cir::Expr, f: &mut impl FnMut(&mut cir::Expr)) {
+fn walk_expressions_postorder_mut(expr: &mut ir::Expr, mut f: impl FnMut(&mut ir::Expr)) {
+    fn go(expr: &mut ir::Expr, f: &mut impl FnMut(&mut ir::Expr)) {
         match expr {
-            cir::Expr::Bool(_) |
-            cir::Expr::Int(_) |
-            cir::Expr::Name(_) |
-            cir::Expr::Trap(_) => {}
-            cir::Expr::Call(a, b) |
-            cir::Expr::Op(a, _, b) |
-            cir::Expr::Let(_, a, b) |
-            cir::Expr::LetRec(_, a, b) => {
+            ir::Expr::Bool(_) |
+            ir::Expr::Int(_) |
+            ir::Expr::Name(_) |
+            ir::Expr::Trap(_, _) => {}
+            ir::Expr::Call(a, b) => {
+                go(a, f);
+                for b in b {
+                    go(b, f);
+                }
+            }
+            ir::Expr::Op(a, _, b) |
+            ir::Expr::Let(_, _, a, b) |
+            ir::Expr::LetRec(_, _, a, b) => {
                 go(a, f);
                 go(b, f);
             }
-            cir::Expr::If(a, b, c) => {
+            ir::Expr::If(a, b, c) => {
                 go(a, f);
                 go(b, f);
                 go(c, f);
             }
-            cir::Expr::Lambda(_, a) => {
+            ir::Expr::Lambda(_, a) |
+            ir::Expr::Pi(_, a) |
+            ir::Expr::PiApply(a, _) => {
                 go(a, f);
             }
-            cir::Expr::Match(a, bs) => {
+            ir::Expr::Match(a, bs) => {
                 go(a, f);
                 for b in bs {
                     go(&mut b.value, f);
                 }
             }
-            cir::Expr::Construct(_, xs) => {
+            ir::Expr::Construct(_, _, xs) => {
                 for a in xs {
                     go(a, f);
                 }
