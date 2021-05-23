@@ -1,15 +1,16 @@
 use std::collections::HashSet;
-use crate::codegen::{cir, opt};
+use ticc_core::ir;
+use crate::codegen::opt;
 
-pub(crate) fn optimize(program: &mut cir::Program) {
-    for v in program.values.values_mut() {
-        opt::walk_expressions_mut(v, optimize_expr);
+pub(crate) fn optimize(program: &mut ir::Program) {
+    for v in &mut program.values {
+        opt::walk_expressions_mut(&mut v.value, optimize_expr);
     }
 }
 
-fn optimize_expr(expr: &mut cir::Expr) {
-    if let cir::Expr::Match(discr, _) = expr {
-        if let cir::Expr::Match(_, inner_branches) = &mut **discr {
+fn optimize_expr(expr: &mut ir::Expr) {
+    if let ir::Expr::Match(discr, _) = expr {
+        if let ir::Expr::Match(_, inner_branches) = &mut **discr {
             if can_merge_branches(&inner_branches) {
                 merge_branches(expr);
             }
@@ -17,7 +18,7 @@ fn optimize_expr(expr: &mut cir::Expr) {
     }
 }
 
-fn can_merge_branches(branches: &[cir::Branch]) -> bool {
+fn can_merge_branches(branches: &[ir::Branch]) -> bool {
     branches
         .iter()
         .filter_map(|b| extract_ctor(&b.value))
@@ -25,44 +26,46 @@ fn can_merge_branches(branches: &[cir::Branch]) -> bool {
         .len() == branches.len()
 }
 
-fn extract_ctor(e: &cir::Expr) -> Option<cir::Ctor> {
+fn extract_ctor(e: &ir::Expr) -> Option<ir::Name> {
     match e {
-        cir::Expr::Bool(_) |
-        cir::Expr::Int(_) |
-        cir::Expr::Name(_) |
-        cir::Expr::Call(_, _) |
-        cir::Expr::Op(_, _, _) |
-        cir::Expr::Lambda(_, _) |
-        cir::Expr::Match(_, _) |
-        cir::Expr::Trap(_) |
-        cir::Expr::If(_, _, _) => None,
-        cir::Expr::Construct(ctor, _) => Some(*ctor),
-        cir::Expr::Let(_, _, e) |
-        cir::Expr::LetRec(_, _, e) => extract_ctor(e),
+        ir::Expr::Bool(_) |
+        ir::Expr::Int(_) |
+        ir::Expr::Name(_) |
+        ir::Expr::Call(_, _) |
+        ir::Expr::Op(_, _, _) |
+        ir::Expr::Lambda(_, _) |
+        ir::Expr::Match(_, _) |
+        ir::Expr::Trap(_, _) |
+        ir::Expr::If(_, _, _) => None,
+        ir::Expr::Construct(ctor, _, _) => Some(*ctor),
+        ir::Expr::Let(_, _, e) |
+        ir::Expr::LetRec(_, _, _, e) |
+        ir::Expr::Pi(_, e) |
+        ir::Expr::PiApply(e, _) => extract_ctor(e),
     }
 }
 
-fn merge_branches(expr: &mut cir::Expr) {
+fn merge_branches(expr: &mut ir::Expr) {
     let (discr, mut inner_branches, mut outer_branches) = take_apart(expr);
-    inner_branches.sort_by_cached_key(|b| extract_ctor(&b.value).unwrap().name.id);
-    outer_branches.sort_by_cached_key(|b| b.ctor.name.id);
+    inner_branches.sort_by_cached_key(|b| extract_ctor(&b.value).unwrap());
+    outer_branches.sort_by_cached_key(|b| b.ctor);
     for (inner, outer) in inner_branches.iter_mut().zip(outer_branches) {
         merge_branch(&mut inner.value, outer);
     }
-    *expr = cir::Expr::Match(
+    *expr = ir::Expr::Match(
         discr,
         inner_branches,
     )
 }
 
-fn merge_branch(inner: &mut cir::Expr, outer: cir::Branch) {
+fn merge_branch(inner: &mut ir::Expr, outer: ir::Branch) {
     match inner {
-        cir::Expr::Construct(ctor, fields) => {
+        ir::Expr::Construct(ctor, _, fields) => {
             assert_eq!(*ctor, outer.ctor);
             assert_eq!(fields.len(), outer.bindings.len());
             let mut result = outer.value;
             for (bind, value) in outer.bindings.into_iter().zip(fields.drain(..)).rev() {
-                result = cir::Expr::Let(
+                result = ir::Expr::Let(
                     bind,
                     Box::new(value),
                     Box::new(result),
@@ -70,25 +73,27 @@ fn merge_branch(inner: &mut cir::Expr, outer: cir::Branch) {
             }
             *inner = result;
         }
-        cir::Expr::Let(_, _, e) |
-        cir::Expr::LetRec(_, _, e) => merge_branch(e, outer),
-        cir::Expr::Bool(_) |
-        cir::Expr::Int(_) |
-        cir::Expr::Name(_) |
-        cir::Expr::Call(_, _) |
-        cir::Expr::If(_, _, _) |
-        cir::Expr::Op(_, _, _) |
-        cir::Expr::Lambda(_, _) |
-        cir::Expr::Match(_, _) |
-        cir::Expr::Trap(_) => unreachable!(),
+        ir::Expr::Let(_, _, e) |
+        ir::Expr::LetRec(_, _, _, e) |
+        ir::Expr::Pi(_, e) |
+        ir::Expr::PiApply(e, _) => merge_branch(e, outer),
+        ir::Expr::Bool(_) |
+        ir::Expr::Int(_) |
+        ir::Expr::Name(_) |
+        ir::Expr::Call(_, _) |
+        ir::Expr::If(_, _, _) |
+        ir::Expr::Op(_, _, _) |
+        ir::Expr::Lambda(_, _) |
+        ir::Expr::Match(_, _) |
+        ir::Expr::Trap(_, _) => unreachable!(),
     }
 }
 
-fn take_apart(expr: &mut cir::Expr) -> (Box<cir::Expr>, Vec<cir::Branch>, Vec<cir::Branch>) {
-    match std::mem::replace(expr, cir::Expr::Trap(String::new())) {
-        cir::Expr::Match(d, outer) => {
+fn take_apart(expr: &mut ir::Expr) -> (Box<ir::Expr>, Vec<ir::Branch>, Vec<ir::Branch>) {
+    match std::mem::replace(expr, ir::Expr::Trap(String::new(), ir::Ty::Int)) {
+        ir::Expr::Match(d, outer) => {
             match *d {
-                cir::Expr::Match(d, inner) => (d, inner, outer),
+                ir::Expr::Match(d, inner) => (d, inner, outer),
                 _ => unreachable!(),
             }
         }

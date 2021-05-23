@@ -1,7 +1,7 @@
 mod dce;
 // mod inline;
 mod inline_simple;
-// mod merge_match;
+mod merge_match;
 mod move_match;
 mod reduce_apply;
 
@@ -46,7 +46,7 @@ fn optimize_iteration(
         // (inline::optimize, options.inline && options.reduce_apply),
         (dce::optimize, options.remove_dead_code),
         (inline_simple::optimize, options.inline_simple),
-        // (merge_match::optimize, options.inline_simple),
+        (merge_match::optimize, options.inline_simple),
     ];
 
     verify(program);
