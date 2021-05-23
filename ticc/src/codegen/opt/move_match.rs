@@ -1,17 +1,18 @@
-use crate::codegen::{cir, opt};
+use ticc_core::ir;
+use crate::codegen::opt;
 
-pub(crate) fn optimize(program: &mut cir::Program) {
-    for v in program.values.values_mut() {
-        opt::walk_expressions_mut(v, optimize_expr);
+pub(crate) fn optimize(program: &mut ir::Program) {
+    for v in &mut program.values {
+        opt::walk_expressions_mut(&mut v.value, optimize_expr);
     }
 }
 
-fn optimize_expr(expr: &mut cir::Expr) {
-    if let cir::Expr::LetRec(f, def, _) = expr {
-        if let cir::Expr::Lambda(_, body) = &mut **def {
+fn optimize_expr(expr: &mut ir::Expr) {
+    if let ir::Expr::LetRec(f, _, def, _) = expr {
+        if let ir::Expr::Lambda(_, body) = &mut **def {
             let body = unwrap_lambdas(body);
-            if let cir::Expr::Let(_, val, rest) = body {
-                if let cir::Expr::Lambda(_, _) = &**rest {
+            if let ir::Expr::Let(_, _, val, rest) = body {
+                if let ir::Expr::Lambda(_, _) = &**rest {
                     if is_simple(val, *f) {
                         move_let(body);
                     }
@@ -23,14 +24,14 @@ fn optimize_expr(expr: &mut cir::Expr) {
     }
 }
 
-fn move_let(expr: &mut cir::Expr) {
-    match std::mem::replace(expr, cir::Expr::Trap(String::new())) {
-        cir::Expr::Let(bind, val, rest) => {
+fn move_let(expr: &mut ir::Expr) {
+    match std::mem::replace(expr, ir::Expr::Trap(String::new(), ir::Ty::Int)) {
+        ir::Expr::Let(bind, ty, val, rest) => {
             match *rest {
-                cir::Expr::Lambda(param, body) => {
-                    *expr = cir::Expr::Lambda(
-                        param,
-                        Box::new(cir::Expr::Let(bind, val, body)),
+                ir::Expr::Lambda(params, body) => {
+                    *expr = ir::Expr::Lambda(
+                        params,
+                        Box::new(ir::Expr::Let(bind, ty, val, body)),
                     );
                 }
                 _ => unreachable!(),
@@ -40,32 +41,34 @@ fn move_let(expr: &mut cir::Expr) {
     }
 }
 
-fn is_simple(expr: &cir::Expr, allowed_fn: cir::Name) -> bool {
+fn is_simple(expr: &ir::Expr, allowed_fn: ir::Name) -> bool {
     match expr {
-        cir::Expr::Bool(_) |
-        cir::Expr::Int(_) |
-        cir::Expr::Name(_) |
-        cir::Expr::Trap(_) => true,
-        cir::Expr::Call(f, x) => {
-            is_simple(x, allowed_fn) &&
-            if let cir::Expr::Name(n) = **f {
+        ir::Expr::Bool(_) |
+        ir::Expr::Int(_) |
+        ir::Expr::Name(_) |
+        ir::Expr::Trap(_, _) => true,
+        ir::Expr::Call(f, x) => {
+            x.iter().all(|x| is_simple(x, allowed_fn)) &&
+            if let ir::Expr::Name(n) = **f {
                 n == allowed_fn
             } else {
                 false
             }
         }
-        cir::Expr::If(_, _, _) |
-        cir::Expr::Op(_, _, _) |
-        cir::Expr::Lambda(_, _) |
-        cir::Expr::Let(_, _, _) |
-        cir::Expr::LetRec(_, _, _) => false,
-        cir::Expr::Construct(_, f) => f.iter().all(|e| is_simple(e, allowed_fn)),
-        cir::Expr::Match(x, br) => is_simple(x, allowed_fn) && br.iter().all(|b| is_simple(&b.value, allowed_fn)),
+        ir::Expr::If(_, _, _) |
+        ir::Expr::Op(_, _, _) |
+        ir::Expr::Lambda(_, _) |
+        ir::Expr::Let(_, _, _, _) |
+        ir::Expr::LetRec(_, _, _, _) => false,
+        ir::Expr::Construct(_, _, f) => f.iter().all(|e| is_simple(e, allowed_fn)),
+        ir::Expr::Match(x, br) => is_simple(x, allowed_fn) && br.iter().all(|b| is_simple(&b.value, allowed_fn)),
+        ir::Expr::Pi(_, e) |
+        ir::Expr::PiApply(e, _) => is_simple(e, allowed_fn),
     }
 }
 
-fn unwrap_lambdas(expr: &mut cir::Expr) -> &mut cir::Expr {
-    if let cir::Expr::Lambda(_, body) = expr {
+fn unwrap_lambdas(expr: &mut ir::Expr) -> &mut ir::Expr {
+    if let ir::Expr::Lambda(_, body) = expr {
         unwrap_lambdas(body)
     } else {
         expr

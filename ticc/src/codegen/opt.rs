@@ -2,7 +2,7 @@ mod dce;
 // mod inline;
 mod inline_simple;
 // mod merge_match;
-// mod move_match;
+mod move_match;
 mod reduce_apply;
 
 use std::hash::{Hash, Hasher};
@@ -38,7 +38,7 @@ fn optimize_iteration(
 ) {
     let optimizations: &[(fn(&mut _), bool)] = &[
         // (inline::optimize, options.inline),
-        // (move_match::optimize, options.move_match),
+        (move_match::optimize, options.move_match),
         (inline_simple::optimize, options.inline_simple),
         (reduce_apply::optimize, options.reduce_apply),
         // reductions rewrite `(\x -> e) a` to `let x = a; e`,
