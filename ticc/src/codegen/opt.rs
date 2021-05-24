@@ -1,5 +1,5 @@
 mod dce;
-// mod inline;
+mod inline;
 mod inline_simple;
 mod merge_match;
 mod move_match;
@@ -37,13 +37,13 @@ fn optimize_iteration(
     program: &mut ir::Program,
 ) {
     let optimizations: &[(fn(&mut _), bool)] = &[
-        // (inline::optimize, options.inline),
+        (inline::optimize, options.inline),
         (move_match::optimize, options.move_match),
         (inline_simple::optimize, options.inline_simple),
         (reduce_apply::optimize, options.reduce_apply),
         // reductions rewrite `(\x -> e) a` to `let x = a; e`,
         // so immediately inline again to simplify those
-        // (inline::optimize, options.inline && options.reduce_apply),
+        (inline::optimize, options.inline && options.reduce_apply),
         (dce::optimize, options.remove_dead_code),
         (inline_simple::optimize, options.inline_simple),
         (merge_match::optimize, options.inline_simple),
