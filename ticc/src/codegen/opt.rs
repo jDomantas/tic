@@ -4,6 +4,7 @@ mod inline_simple;
 mod merge_match;
 mod move_match;
 mod reduce_apply;
+mod reduce_pi;
 
 use std::hash::{Hash, Hasher};
 use ticc_core::ir;
@@ -40,6 +41,7 @@ fn optimize_iteration(
         (inline::optimize, options.inline),
         (move_match::optimize, options.move_match),
         (inline_simple::optimize, options.inline_simple),
+        (reduce_pi::optimize, options.reduce_apply),
         (reduce_apply::optimize, options.reduce_apply),
         // reductions rewrite `(\x -> e) a` to `let x = a; e`,
         // so immediately inline again to simplify those

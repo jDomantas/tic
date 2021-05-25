@@ -17,8 +17,8 @@ pub(crate) fn optimize(program: &mut ir::Program) {
     };
     for v in &mut program.values {
         walk_expressions(&mut v.value, |x| inline_functions(x, &mut names, &mut inlinables));
-        if let Some(args) = check_inlinable(&v.value, false) {
-            inlinables.insert(v.name, Inlinable::new(&v.value, args));
+        if let Some(calls) = check_inlinable(&v.value, false) {
+            inlinables.insert(v.name, Inlinable::new(&v.value, calls));
         }
     }
 }
@@ -46,12 +46,12 @@ impl Names<'_, '_> {
 
 struct Inlinable {
     expr: ir::Expr,
-    args: usize,
+    calls: usize,
 }
 
 impl Inlinable {
-    fn new(expr: &ir::Expr, args: usize) -> Inlinable {
-        Inlinable { expr: expr.clone(), args }
+    fn new(expr: &ir::Expr, calls: usize) -> Inlinable {
+        Inlinable { expr: expr.clone(), calls }
     }
 
     fn create_copy(&self, names: &mut Names<'_, '_>) -> ir::Expr {
@@ -247,9 +247,9 @@ fn inline_functions(
         }
     }
 
-    if let Some((name, args)) = check_for_inline(expr) {
+    if let Some((name, calls)) = check_for_inline(expr) {
         if let Some(inlinable) = inlinables.get(&name) {
-            if inlinable.args == args {
+            if inlinable.calls <= calls {
                 inline(expr, inlinable.create_copy(names));
             }
         }
@@ -259,7 +259,8 @@ fn inline_functions(
 fn inline(expr: &mut ir::Expr, def: ir::Expr) {
     match expr {
         ir::Expr::Name(n) => *expr = def,
-        ir::Expr::Call(e, _) => inline(e, def),
+        ir::Expr::Call(e, _) |
+        ir::Expr::PiApply(e, _) => inline(e, def),
         _ => unreachable!(),
     }
 }
@@ -268,6 +269,7 @@ fn check_for_inline(expr: &ir::Expr) -> Option<(ir::Name, usize)> {
     match expr {
         ir::Expr::Name(n) => Some((*n, 0)),
         ir::Expr::Call(e, _) => check_for_inline(e).map(|(n, x)| (n, x + 1)),
+        ir::Expr::PiApply(e, _) => check_for_inline(e),
         _ => None,
     }
 }
@@ -282,6 +284,8 @@ fn check_inlinable(expr: &ir::Expr, allow_complex_value: bool) -> Option<usize> 
         ir::Expr::Name(_) |
         ir::Expr::Int(_) |
         ir::Expr::Bool(_) => Some(0),
+        ir::Expr::Pi(_, e) => check_inlinable(e, allow_complex_value),
+        ir::Expr::Construct(_, _, args) if args.is_empty() => Some(0),
         _ if allow_complex_value => Some(0),
         _ => None,
     }

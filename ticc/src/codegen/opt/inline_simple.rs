@@ -13,7 +13,7 @@ pub(crate) fn optimize(program: &mut ir::Program) {
 
 fn optimize_expr(e: &mut ir::Expr) {
     if let ir::Expr::Let(x, b, r) = e {
-        let inline = if matches!(**b, ir::Expr::Lambda(..)) {
+        let inline = if is_lambda(b) {
             count_uses(r, x, true) == 1
         } else {
             count_uses(r, x, false) == 1
@@ -36,6 +36,14 @@ fn optimize_expr(e: &mut ir::Expr) {
                 *e = rest;
             }
         }
+    }
+}
+
+fn is_lambda(expr: &ir::Expr) -> bool {
+    match expr {
+        ir::Expr::Lambda(_, _) => true,
+        ir::Expr::Pi(_, e) => is_lambda(e),
+        _ => false,
     }
 }
 
