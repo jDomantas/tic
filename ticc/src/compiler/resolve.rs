@@ -344,13 +344,14 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
         node::Expr::Let(expr) => {
             let mut scope = Scope::with_parent(scope);
             let mut type_vars = Vec::new();
+            let mut impl_scope = Scope::with_parent(&scope);
             let ty = if let Some(ty) = expr.type_() {
-                resolve_type_with_vars(sink, ty, &mut scope, &mut type_vars)
+                resolve_type_with_vars(sink, ty, &mut impl_scope, &mut type_vars)
             } else {
                 ir::Type::Infer
             };
             if let Some(expr) = expr.value() {
-                resolve_expr(sink, expr, &scope);
+                resolve_expr(sink, expr, &impl_scope);
             }
             if let Some(name) = expr.name() {
                 let symbol = sink.generate_symbol();
