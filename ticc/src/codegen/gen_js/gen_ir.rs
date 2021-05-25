@@ -1,21 +1,21 @@
-use crate::codegen::cir;
+use ticc_core::ir as cir;
 use crate::codegen::gen_js::ir;
 
 pub(crate) fn gen_ir(program: &cir::Program) -> ir::Program {
     let mut generator = Generator { next_name: 0 };
     let mut stmts = Vec::new();
-    for &name in &program.order {
-        let value = &program.values[&name];
+    for v in &program.values {
+        let value = &v.value;
         let value = generator.gen_expr(value, &mut stmts);
         match value {
             ir::BlockEnd::If(a, b, c) => {
-                stmts.push(ir::Stmt::If(name.into(), a, b, c));
+                stmts.push(ir::Stmt::If(v.name.into(), a, b, c));
             }
             ir::BlockEnd::Match(a, b) => {
-                stmts.push(ir::Stmt::Match(name.into(), a, b));
+                stmts.push(ir::Stmt::Match(v.name.into(), a, b));
             }
             ir::BlockEnd::Value(expr) => {
-                stmts.push(ir::Stmt::ValueDef(name.into(), expr));
+                stmts.push(ir::Stmt::ValueDef(v.name.into(), expr));
             }
             ir::BlockEnd::Trap(msg) => {
                 return ir::Program {
@@ -26,10 +26,19 @@ pub(crate) fn gen_ir(program: &cir::Program) -> ir::Program {
             }
         }
     }
+    let mut exports = Vec::new();
+    for v in &program.values {
+        if let Some(name) = v.export_name.clone() {
+            exports.push(ir::Export {
+                name: v.name.into(),
+                public_name: name,
+            });
+        }
+    }
     ir::Program {
         stmts,
         trap: None,
-        exports: program.exports.clone(),
+        exports,
     }
 }
 
@@ -49,12 +58,22 @@ impl Generator {
             cir::Expr::Bool(b) => ir::Expr::Bool(*b).into(),
             cir::Expr::Int(x) => ir::Expr::Int(*x).into(),
             cir::Expr::Name(n) => ir::Expr::Name((*n).into()).into(),
-            cir::Expr::Call(a, b) => {
-                let a = self.gen_expr(a, current_block);
-                let b = self.gen_expr(b, current_block);
-                self.merge_ends(a, b, current_block, |a, b| {
-                    ir::Expr::Call(Box::new(a), vec![b]).into()
-                })
+            cir::Expr::Call(a, bs) => {
+                let mut helper = || -> Result<ir::Expr, ir::BlockEnd> {
+                    let a = self.gen_expr(a, current_block);
+                    let a = self.extract_expr(a, current_block)?;
+                    let mut args = Vec::new();
+                    for b in bs {
+                        let b = self.gen_expr(b, current_block);
+                        let b = self.extract_expr(b, current_block)?;
+                        args.push(b);
+                    }
+                    Ok(ir::Expr::Call(Box::new(a), args))
+                };
+                match helper() {
+                    Ok(expr) => ir::BlockEnd::Value(expr),
+                    Err(end) => end,
+                }
             }
             cir::Expr::If(a, b, c) => {
                 let a = self.gen_expr(a, current_block);
@@ -80,18 +99,19 @@ impl Generator {
             cir::Expr::Lambda(n, a) => {
                 let mut stmts = Vec::new();
                 let end = self.gen_expr(a, &mut stmts);
+                let params = n.iter().map(|p| p.name.into()).collect();
                 if stmts.is_empty() && matches!(end, ir::BlockEnd::Value(_)) {
                     let end = match end {
                         ir::BlockEnd::Value(v) => v,
                         _ => unreachable!(),
                     };
-                    ir::Expr::Lambda((*n).into(), Box::new(end)).into()
+                    ir::Expr::Lambda(params, Box::new(end)).into()
                 } else {
                     let name = self.fresh_name();
                     current_block.push(ir::Stmt::Def(ir::Def {
                         name,
                         recursive: false,
-                        params: vec![(*n).into()],
+                        params,
                         body: ir::Block {
                             stmts,
                             value: Box::new(end),
@@ -128,7 +148,7 @@ impl Generator {
                 }
                 ir::BlockEnd::Match(a, branches)
             }
-            cir::Expr::Construct(c, a) => {
+            cir::Expr::Construct(c, _, a) => {
                 let mut fields = Vec::with_capacity(a.len());
                 for e in a {
                     let e = self.gen_expr(e, current_block);
@@ -148,18 +168,25 @@ impl Generator {
                 current_block.push(ir::Stmt::ValueDef((*n).into(), value));
                 self.gen_expr(e, current_block)
             }
-            cir::Expr::LetRec(n, v, e) => {
-                let (param, body) = if let cir::Expr::Lambda(param, body) = &**v {
-                    (param, body)
+            cir::Expr::LetRec(n, _, v, e) => {
+                fn unwrap_pis(expr: &cir::Expr) -> &cir::Expr {
+                    match expr {
+                        cir::Expr::Pi(_, e) => unwrap_pis(e),
+                        _ => expr,
+                    }
+                }
+                let (params, body) = if let cir::Expr::Lambda(params, body) = unwrap_pis(v) {
+                    (params, body)
                 } else {
                     panic!("rec def is not a lambda")
                 };
+                let params = params.iter().map(|p| p.name.into()).collect();
                 let mut stmts = Vec::new();
                 let value = self.gen_expr(body, &mut stmts);
                 current_block.push(ir::Stmt::Def(ir::Def {
                     name: (*n).into(),
                     recursive: true,
-                    params: vec![(*param).into()],
+                    params,
                     body: ir::Block {
                         stmts,
                         value: Box::new(value),
@@ -167,7 +194,9 @@ impl Generator {
                 }));
                 self.gen_expr(e, current_block)
             }
-            cir::Expr::Trap(msg) => ir::BlockEnd::Trap(msg.clone()),
+            cir::Expr::Trap(msg, _) => ir::BlockEnd::Trap(msg.clone()),
+            cir::Expr::Pi(_, e) |
+            cir::Expr::PiApply(e, _) => self.gen_expr(e, current_block),
         }
     }
 

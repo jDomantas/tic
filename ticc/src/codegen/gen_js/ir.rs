@@ -1,4 +1,4 @@
-pub(crate) use crate::codegen::cir::{self, Ctor, Op};
+pub(crate) use ticc_core::ir::{self as cir, Op};
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub(crate) enum Name {
@@ -16,7 +16,13 @@ impl From<cir::Name> for Name {
 pub(crate) struct Program {
     pub(crate) stmts: Vec<Stmt>,
     pub(crate) trap: Option<String>,
-    pub(crate) exports: Vec<cir::Export>,
+    pub(crate) exports: Vec<Export>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Export {
+    pub(crate) name: Name,
+    pub(crate) public_name: String,
 }
 
 #[derive(Debug, Clone)]
@@ -26,8 +32,8 @@ pub(crate) enum Expr {
     Name(Name),
     Call(Box<Expr>, Vec<Expr>),
     Op(Box<Expr>, Op, Box<Expr>),
-    Construct(Ctor, Vec<Expr>),
-    Lambda(Name, Box<Expr>),
+    Construct(cir::Name, Vec<Expr>),
+    Lambda(Vec<Name>, Box<Expr>),
 }
 
 #[derive(Debug, Clone)]
@@ -60,7 +66,7 @@ impl From<Expr> for BlockEnd {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Branch {
-    pub(crate) ctor: Ctor,
+    pub(crate) ctor: cir::Name,
     pub(crate) bindings: Vec<cir::Name>,
     pub(crate) body: Block,
 }

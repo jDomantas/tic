@@ -1,8 +1,7 @@
 mod gen_ir;
 mod ir;
 
-use std::collections::HashMap;
-use crate::codegen::cir;
+use ticc_core::ir as cir;
 
 pub(crate) fn generate_js(program: cir::Program) -> String {
     let ir = gen_ir::gen_ir(&program);
@@ -10,7 +9,7 @@ pub(crate) fn generate_js(program: cir::Program) -> String {
     let mut generator = Generator {
         output: String::new(),
         indent: 0,
-        debug: &program.debug_info,
+        debug: &program.names,
     };
     for def in ir.stmts {
         generator.emit_stmt(def);
@@ -21,7 +20,7 @@ pub(crate) fn generate_js(program: cir::Program) -> String {
 struct Generator<'a> {
     output: String,
     indent: u32,
-    debug: &'a HashMap<cir::Name, &'a str>,
+    debug: &'a cir::NameGenerator<'a>,
 }
 
 impl Generator<'_> {
@@ -107,7 +106,7 @@ impl Generator<'_> {
                 for b in b {
                     self.emit_indent();
                     self.output.push_str("case '");
-                    let debug = self.debug[&b.ctor.name];
+                    let debug = self.debug.debug_info(b.ctor);
                     self.output.push_str(debug);
                     self.output.push_str("': {\n");
                     self.indent += 1;
@@ -197,7 +196,7 @@ impl Generator<'_> {
             }
             ir::Expr::Construct(ctor, a) => {
                 self.output.push_str("['");
-                let name = self.debug[&ctor.name];
+                let name = self.debug.debug_info(*ctor);
                 self.output.push_str(name);
                 self.output.push('\'');
                 for e in a {
@@ -206,8 +205,19 @@ impl Generator<'_> {
                 }
                 self.output.push(']');
             }
-            ir::Expr::Lambda(name, body) => {
-                self.emit_name(*name);
+            ir::Expr::Lambda(names, body) => {
+                self.output.push_str("(");
+                match names.as_slice() {
+                    [] => {}
+                    [first, rest @ ..] => {
+                        self.emit_name(*first);
+                        for &n in rest {
+                            self.output.push_str(", ");
+                            self.emit_name(n);
+                        }
+                    }
+                }
+                self.output.push_str(")");
                 self.output.push_str(" => ");
                 self.emit_expr(body, Prec::Lambda);
             }
@@ -228,9 +238,13 @@ impl Generator<'_> {
     }
 
     fn emit_cir_name(&mut self, n: cir::Name) {
-        self.output.push_str(self.debug[&n]);
+        self.output.push_str(self.debug.debug_info(n));
         self.output.push('_');
-        self.emit_num(n.id.into());
+        self.emit_num(n.idx.into());
+        if n.copy != 0 {
+            self.output.push('_');
+            self.emit_num(n.copy.into());
+        }
     }
 
     fn emit_num(&mut self, x: u64) {

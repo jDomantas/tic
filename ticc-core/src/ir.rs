@@ -1,5 +1,5 @@
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
-pub struct Name { pub(crate) idx: u64, pub(crate) copy: u64 }
+pub struct Name { pub idx: u64, pub copy: u64 }
 
 #[derive(Debug, Hash, Clone)]
 pub enum Expr {
