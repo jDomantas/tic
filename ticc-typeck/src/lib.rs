@@ -91,6 +91,7 @@ fn has_type(
 trait Elaborate {
     type Output;
 
+    /// Transform the output of elaboration.
     fn map<T, F>(self, f: F) -> Map<Self, F>
     where
         Self: Sized,
@@ -99,6 +100,7 @@ trait Elaborate {
         Map { base: self, f }
     }
 
+    /// Perform two elaboration queries and return both results
     fn and<T>(self, other: T) -> And<Self, T>
     where
         Self: Sized,
@@ -110,14 +112,19 @@ trait Elaborate {
     fn finish(&mut self, solver: &mut Solver, vars: &mut &[InferVar]) -> Self::Output;
 }
 
+/// Return a value without requiring any constraints.
 fn pure<T>(value: T) -> impl Elaborate<Output = T> {
     Pure { value: Some(value) }
 }
 
+/// Require inference variable to be unifiable with a given type.
 fn unify(a: InferVar, b: ShallowTy) -> impl Elaborate<Output = ()> {
     Unify { a, b }
 }
 
+/// Create a new inference variable that can be used in constraints.
+/// Return the result of the following elaboration and the type that the
+/// inference variable ends up having.
 fn exists<T, E, F>(f: F) -> impl Elaborate<Output = (IrTy, T)>
 where
     F: Fn(InferVar) -> E,
@@ -126,6 +133,8 @@ where
     Exists { f }
 }
 
+/// Define a new symbol with a type, the symbol will be in scope for the
+/// provided elaboration.
 fn def<T>(sym: Sym, ty: InferVar, e: impl Elaborate<Output = T>) -> impl Elaborate<Output = T> {
     Def {
         sym,
@@ -134,6 +143,7 @@ fn def<T>(sym: Sym, ty: InferVar, e: impl Elaborate<Output = T>) -> impl Elabora
     }
 }
 
+/// Lookup a symbol in scope and assert that it has the provided type.
 fn lookup(sym: Sym, expected: InferVar) -> impl Elaborate<Output = ()> {
     raw_lookup(sym, move |ty| unify(expected, ShallowTy::Var(ty)))
 }
@@ -320,6 +330,8 @@ where
     }
 }
 
+/// Run the elaboration and return its result. Panics if any of the type
+/// constraints fail (i.e. if there are any type errors).
 fn run<T>(mut e: impl Elaborate<Output = T>) -> T {
     let mut solver = Solver {
         var_values: Vec::new(),
