@@ -2,6 +2,7 @@
 pub(crate) mod error;
 pub(crate) mod codegen;
 pub(crate) mod compiler;
+pub(crate) mod interpreter;
 pub(crate) mod lint;
 pub(crate) mod api;
 
@@ -71,6 +72,10 @@ impl Compilation {
         codegen::emit_js(self)
     }
 
+    pub fn interpret(&mut self) -> Result<String, Trap> {
+        interpreter::eval(self)
+    }
+
     fn compile_to_end(&mut self) {
         self.compile_up_to(self.src.len());
     }
@@ -128,3 +133,7 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct Trap {
+    pub message: String,
+}

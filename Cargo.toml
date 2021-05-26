@@ -3,6 +3,7 @@ members = [
     "formatter",
     "ticc",
     "ticc-core",
+    "ticc-eval",
     "ticc-lsp",
     "ticc-syntax",
     "ticc-tests",

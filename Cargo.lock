@@ -411,6 +411,7 @@ dependencies = [
  "logos",
  "structopt",
  "ticc-core",
+ "ticc-eval",
  "ticc-syntax",
 ]
 
@@ -419,6 +420,13 @@ name = "ticc-core"
 version = "0.1.0"
 dependencies = [
  "formatter",
+]
+
+[[package]]
+name = "ticc-eval"
+version = "0.1.0"
+dependencies = [
+ "ticc-core",
 ]
 
 [[package]]

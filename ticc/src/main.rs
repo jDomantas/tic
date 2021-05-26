@@ -22,6 +22,10 @@ struct Opt {
     /// Emit js
     #[structopt(long)]
     emit_js: bool,
+    /// Interpret and output exported values
+    #[structopt(long)]
+    eval: bool,
+    /// Enable all optimizations
     #[structopt(long)]
     optimize: bool,
     #[structopt(long)]
@@ -34,6 +38,7 @@ struct Opt {
     optimize_dce: bool,
     #[structopt(long)]
     optimize_match: bool,
+    /// Verify ir after codegen and optimization passes
     #[structopt(long)]
     verify_ir: bool,
 }
@@ -90,6 +95,21 @@ fn main() {
             println!("{}", ir);
         } else {
             std::fs::write(&output_file, ir.as_bytes()).unwrap_or_else(|e| {
+                eprintln!("error: cannot write {}", path.display());
+                eprintln!("    {}", e);
+                std::process::exit(1);
+            });
+        }
+    } else if opt.eval {
+        let result = match compilation.interpret() {
+            Ok(output) => output,
+            Err(trap) => format!("error: {}", trap.message),
+        };
+        let output_file = opt.output.unwrap_or_else(|| "-".into());
+        if output_file == Path::new("-") {
+            println!("{}", result);
+        } else {
+            std::fs::write(&output_file, result.as_bytes()).unwrap_or_else(|e| {
                 eprintln!("error: cannot write {}", path.display());
                 eprintln!("    {}", e);
                 std::process::exit(1);

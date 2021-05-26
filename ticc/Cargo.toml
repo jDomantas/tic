@@ -14,6 +14,7 @@ doctest = false
 
 [dependencies]
 ticc-core = { path = "../ticc-core" }
+ticc-eval = { path = "../ticc-eval" }
 ticc-syntax = { path = "../ticc-syntax" }
 logos = "0.11.4"
 codespan-reporting = "0.11.0"
