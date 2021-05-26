@@ -10,9 +10,9 @@ path = "src/main.rs"
 doctest = false
 
 [dependencies]
-lsp-server = "0.5.0"
-lsp-types = "0.86.0"
-serde = "1.0.118"
-serde_json = "1.0.60"
+lsp-server = "0.5.1"
+lsp-types = "0.89.1"
+serde = "1.0.126"
+serde_json = "1.0.64"
 ticc = { path = "../ticc" }
-crossbeam-channel = "0.5.0"
+crossbeam-channel = "0.5.1"

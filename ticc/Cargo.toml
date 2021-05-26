@@ -16,8 +16,8 @@ doctest = false
 ticc-core = { path = "../ticc-core" }
 ticc-eval = { path = "../ticc-eval" }
 ticc-syntax = { path = "../ticc-syntax" }
-logos = "0.11.4"
-codespan-reporting = "0.11.0"
+logos = "0.12.0"
+codespan-reporting = "0.11.1"
 internal-iterator = "0.1.1"
 formatter = { path = "../formatter" }
 structopt = "0.3.21"

@@ -14,4 +14,4 @@ doctest = false
 
 [dependencies]
 ticc = { path = "../ticc" }
-codespan-reporting = "0.11.0"
+codespan-reporting = "0.11.1"

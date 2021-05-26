@@ -126,25 +126,7 @@ fn print_diagnostics(
     let stream = cr::term::termcolor::StandardStream::stderr(cr::term::termcolor::ColorChoice::Auto);
     let mut stream = stream.lock();
     
-    let chars = codespan_reporting::term::Chars {
-        source_border_top_left: '-',
-        source_border_top: '-',
-        source_border_left: '|',
-        source_border_left_break: '.',
-        note_bullet: '=',
-        single_primary_caret: '^',
-        single_secondary_caret: '-',
-        multi_primary_caret_start: '^',
-        multi_primary_caret_end: '^',
-        multi_secondary_caret_start: '\'',
-        multi_secondary_caret_end: '\'',
-        multi_top_left: '/',
-        multi_top: '-',
-        multi_bottom_left: '\\',
-        multi_bottom: '-',
-        multi_left: '|',
-        pointer_left: '|',
-    };
+    let chars = codespan_reporting::term::Chars::ascii();
 
     let config = codespan_reporting::term::Config {
         chars,
