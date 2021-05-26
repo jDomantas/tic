@@ -38,6 +38,7 @@ fn write_value(value: &Value, atom: bool, names: &ir::NameGenerator<'_>, into: &
             }
             into.push_str(names.debug_info(*ctor));
             for field in fields.iter() {
+                into.push(' ');
                 write_value(field, true, names, into);
             }
             if atom && fields.len() > 0 {
