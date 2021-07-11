@@ -215,6 +215,7 @@ fn server_capabilities() -> ServerCapabilities {
     capabilities.references_provider = Some(OneOf::Left(true));
     capabilities.hover_provider = Some(HoverProviderCapability::Simple(true));
     capabilities.completion_provider = Some(CompletionOptions {
+        all_commit_characters: None,
         resolve_provider: Some(false),
         trigger_characters: Some(vec![" ".to_owned()]),
         work_done_progress_options: WorkDoneProgressOptions {
