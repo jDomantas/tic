@@ -9,35 +9,72 @@ fn main() {
     dir.push("programs");
     let prefix = dir.clone();
 
-    let tests = ticc_tests::run_tests(dir);
+    let tests = ticc_tests::get_tests(dir);
 
     for test in tests {
-        let outcome = test.outcome();
         let path = test.path.strip_prefix(&prefix).unwrap_or(&test.path);
-        if outcome.success {
-            println!("test {} ... ok", path.display());
-        } else {
-            println!("test {} ... FAILED", path.display());
-            if !outcome.extra_errors.is_empty() {
-                println!("compiler reported {} extra errors", outcome.extra_errors.len());
-                print_diagnostics(&path.display().to_string(), &test.source, outcome.extra_errors.iter().cloned()).unwrap();
-                println!();
+        let outcome = test.run();
+        match outcome {
+            ticc_tests::TestOutcome::Success => {
+                println!("test {} ... ok", path.display());
             }
-            if !outcome.missing_errors.is_empty() {
-                println!("compiler missed {} errors", outcome.missing_errors.len());
-                print_diagnostics(&path.display().to_string(), &test.source, outcome.missing_errors.iter().cloned()).unwrap();
-                println!();
+            ticc_tests::TestOutcome::BadCompilation(comp) => {
+                println!("test {} ... FAILED", path.display());
+                if !comp.extra_errors.is_empty() {
+                    println!("compiler reported {} extra errors", comp.extra_errors.len());
+                    print_diagnostics(&path.display().to_string(), &test.source, comp.extra_errors.iter().cloned()).unwrap();
+                    println!();
+                }
+                if !comp.missing_errors.is_empty() {
+                    println!("compiler missed {} errors", comp.missing_errors.len());
+                    print_diagnostics(&path.display().to_string(), &test.source, comp.missing_errors.iter().cloned()).unwrap();
+                    println!();
+                }
+                if !comp.wrong_messages.is_empty() {
+                    println!("compiler reported incorrect messaged for {} errors", comp.wrong_messages.len());
+                    let errors = comp.wrong_messages
+                        .into_iter()
+                        .map(|(expected, mut actual)| {
+                            actual.message += &format!(" (checked for: {:?})", expected.message);
+                            actual
+                        });
+                    print_diagnostics(&path.display().to_string(), &test.source, errors).unwrap();
+                    println!();
+                }
             }
-            if !outcome.wrong_messages.is_empty() {
-                println!("compiler reported incorrect messaged for {} errors", outcome.wrong_messages.len());
-                let errors = outcome.wrong_messages
-                    .into_iter()
-                    .map(|(expected, mut actual)| {
-                        actual.message += &format!(" (checked for: {:?})", expected.message);
-                        actual
-                    });
-                print_diagnostics(&path.display().to_string(), &test.source, errors).unwrap();
-                println!();
+            ticc_tests::TestOutcome::BadRun(run) => {
+                println!("test {} ... FAILED", path.display());
+                println!("expected output:");
+                for line in &run.expected_output {
+                    println!("    {}", line);
+                }
+                println!("actual output:");
+                for line in &run.output {
+                    println!("    {}", line);
+                }
+                let mut found_line = false;
+                for (i, (actual, expected)) in run.expected_output.iter().zip(&run.output).enumerate() {
+                    if actual != expected {
+                        let idx = actual.chars()
+                            .zip(expected.chars())
+                            .enumerate()
+                            .find(|(_, (a, b))| a != b)
+                            .map(|(i, _)| i)
+                            .unwrap_or(std::cmp::min(actual.len(), expected.len()));
+                        println!("difference on line #{}:", i + 1);
+                        println!("    {}", expected);
+                        println!("    {}", actual);
+                        println!("{:w$}^ here", "", w = idx + 4);
+                        println!();
+                        found_line = true;
+                        break;
+                    }
+                }
+                if !found_line && run.expected_output.len() < run.output.len() {
+                    println!("actual output has extra lines");
+                } else if !found_line && run.expected_output.len() > run.output.len() {
+                    println!("actual output is missing some lines");
+                }
             }
         }
     }

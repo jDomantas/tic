@@ -1,0 +1,12 @@
+type Foo = A | B;
+
+let is_a : Foo -> bool =
+    \foo -> match foo with
+    | A -> true
+    | B -> false
+    end;
+
+export let x : bool = is_a A;
+-- EXPECT: x = true
+export let y : bool = is_a B;
+-- EXPECT: y = false

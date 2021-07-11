@@ -1,0 +1,6 @@
+type Foo = Bar | Baz;
+
+export let bar : Foo = Bar;
+-- EXPECT: bar = Bar
+export let baz : Foo = Baz;
+-- EXPECT: baz = Baz

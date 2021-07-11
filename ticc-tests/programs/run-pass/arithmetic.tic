@@ -1,0 +1,9 @@
+export let a : int = 1;
+-- EXPECT: a = 1
+export let b : int = 42 + 3;
+-- EXPECT: b = 45
+let c : int = a + b;
+export let d : int = c * b;
+-- EXPECT: d = 2070
+export let e : int = d - 2000;
+-- EXPECT: e = 70
