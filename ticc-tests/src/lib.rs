@@ -1,9 +1,11 @@
-use ticc::{Compilation, Diagnostic, Pos, Severity, Span};
+use ticc::{Compilation, Diagnostic, Options, Pos, Severity, Span};
 use std::path::{Path, PathBuf};
 
 pub struct Test {
+    pub key: String,
     pub path: PathBuf,
     pub source: String,
+    pub options: Options,
     pub expected_errors: Vec<Diagnostic>,
     pub expected_output: Option<Vec<String>>,
 }
@@ -25,27 +27,49 @@ pub enum TestOutcome {
     BadRun(RunOutcome),
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum TestKind {
+    CompileFail,
+    CompilePass,
+    Run,
+}
+
 impl Test {
-    fn from_file(path: PathBuf, should_run: bool) -> Test {
+    fn from_file(prefix: &Path, path: PathBuf, kind: TestKind) -> Vec<Test> {
         let source = std::fs::read_to_string(&path).unwrap_or_else(|e| {
             panic!("failed to read {}: {}", path.display(), e);
         });
         let expected_errors = extract_expected_errors(&path, &source);
-        let expected_output = if should_run {
+        let expected_output = if kind == TestKind::Run {
             Some(extract_expected_outputs(&path, &source))
         } else {
             None
         };
-        Test {
+        let mut tests = Vec::new();
+        let key_path = path.strip_prefix(prefix).unwrap_or(&path);
+        if matches!(kind, TestKind::CompilePass | TestKind::Run) {
+            tests.push(Test {
+                key: format!("{} (optimized)", key_path.display()),
+                path: path.clone(),
+                source: source.clone(),
+                options: Options { verify: true, optimize: true },
+                expected_errors: expected_errors.clone(),
+                expected_output: expected_output.clone(),
+            });
+        }
+        tests.push(Test {
+            key: key_path.display().to_string(),
             path,
             source,
+            options: Options { verify: true, optimize: false },
             expected_errors,
             expected_output,
-        }
+        });
+        tests
     }
 
     fn compile(&self) -> CompilationOutcome {
-        let actual_errors = Compilation::from_source(&self.source)
+        let actual_errors = Compilation::from_source_and_options(&self.source, self.options)
             .diagnostics()
             .filter(|e| e.severity == Severity::Error)
             .collect::<Vec<_>>();
@@ -78,7 +102,7 @@ impl Test {
 
     fn run_program(&self) -> RunOutcome {
         assert!(self.expected_output.is_some(), "test program is not supposed to be run");
-        let mut compilation = Compilation::from_source(&self.source);
+        let mut compilation = Compilation::from_source_and_options(&self.source, self.options);
         match compilation.interpret() {
             Ok(text) => RunOutcome {
                 output: text.trim().lines().map(String::from).collect(),
@@ -174,7 +198,7 @@ fn extract_expected_outputs(path: &Path, source: &str) -> Vec<String> {
     outputs
 }
 
-fn get_tests_in_dir(dir: &Path, should_run: bool) -> Vec<Test> {
+fn get_tests_in_dir(prefix: &Path, dir: &Path, kind: TestKind) -> Vec<Test> {
     let entries = match std::fs::read_dir(&dir) {
         Ok(entries) => entries,
         Err(e) => panic!("failed to read {}: {}", dir.display(), e),
@@ -187,24 +211,27 @@ fn get_tests_in_dir(dir: &Path, should_run: bool) -> Vec<Test> {
         };
         let mut path = dir.to_owned();
         path.push(&entry.file_name());
-        tests.push(Test::from_file(path, should_run));
+        tests.extend(Test::from_file(prefix, path, kind));
     }
     tests
 }
 
 fn get_compile_pass_tests(mut root_path: PathBuf) -> Vec<Test> {
+    let prefix = root_path.clone();
     root_path.push("compile-pass");
-    get_tests_in_dir(&root_path, false)
+    get_tests_in_dir(&prefix, &root_path, TestKind::CompilePass)
 }
 
 fn get_compile_fail_tests(mut root_path: PathBuf) -> Vec<Test> {
+    let prefix = root_path.clone();
     root_path.push("compile-fail");
-    get_tests_in_dir(&root_path, false)
+    get_tests_in_dir(&prefix, &root_path, TestKind::CompileFail)
 }
 
 fn get_run_pass_tests(mut root_path: PathBuf) -> Vec<Test> {
+    let prefix = root_path.clone();
     root_path.push("run-pass");
-    get_tests_in_dir(&root_path, true)
+    get_tests_in_dir(&prefix, &root_path, TestKind::Run)
 }
 
 pub fn get_tests(root_path: PathBuf) -> Vec<Test> {
@@ -258,8 +285,6 @@ fn matches(expected: &Diagnostic, actual: &Diagnostic) -> bool {
 fn compiler_tests() {
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("programs");
-    let prefix = dir.clone();
-
     let tests = get_tests(dir);
 
     for test in tests {
@@ -267,8 +292,7 @@ fn compiler_tests() {
         match outcome {
             TestOutcome::Success => {}
             _ => {
-                let name = test.path.strip_prefix(&prefix).unwrap_or(&test.path);
-                panic!("test {} failed", name.display());
+                panic!("test {} failed\nrun `cargo run -p ticc-tests` for more details", test.key);
             }
         }
     }

@@ -16,10 +16,10 @@ fn main() {
         let outcome = test.run();
         match outcome {
             ticc_tests::TestOutcome::Success => {
-                println!("test {} ... ok", path.display());
+                println!("test {} ... ok", test.key);
             }
             ticc_tests::TestOutcome::BadCompilation(comp) => {
-                println!("test {} ... FAILED", path.display());
+                println!("test {} ... FAILED", test.key);
                 if !comp.extra_errors.is_empty() {
                     println!("compiler reported {} extra errors", comp.extra_errors.len());
                     print_diagnostics(&path.display().to_string(), &test.source, comp.extra_errors.iter().cloned()).unwrap();
@@ -43,7 +43,7 @@ fn main() {
                 }
             }
             ticc_tests::TestOutcome::BadRun(run) => {
-                println!("test {} ... FAILED", path.display());
+                println!("test {} ... FAILED", test.key);
                 println!("expected output:");
                 for line in &run.expected_output {
                     println!("    {}", line);

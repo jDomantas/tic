@@ -25,19 +25,9 @@ struct Opt {
     /// Interpret and output exported values
     #[structopt(long)]
     eval: bool,
-    /// Enable all optimizations
+    /// Enable optimizations
     #[structopt(long)]
     optimize: bool,
-    #[structopt(long)]
-    optimize_inline_simple: bool,
-    #[structopt(long)]
-    optimize_apply: bool,
-    #[structopt(long)]
-    optimize_inline: bool,
-    #[structopt(long)]
-    optimize_dce: bool,
-    #[structopt(long)]
-    optimize_match: bool,
     /// Verify ir after codegen and optimization passes
     #[structopt(long)]
     verify_ir: bool,
@@ -55,11 +45,7 @@ fn main() {
 
     let options = ticc::Options {
         verify: opt.verify_ir,
-        inline_simple: opt.optimize_inline_simple || opt.optimize,
-        reduce_apply: opt.optimize_apply || opt.optimize,
-        inline: opt.optimize_inline || opt.optimize,
-        remove_dead_code: opt.optimize_dce || opt.optimize,
-        move_match: opt.optimize_match || opt.optimize,
+        optimize: opt.optimize,
     };
 
     let mut compilation = ticc::Compilation::from_source_and_options(&source, options);

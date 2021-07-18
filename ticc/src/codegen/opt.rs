@@ -16,13 +16,15 @@ pub(crate) fn optimize(
     program: &mut ir::Program,
 ) {
     let mut hash = hash_program(program);
-    for _ in 0..10 {
-        optimize_iteration(options, &verify, program);
-        let new_hash = hash_program(program);
-        if new_hash == hash {
-            break;
+    if options.optimize {
+        for _ in 0..10 {
+            optimize_iteration(&verify, program);
+            let new_hash = hash_program(program);
+            if new_hash == hash {
+                break;
+            }
+            hash = new_hash;
         }
-        hash = new_hash;
     }
 }
 
@@ -33,30 +35,27 @@ fn hash_program(program: &ir::Program) -> u64 {
 }
 
 fn optimize_iteration(
-    options: Options,
     verify: &impl Fn(&ir::Program),
     program: &mut ir::Program,
 ) {
-    let optimizations: &[(fn(&mut _), bool)] = &[
-        (inline::optimize, options.inline),
-        (move_match::optimize, options.move_match),
-        (inline_simple::optimize, options.inline_simple),
-        (reduce_pi::optimize, options.reduce_apply),
-        (reduce_apply::optimize, options.reduce_apply),
+    let optimizations = &[
+        inline::optimize,
+        move_match::optimize,
+        inline_simple::optimize,
+        reduce_pi::optimize,
+        reduce_apply::optimize,
         // reductions rewrite `(\x -> e) a` to `let x = a; e`,
         // so immediately inline again to simplify those
-        (inline::optimize, options.inline && options.reduce_apply),
-        (dce::optimize, options.remove_dead_code),
-        (inline_simple::optimize, options.inline_simple),
-        (merge_match::optimize, options.inline_simple),
+        inline::optimize,
+        dce::optimize,
+        inline_simple::optimize,
+        merge_match::optimize,
     ];
 
     verify(program);
-    for &(opt, enabled) in optimizations {
-        if enabled {
-            opt(program);
-            verify(program);
-        }
+    for &opt in optimizations {
+        opt(program);
+        verify(program);
     }
 }
 
