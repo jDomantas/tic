@@ -1,0 +1,11 @@
+type T = A | B | C;
+type U = P | Q;
+
+let x : U = P;
+
+export let y : int = match (match x with | P -> B | Q -> C end) with
+    | A -> 1
+    | B -> 2
+    | C -> 3
+    end;
+-- EXPECT: y = 2

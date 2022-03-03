@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use ticc_core::ir;
 use crate::codegen::opt;
 
@@ -46,10 +46,14 @@ fn extract_ctor(e: &ir::Expr) -> Option<ir::Name> {
 }
 
 fn merge_branches(expr: &mut ir::Expr) {
-    let (discr, mut inner_branches, mut outer_branches) = take_apart(expr);
+    let (discr, mut inner_branches, outer_branches) = take_apart(expr);
     inner_branches.sort_by_cached_key(|b| extract_ctor(&b.value).unwrap());
-    outer_branches.sort_by_cached_key(|b| b.ctor);
-    for (inner, outer) in inner_branches.iter_mut().zip(outer_branches) {
+    let mut outer_branches = outer_branches
+        .into_iter()
+        .map(|b| (b.ctor, b))
+        .collect::<HashMap<_, _>>();
+    for inner in &mut inner_branches {
+        let outer = outer_branches.remove(&extract_ctor(&inner.value).unwrap()).unwrap();
         merge_branch(&mut inner.value, outer);
     }
     *expr = ir::Expr::Match(
