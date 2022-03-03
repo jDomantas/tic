@@ -1,0 +1,13 @@
+let call : (int -> int -> int) -> int =
+    \f -> f 10 4;
+
+export let a : int = call (\a -> \b -> a + b);
+-- EXPECT: a = 14
+
+export let b : int = call (\a -> \b -> a - b);
+-- EXPECT: b = 6
+
+export let c : int =
+    let inc = \x -> x + 1;
+    inc (inc (inc 1));
+-- EXPECT: c = 4

@@ -1,0 +1,14 @@
+type List a = Nil | Cons a rec;
+
+let sum : List int -> int =
+    \fold list -> match list with
+    | Nil -> 0
+    | Cons x xs -> x + xs
+    end;
+
+export let a : int = sum Nil;
+-- EXPECT: a = 0
+export let b : int = sum (Cons 10 Nil);
+-- EXPECT: b = 10
+export let c : int = sum (Cons 10 (Cons 4 (Cons 8 Nil)));
+-- EXPECT: c = 22

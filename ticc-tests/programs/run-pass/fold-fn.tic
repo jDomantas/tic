@@ -1,0 +1,74 @@
+type Tree a = Empty | Node rec a rec;
+
+let single : a -> Tree a =
+    \x -> Node Empty x Empty;
+
+type Option a = None | Some a;
+
+let insert : int -> Tree int -> Tree int =
+    let insert = \fold tree -> \item ->
+        match item with
+        | Some item ->
+            match tree with
+            | Empty -> single item
+            | Node l x r ->
+                if item < x then
+                    Node (l (Some item)) x (r None)
+                else if item > x then
+                    Node (l None) x (r (Some item))
+                else
+                    Node (l None) x (r None)
+            end
+        | None ->
+            match tree with
+            | Empty -> Empty
+            | Node l x r -> Node (l None) x (r None)
+            end
+        end;
+    \x -> \tree -> insert tree (Some x);
+
+
+let toLookup : Tree int -> int -> bool =
+    \fold tree ->
+        \x ->
+            match tree with
+            | Empty -> false
+            | Node l i r ->
+                if i == x then
+                    true
+                else if i < x then
+                    r x
+                else
+                    l x
+            end;
+
+let tree : Tree int =
+    Empty
+    |> insert 4
+    |> insert 2
+    |> insert 3
+    |> insert 8
+    |> insert 7
+    |> insert 6;
+
+let lookup : int -> bool = toLookup tree;
+
+export let has1 : bool = lookup 1;
+export let has2 : bool = lookup 2;
+export let has3 : bool = lookup 3;
+export let has4 : bool = lookup 4;
+export let has5 : bool = lookup 5;
+export let has6 : bool = lookup 6;
+export let has7 : bool = lookup 7;
+export let has8 : bool = lookup 8;
+export let has9 : bool = lookup 9;
+
+-- EXPECT: has1 = false
+-- EXPECT: has2 = true
+-- EXPECT: has3 = true
+-- EXPECT: has4 = true
+-- EXPECT: has5 = false
+-- EXPECT: has6 = true
+-- EXPECT: has7 = true
+-- EXPECT: has8 = true
+-- EXPECT: has9 = false
