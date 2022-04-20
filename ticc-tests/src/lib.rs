@@ -7,7 +7,7 @@ pub struct Test {
     pub source: String,
     pub options: Options,
     pub expected_errors: Vec<Diagnostic>,
-    pub expected_output: Option<Vec<String>>,
+    pub kind: TestKind,
 }
 
 pub struct CompilationOutcome {
@@ -27,49 +27,71 @@ pub enum TestOutcome {
     BadRun(RunOutcome),
 }
 
+#[derive(Clone)]
+pub enum TestKind {
+    Compile,
+    Run {
+        runner: Runner,
+        expected_output: Vec<String>,
+    },
+}
+
 #[derive(PartialEq, Eq, Clone, Copy)]
-enum TestKind {
+pub enum Runner {
+    Interpreter,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum TestDefKind {
     CompileFail,
     CompilePass,
     Run,
 }
 
 impl Test {
-    fn from_file(prefix: &Path, path: PathBuf, kind: TestKind) -> Vec<Test> {
+    fn from_file(prefix: &Path, path: PathBuf, kind: TestDefKind) -> Vec<Test> {
         let source = std::fs::read_to_string(&path).unwrap_or_else(|e| {
             panic!("failed to read {}: {}", path.display(), e);
         });
         let expected_errors = extract_expected_errors(&path, &source);
-        let expected_output = if kind == TestKind::Run {
-            Some(extract_expected_outputs(&path, &source))
-        } else {
-            None
-        };
-        let mut tests = Vec::new();
+        if kind != TestDefKind::CompileFail && expected_errors.len() > 0 {
+            panic!("test {} is not compile-fail but has error markers", path.display());
+        }
+        let expected_output = extract_expected_outputs(&path, &source);
+        if kind != TestDefKind::Run && expected_output.len() > 0 {
+            panic!("test {} is not compile-pass but has output markers", path.display());
+        }
         let key_path = path.strip_prefix(prefix).unwrap_or(&path);
-        if matches!(kind, TestKind::CompilePass | TestKind::Run) {
+        let mut tests = Vec::new();
+        let mut add_test_case = |kind: TestKind, optimize: bool, node: bool| {
             tests.push(Test {
-                key: format!("{} (optimized)", key_path.display()),
+                key: format!("{} todo", key_path.display()),
                 path: path.clone(),
                 source: source.clone(),
-                options: Options { verify: true, optimize: true },
+                options: Options { verify: true, optimize },
                 expected_errors: expected_errors.clone(),
-                expected_output: expected_output.clone(),
+                kind,
             });
+        };
+        match kind {
+            TestDefKind::CompileFail => {
+                add_test_case(TestKind::Compile, false, false);
+            }
+            TestDefKind::CompilePass => {
+                add_test_case(TestKind::Compile, false, false);
+                add_test_case(TestKind::Compile, true, false);
+            }
+            TestDefKind::Run => {
+                add_test_case(TestKind::Run { runner: Runner::Interpreter, expected_output: expected_output.clone() }, false, false);
+                add_test_case(TestKind::Run { runner: Runner::Interpreter, expected_output }, true, false);                
+            }
         }
-        tests.push(Test {
-            key: key_path.display().to_string(),
-            path,
-            source,
-            options: Options { verify: true, optimize: false },
-            expected_errors,
-            expected_output,
-        });
         tests
     }
 
-    fn compile(&self) -> CompilationOutcome {
-        let actual_errors = Compilation::from_source_and_options(&self.source, self.options)
+    fn compile(&self) -> (Compilation, CompilationOutcome) {
+        let mut compilation = Compilation::from_source_and_options(&self.source, self.options);
+        let actual_errors = compilation
             .diagnostics()
             .filter(|e| e.severity == Severity::Error)
             .collect::<Vec<_>>();
@@ -93,42 +115,43 @@ impl Test {
                 missing_errors.push(expected.clone());
             }
         }
-        CompilationOutcome {
+        let outcome = CompilationOutcome {
             extra_errors,
             missing_errors,
             wrong_messages,
-        }
-    }
-
-    fn run_program(&self) -> RunOutcome {
-        assert!(self.expected_output.is_some(), "test program is not supposed to be run");
-        let mut compilation = Compilation::from_source_and_options(&self.source, self.options);
-        match compilation.interpret() {
-            Ok(text) => RunOutcome {
-                output: text.trim().lines().map(String::from).collect(),
-                expected_output: self.expected_output.clone().unwrap(),
-            },
-            Err(_) => RunOutcome {
-                output: vec!["trap".to_owned()],
-                expected_output: self.expected_output.clone().unwrap(),
-            },
-        }
+        };
+        (compilation, outcome)
     }
 
     pub fn run(&self) -> TestOutcome {
-        let compilation = self.compile();
-        if !compilation.is_success() {
-            return TestOutcome::BadCompilation(compilation);
+        let (compilation, compilation_outcome) = self.compile();
+        if !compilation_outcome.is_success() {
+            return TestOutcome::BadCompilation(compilation_outcome);
         }
 
-        if self.expected_output.is_some() {
-            let run = self.run_program();
-            if !run.is_success() {
-                return TestOutcome::BadRun(run);
+        match self.kind.clone() {
+            TestKind::Compile => TestOutcome::Success,
+            TestKind::Run { runner, expected_output } => {
+                let output = run_program(compilation, runner);
+                let run_outcome = RunOutcome { output, expected_output };
+                if run_outcome.is_success() {
+                    TestOutcome::Success
+                } else {
+                    TestOutcome::BadRun(run_outcome)
+                }
             }
         }
+    }
+}
 
-        TestOutcome::Success
+fn run_program(mut compilation: Compilation, runner: Runner) -> Vec<String> {
+    match runner {
+        Runner::Interpreter => {
+            match compilation.interpret() {
+                Ok(output) => output.trim().lines().map(str::to_owned).collect(),
+                Err(_) => vec!["trap".to_owned()],
+            }
+        }
     }
 }
 
@@ -198,7 +221,7 @@ fn extract_expected_outputs(path: &Path, source: &str) -> Vec<String> {
     outputs
 }
 
-fn get_tests_in_dir(prefix: &Path, dir: &Path, kind: TestKind) -> Vec<Test> {
+fn get_tests_in_dir(prefix: &Path, dir: &Path, kind: TestDefKind) -> Vec<Test> {
     let entries = match std::fs::read_dir(&dir) {
         Ok(entries) => entries,
         Err(e) => panic!("failed to read {}: {}", dir.display(), e),
@@ -219,19 +242,19 @@ fn get_tests_in_dir(prefix: &Path, dir: &Path, kind: TestKind) -> Vec<Test> {
 fn get_compile_pass_tests(mut root_path: PathBuf) -> Vec<Test> {
     let prefix = root_path.clone();
     root_path.push("compile-pass");
-    get_tests_in_dir(&prefix, &root_path, TestKind::CompilePass)
+    get_tests_in_dir(&prefix, &root_path, TestDefKind::CompilePass)
 }
 
 fn get_compile_fail_tests(mut root_path: PathBuf) -> Vec<Test> {
     let prefix = root_path.clone();
     root_path.push("compile-fail");
-    get_tests_in_dir(&prefix, &root_path, TestKind::CompileFail)
+    get_tests_in_dir(&prefix, &root_path, TestDefKind::CompileFail)
 }
 
 fn get_run_pass_tests(mut root_path: PathBuf) -> Vec<Test> {
     let prefix = root_path.clone();
     root_path.push("run-pass");
-    get_tests_in_dir(&prefix, &root_path, TestKind::Run)
+    get_tests_in_dir(&prefix, &root_path, TestDefKind::Run)
 }
 
 pub fn get_tests(root_path: PathBuf) -> Vec<Test> {
