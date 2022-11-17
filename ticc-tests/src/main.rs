@@ -9,6 +9,8 @@ fn main() {
     dir.push("programs");
     let prefix = dir.clone();
 
+    ticc_tests::verify_node_is_present();
+
     let tests = ticc_tests::get_tests(dir);
 
     for test in tests {

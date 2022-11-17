@@ -19,7 +19,7 @@ pub(crate) fn gen_ir(program: &cir::Program) -> ir::Program {
             }
             ir::BlockEnd::Trap(msg) => {
                 return ir::Program {
-                    stmts,
+                    stmts: Vec::new(),
                     trap: Some(msg),
                     exports: Vec::new(),
                 };
@@ -110,7 +110,6 @@ impl Generator {
                     let name = self.fresh_name();
                     current_block.push(ir::Stmt::Def(ir::Def {
                         name,
-                        recursive: false,
                         params,
                         body: ir::Block {
                             stmts,
@@ -185,7 +184,6 @@ impl Generator {
                 let value = self.gen_expr(body, &mut stmts);
                 current_block.push(ir::Stmt::Def(ir::Def {
                     name: (*n).into(),
-                    recursive: true,
                     params,
                     body: ir::Block {
                         stmts,

@@ -74,7 +74,6 @@ pub(crate) struct Branch {
 #[derive(Debug, Clone)]
 pub(crate) struct Def {
     pub(crate) name: Name,
-    pub(crate) recursive: bool,
     pub(crate) params: Vec<Name>,
     pub(crate) body: Block,
 }

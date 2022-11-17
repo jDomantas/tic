@@ -1,5 +1,5 @@
 use ticc::{Compilation, Diagnostic, Options, Pos, Severity, Span};
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, io::{Write, Read}};
 
 pub struct Test {
     pub key: String,
@@ -39,6 +39,7 @@ pub enum TestKind {
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Runner {
     Interpreter,
+    Node,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -65,7 +66,7 @@ impl Test {
         let mut tests = Vec::new();
         let mut add_test_case = |kind: TestKind, optimize: bool, node: bool| {
             tests.push(Test {
-                key: format!("{} todo", key_path.display()),
+                key: format!("{} {}", key_path.display(), fmt_suffix(optimize, node)),
                 path: path.clone(),
                 source: source.clone(),
                 options: Options { verify: true, optimize },
@@ -83,7 +84,9 @@ impl Test {
             }
             TestDefKind::Run => {
                 add_test_case(TestKind::Run { runner: Runner::Interpreter, expected_output: expected_output.clone() }, false, false);
-                add_test_case(TestKind::Run { runner: Runner::Interpreter, expected_output }, true, false);                
+                add_test_case(TestKind::Run { runner: Runner::Interpreter, expected_output: expected_output.clone() }, true, false);
+                add_test_case(TestKind::Run { runner: Runner::Node, expected_output: expected_output.clone() }, false, true);
+                add_test_case(TestKind::Run { runner: Runner::Node, expected_output }, true, true);
             }
         }
         tests
@@ -144,15 +147,94 @@ impl Test {
     }
 }
 
+fn fmt_suffix(optimize: bool, node: bool) -> &'static str {
+    match (optimize, node) {
+        (false, false) => "",
+        (true, false) => " (optimized)",
+        (false, true) => " (node)",
+        (true, true) => " (optimized, node)",
+    }
+}
+
 fn run_program(mut compilation: Compilation, runner: Runner) -> Vec<String> {
     match runner {
         Runner::Interpreter => {
             match compilation.interpret() {
                 Ok(output) => output.trim().lines().map(str::to_owned).collect(),
-                Err(_) => vec!["trap".to_owned()],
+                Err(trap) => vec![format!("trap: {}", trap.message)],
             }
         }
+        Runner::Node => {
+            let js = compilation.emit_js();
+            let code = format!("
+            function initModule() {{
+                {js}
+                return {{
+                    'export_list': $export_list,
+                    'exports': $exports,
+                }}
+            }};
+            function formatValue(value, wrap) {{
+                if (typeof value === 'number' || typeof value === 'boolean') {{
+                    return '' + value;
+                }} else if (typeof value === 'object') {{
+                    let res = value[0];
+                    for (let i = 1; i < value.length; i++) {{
+                        res += ' ' + formatValue(value[i], true);
+                    }}
+                    if (wrap) {{
+                        return '(' + res + ')';
+                    }} else {{
+                        return res;
+                    }}
+                }} else {{
+                    throw new Error('bad value: ' + value);
+                }}
+            }}
+
+            let module = {{ 'export_list': [] }};
+            try {{
+                module = initModule();
+            }} catch (e) {{
+                console.log('trap:', e.message);
+            }}
+            for (const ex of module.export_list) {{
+                console.log(ex, '=', formatValue(module.exports[ex], false));
+            }}
+            ");
+            let output = run_node(code);
+            output.trim().lines().map(str::to_owned).collect()
+        }
     }
+}
+
+fn run_node(input: String) -> String {
+    let mut child = std::process::Command::new("node")
+        .arg("-")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to run node");
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let output = std::thread::scope(|s| {
+        s.spawn(|| {
+            stdin.write_all(input.as_bytes()).expect("failed to write code to stdin");
+            stdin.flush().expect("failed to write code to stdin");
+            drop(stdin);
+        });
+        s.spawn(|| {
+            let status = child.wait().expect("failed to wait for status");
+            if !status.success() {
+                panic!("node exited with an error");
+            }
+        });
+        let mut output = String::new();
+        stdout.read_to_string(&mut output).expect("failed to read output");
+        output
+    });
+    output
 }
 
 impl CompilationOutcome {
@@ -304,8 +386,20 @@ fn matches(expected: &Diagnostic, actual: &Diagnostic) -> bool {
     }
 }
 
+pub fn verify_node_is_present() {
+    let output = std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .expect("failed to check `node --version`");
+    if !output.status.success() {
+        panic!("node exited with an error");
+    }
+}
+
 #[test]
 fn compiler_tests() {
+    verify_node_is_present();
+
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("programs");
     let tests = get_tests(dir);

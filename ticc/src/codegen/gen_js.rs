@@ -1,11 +1,11 @@
 mod gen_ir;
 mod ir;
 
+use std::fmt::Write;
 use ticc_core::ir as cir;
 
 pub(crate) fn generate_js(program: cir::Program) -> String {
     let ir = gen_ir::gen_ir(&program);
-    // eprintln!("program: {:#?}", ir);
     let mut generator = Generator {
         output: String::new(),
         indent: 0,
@@ -13,6 +13,10 @@ pub(crate) fn generate_js(program: cir::Program) -> String {
     };
     for def in ir.stmts {
         generator.emit_stmt(def);
+    }
+    generator.emit_exports(&ir.exports);
+    if let Some(msg) = &ir.trap {
+        generator.emit_trap(msg);
     }
     generator.output
 }
@@ -146,14 +150,7 @@ impl Generator<'_> {
                 self.output.push_str(";\n");
             }
             ir::BlockEnd::Trap(msg) => {
-                self.output.push_str("throw new Error('");
-                for c in msg.chars() {
-                    if c == '\'' {
-                        self.output.push('\\');
-                    }
-                    self.output.push(c);
-                }
-                self.output.push_str("');\n");
+                self.emit_trap(&msg);
             }
         }
     }
@@ -258,6 +255,36 @@ impl Generator<'_> {
         for _ in 0..self.indent {
             self.output.push_str("    ");
         }
+    }
+
+    fn emit_exports(&mut self, exports: &[ir::Export]) {
+        self.output.push_str("const $export_list = [");
+        for (i, export) in exports.iter().enumerate() {
+            if i > 0 {
+                self.output.push_str(", ");
+            }
+            write!(&mut self.output, "'{}'", export.public_name).unwrap();
+        }
+        self.output.push_str("];\n");
+        self.output.push_str("const $exports = {\n");
+        for export in exports {
+            self.output.push_str("    ");
+            write!(&mut self.output, "'{}': ", export.public_name).unwrap();
+            self.emit_name(export.name);
+            self.output.push_str(",\n");
+        }
+        self.output.push_str("};\n");
+    }
+
+    fn emit_trap(&mut self, trap: &str) {
+        self.output.push_str("throw new Error('");
+        for c in trap.chars() {
+            if c == '\'' {
+                self.output.push('\\');
+            }
+            self.output.push(c);
+        }
+        self.output.push_str("');\n");
     }
 }
 
