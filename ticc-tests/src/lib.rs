@@ -182,7 +182,7 @@ fn run_program(mut compilation: Compilation, runner: Runner) -> Vec<String> {
                     for (let i = 1; i < value.length; i++) {{
                         res += ' ' + formatValue(value[i], true);
                     }}
-                    if (wrap) {{
+                    if (wrap && value.length > 1) {{
                         return '(' + res + ')';
                     }} else {{
                         return res;

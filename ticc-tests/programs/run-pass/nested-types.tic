@@ -1,0 +1,11 @@
+type List a = Nil | Cons a rec;
+
+export let list : List int = Cons 1 (Cons 2 (Cons 3 Nil));
+-- EXPECT: list = Cons 1 (Cons 2 (Cons 3 Nil))
+
+type Foo = Ints (List int) | Bools (List bool);
+
+export let ints : Foo = Ints (Cons 1 Nil);
+-- EXPECT: ints = Ints (Cons 1 Nil)
+export let bools : Foo = Bools (Cons true (Cons false Nil));
+-- EXPECT: bools = Bools (Cons true (Cons false Nil))
