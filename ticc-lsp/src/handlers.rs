@@ -105,6 +105,7 @@ fn on_close(
 ) {
     let key = FileKey::from(params.text_document.uri);
     server.compilations.remove_file(&key);
+    clear_diagnostics(server, key);
 }
 
 fn on_file_update(
@@ -125,6 +126,20 @@ fn send_diagnostics(
         params: serde_json::to_value(lsp_types::PublishDiagnosticsParams {
             uri: file.0.clone(),
             diagnostics,
+            version: None,
+        }).unwrap(),
+    })).unwrap();
+}
+
+fn clear_diagnostics(
+    server: &mut TicServer,
+    file: FileKey,
+) {
+    server.sender.send(lsp_server::Message::Notification(lsp_server::Notification {
+        method: notification::PublishDiagnostics::METHOD.to_owned(),
+        params: serde_json::to_value(lsp_types::PublishDiagnosticsParams {
+            uri: file.0.clone(),
+            diagnostics: Vec::new(),
             version: None,
         }).unwrap(),
     })).unwrap();
