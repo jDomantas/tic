@@ -3,7 +3,7 @@ mod gen_js;
 mod opt;
 
 use ticc_core::ir;
-use crate::Compilation;
+use crate::CompilationUnit;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Options {
@@ -20,19 +20,19 @@ impl Default for Options {
     }
 }
 
-pub(crate) fn emit_ir(compilation: &mut Compilation) -> String {
+pub(crate) fn emit_ir(compilation: &mut CompilationUnit) -> String {
     let program = emit_core(compilation);
     let pretty = ticc_core::pretty_print(&program);
     pretty
 }
 
-pub(crate) fn emit_js(compilation: &mut Compilation) -> String {
+pub(crate) fn emit_js(compilation: &mut CompilationUnit) -> String {
     let program = emit_core(compilation);
     let js = gen_js::generate_js(program);
     js
 }
 
-pub(crate) fn emit_core(compilation: &mut Compilation) -> ir::Program<'_> {
+pub(crate) fn emit_core(compilation: &mut CompilationUnit) -> ir::Program<'_> {
     compilation.compile_to_end();
     let mut program = gen_core::generate_core(compilation);
     let verify = |p: &ir::Program| if compilation.options.verify { ticc_core::assert_valid(p); };

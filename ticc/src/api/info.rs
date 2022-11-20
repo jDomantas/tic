@@ -1,5 +1,5 @@
 use internal_iterator::{InternalIterator, IteratorExt};
-use crate::{Compilation, Pos, Span};
+use crate::{CompilationUnit, Pos, Span};
 use crate::compiler::{ir, syntax::{AstNode, node}};
 
 pub struct Info {
@@ -7,12 +7,12 @@ pub struct Info {
     pub doc: String,
 }
 
-pub(crate) fn info_at(compilation: &mut Compilation, pos: Pos) -> Option<Info> {
+pub(crate) fn info_at(compilation: &mut CompilationUnit, pos: Pos) -> Option<Info> {
     compilation.compile_up_to(pos.source_pos() + 1);
     def_info(compilation, pos).or_else(|| expr_info(compilation, pos))
 }
 
-fn def_info(compilation: &Compilation, pos: Pos) -> Option<Info> {
+fn def_info(compilation: &CompilationUnit, pos: Pos) -> Option<Info> {
     let r = super::find_def_or_ref_at(compilation, pos)?;
     let def = super::find_def(compilation, r.symbol)?;
     let name = &compilation.src[def.span.source_range()];
@@ -42,7 +42,7 @@ fn def_info(compilation: &Compilation, pos: Pos) -> Option<Info> {
     })
 }
 
-fn expr_info(compilation: &Compilation, pos: Pos) -> Option<Info> {
+fn expr_info(compilation: &CompilationUnit, pos: Pos) -> Option<Info> {
     let (item, expr) = find_expr_at_pos(compilation, pos)?;
     let ty = &item.types[&expr.syntax().id()];
     let mut type_printer = super::TypePrinter::new(compilation);
@@ -54,7 +54,7 @@ fn expr_info(compilation: &Compilation, pos: Pos) -> Option<Info> {
     })
 }
 
-fn find_expr_at_pos(compilation: &Compilation, pos: Pos) -> Option<(&ir::Item, node::Expr<'_>)> {
+fn find_expr_at_pos(compilation: &CompilationUnit, pos: Pos) -> Option<(&ir::Item, node::Expr<'_>)> {
     compilation.items
         .iter()
         .into_internal()

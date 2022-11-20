@@ -1,9 +1,9 @@
 use std::fmt::Write;
-use crate::{Compilation, Diagnostic};
+use crate::{CompilationUnit, Diagnostic};
 use crate::error::{RawMessage, RawSegment};
 use crate::api::TypePrinter;
 
-pub(crate) fn diagnostics<'a>(compilation: &'a mut Compilation) -> impl Iterator<Item = Diagnostic> + 'a {
+pub(crate) fn diagnostics<'a>(compilation: &'a mut CompilationUnit) -> impl Iterator<Item = Diagnostic> + 'a {
     compilation.compile_to_end();
     let lints = crate::lint::lints(compilation);
     let compilation = &*compilation;
@@ -34,7 +34,7 @@ pub(crate) fn diagnostics<'a>(compilation: &'a mut Compilation) -> impl Iterator
 }
 
 fn format_message(
-    compilation: &Compilation,
+    compilation: &CompilationUnit,
     type_printer: &mut TypePrinter<'_>,
     err: &RawMessage,
 ) -> String {

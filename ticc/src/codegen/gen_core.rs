@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use ticc_syntax::TokenKind;
 use ticc_core::ir as cir;
-use crate::Compilation;
+use crate::CompilationUnit;
 use crate::compiler::ir;
 use crate::compiler::syntax::{AstNode, NodeId, node};
 
-pub(crate) fn generate_core(compilation: &Compilation) -> cir::Program<'_> {
+pub(crate) fn generate_core(compilation: &CompilationUnit) -> cir::Program<'_> {
     let empty = HashMap::new();
     let mut generator = Generator {
         program: cir::Program::new(),

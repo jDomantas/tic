@@ -11,7 +11,7 @@ fn check_references(source: &str, expected: &[&str]) {
         })
         .collect::<Vec<_>>();
 
-    let mut compilation = ticc::Compilation::from_source(&source);
+    let mut compilation = ticc::CompilationUnit::from_source(&source);
     let refs = compilation.find_references(pos).unwrap_or_else(|| {
         panic!("no symbol at pos for {:?}", source);
     });
@@ -20,7 +20,7 @@ fn check_references(source: &str, expected: &[&str]) {
 
 fn check_no_refs(source: &str) {
     let (source, pos) = common::extract_single_pos(source);
-    let mut compilation = ticc::Compilation::from_source(&source);
+    let mut compilation = ticc::CompilationUnit::from_source(&source);
     let refs = compilation.find_references(pos);
     if refs.is_some() {
         panic!("expected no span for: {}", source);

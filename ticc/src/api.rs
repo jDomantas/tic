@@ -5,10 +5,10 @@ pub(crate) mod navigation;
 pub(crate) mod tokens;
 
 use std::collections::HashMap;
-use crate::{Compilation, Pos};
+use crate::{CompilationUnit, Pos};
 use crate::compiler::ir;
 
-fn find_ref_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Ref> {
+fn find_ref_at(compilation: &CompilationUnit, pos: Pos) -> Option<&ir::Ref> {
     for item in &compilation.items {
         if pos < item.span.start() || item.span.end() <= pos {
             continue;
@@ -22,7 +22,7 @@ fn find_ref_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Ref> {
     None
 }
 
-fn find_def_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Def> {
+fn find_def_at(compilation: &CompilationUnit, pos: Pos) -> Option<&ir::Def> {
     for item in &compilation.items {
         if pos < item.span.start() || item.span.end() <= pos {
             continue;
@@ -36,12 +36,12 @@ fn find_def_at(compilation: &Compilation, pos: Pos) -> Option<&ir::Def> {
     None
 }
 
-fn find_def_or_ref_at(compilation: &Compilation, pos: Pos) -> Option<ir::Ref> {
+fn find_def_or_ref_at(compilation: &CompilationUnit, pos: Pos) -> Option<ir::Ref> {
     find_ref_at(compilation, pos).copied()
         .or_else(|| find_def_at(compilation, pos).map(|d| d.to_ref()))
 }
 
-fn find_def(compilation: &Compilation, symbol: ir::Symbol) -> Option<&ir::Def> {
+fn find_def(compilation: &CompilationUnit, symbol: ir::Symbol) -> Option<&ir::Def> {
     for item in &compilation.items {
         for def in &item.defs {
             if def.symbol == symbol {
@@ -53,12 +53,12 @@ fn find_def(compilation: &Compilation, symbol: ir::Symbol) -> Option<&ir::Def> {
 }
 
 struct TypePrinter<'a> {
-    compilation: &'a Compilation,
+    compilation: &'a CompilationUnit,
     name_cache: HashMap<ir::Symbol, &'a str>,
 }
 
 impl<'a> TypePrinter<'a> {
-    fn new(compilation: &'a Compilation) -> TypePrinter<'a> {
+    fn new(compilation: &'a CompilationUnit) -> TypePrinter<'a> {
         TypePrinter {
             compilation,
             name_cache: HashMap::new(),

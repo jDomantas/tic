@@ -1,8 +1,8 @@
 use std::collections::{HashSet, HashMap};
-use crate::{Compilation, RawDiagnostic, Severity};
+use crate::{CompilationUnit, RawDiagnostic, Severity};
 use crate::compiler::ir::{DefKind, Visibility};
 
-pub(crate) fn lints(compilation: &mut Compilation) -> Vec<RawDiagnostic> {
+pub(crate) fn lints(compilation: &mut CompilationUnit) -> Vec<RawDiagnostic> {
     compilation.compile_to_end();
     let mut used = HashSet::new();
     let mut deps = HashMap::new();

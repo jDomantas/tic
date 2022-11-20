@@ -24,7 +24,7 @@ use lsp_types::{
     WorkDoneProgressOptions,
 };
 use lsp_server::{Connection, Message};
-use ticc::Compilation;
+use ticc::CompilationUnit;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -40,16 +40,16 @@ impl From<lsp_types::Url> for FileKey {
 
 #[derive(Default)]
 struct CompilationSet {
-    compilations: HashMap<FileKey, Compilation>,
+    compilations: HashMap<FileKey, CompilationUnit>,
 }
 
 impl CompilationSet {
-    fn get_mut(&mut self, file: &FileKey) -> Option<&mut Compilation> {
+    fn get_mut(&mut self, file: &FileKey) -> Option<&mut CompilationUnit> {
         self.compilations.get_mut(file)
     }
 
     fn add_file(&mut self, file: FileKey, source: &str) {
-        let compilation = Compilation::from_source(source);
+        let compilation = CompilationUnit::from_source(source);
         self.compilations.insert(file, compilation);
     }
 

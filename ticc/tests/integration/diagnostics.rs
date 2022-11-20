@@ -1,8 +1,8 @@
-use ticc::Compilation;
+use ticc::CompilationUnit;
 
 #[test]
 fn no_errors() {
-    let mut compilation = Compilation::from_source(r#"
+    let mut compilation = CompilationUnit::from_source(r#"
         type List a = Nil | Cons a rec;
 
         export let map : (a -> b) -> List a -> List b =

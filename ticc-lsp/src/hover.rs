@@ -1,7 +1,7 @@
-use ticc::Compilation;
+use ticc::CompilationUnit;
 use crate::utils::LocationTranslator;
 
-pub fn hover(compilation: &mut Compilation, at: lsp_types::Position) -> Option<lsp_types::Hover> {
+pub fn hover(compilation: &mut CompilationUnit, at: lsp_types::Position) -> Option<lsp_types::Hover> {
     let src = compilation.source();
     let mut translator = LocationTranslator::for_source(&src);
     let info = compilation.info(translator.to_ticc(at))?;

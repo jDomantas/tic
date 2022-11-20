@@ -5,14 +5,14 @@ fn check_def_span(source: &str, expected: &str) {
     let (expected, span) = common::extract_single_span(expected);
     assert_eq!(source, expected, "sources must match");
 
-    let mut compilation = ticc::Compilation::from_source(&source);
+    let mut compilation = ticc::CompilationUnit::from_source(&source);
     let def_span = compilation.find_definition(pos).expect("no def span");
     assert_eq!(span, def_span);
 }
 
 fn check_no_def(source: &str) {
     let (source, pos) = common::extract_single_pos(source);
-    let mut compilation = ticc::Compilation::from_source(&source);
+    let mut compilation = ticc::CompilationUnit::from_source(&source);
     let def_span = compilation.find_definition(pos);
     if def_span.is_some() {
         panic!("expected no span for: {}", source);

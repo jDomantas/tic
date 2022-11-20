@@ -15,20 +15,20 @@ pub use crate::api::info::Info;
 pub use crate::api::completion::Completion;
 pub use crate::codegen::Options;
 
-pub struct Compilation {
+pub struct CompilationUnit {
     src: Arc<str>,
     items: Vec<ir::Item>,
     next_symbol: Vec<ir::Symbol>,
     options: Options,
 }
 
-impl Compilation {
-    pub fn from_source(src: &str) -> Compilation {
-        Compilation::from_source_and_options(src, Options::default())
+impl CompilationUnit {
+    pub fn from_source(src: &str) -> CompilationUnit {
+        CompilationUnit::from_source_and_options(src, Options::default())
     }
 
-    pub fn from_source_and_options(src: &str, options: Options) -> Compilation {
-        Compilation {
+    pub fn from_source_and_options(src: &str, options: Options) -> CompilationUnit {
+        CompilationUnit {
             src: src.into(),
             items: Vec::new(),
             next_symbol: Vec::new(),

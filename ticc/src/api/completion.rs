@@ -1,12 +1,12 @@
 use ticc_syntax::Pos;
-use crate::{Compilation, RawDiagnostic};
+use crate::{CompilationUnit, RawDiagnostic};
 use crate::compiler::{Scope, ir, resolve, syntax::{AstNode, node}};
 
 pub struct Completion {
     pub name: String,
 }
 
-pub fn completions_at(compilation: &mut Compilation, pos: Pos) -> Option<Vec<Completion>> {
+pub fn completions_at(compilation: &mut CompilationUnit, pos: Pos) -> Option<Vec<Completion>> {
     compilation.compile_up_to(pos.source_pos());
     let (index, item) = compilation.items
         .iter()

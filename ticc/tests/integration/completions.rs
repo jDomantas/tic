@@ -5,7 +5,7 @@ fn check_completions(source: &str, expected: &[&str]) {
     let mut expected = expected.iter().copied().map(|s| s.to_owned()).collect::<Vec<_>>();
     expected.sort();
 
-    let mut compilation = ticc::Compilation::from_source(&source);
+    let mut compilation = ticc::CompilationUnit::from_source(&source);
     let completions = compilation.completions(pos).unwrap_or_else(|| {
         panic!("no completions at pos for {:?}", source);
     });
@@ -16,7 +16,7 @@ fn check_completions(source: &str, expected: &[&str]) {
 
 fn check_no_completions(source: &str) {
     let (source, pos) = common::extract_single_pos(source);
-    let mut compilation = ticc::Compilation::from_source(&source);
+    let mut compilation = ticc::CompilationUnit::from_source(&source);
     let completions = compilation.completions(pos);
     if let Some(completions) = completions {
         let actual = completions.into_iter().map(|c| c.name).collect::<Vec<_>>();

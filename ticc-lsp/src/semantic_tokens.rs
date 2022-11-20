@@ -1,7 +1,7 @@
 use lsp_types::SemanticToken;
-use ticc::{Compilation, TokenKind};
+use ticc::{CompilationUnit, TokenKind};
 
-pub fn get_semantic_tokens(compilation: &mut Compilation) -> Vec<SemanticToken> {
+pub fn get_semantic_tokens(compilation: &mut CompilationUnit) -> Vec<SemanticToken> {
     let src: &str = &compilation.source();
 
     let mut result = Vec::new();

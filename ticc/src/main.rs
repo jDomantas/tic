@@ -48,7 +48,7 @@ fn main() {
         optimize: opt.optimize,
     };
 
-    let mut compilation = ticc::Compilation::from_source_and_options(&source, options);
+    let mut compilation = ticc::CompilationUnit::from_source_and_options(&source, options);
 
     if print_diagnostics(&path.to_string_lossy(), &source, compilation.diagnostics()).is_err() {
         std::process::exit(1);

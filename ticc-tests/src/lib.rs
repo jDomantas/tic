@@ -1,4 +1,4 @@
-use ticc::{Compilation, Diagnostic, Options, Pos, Severity, Span};
+use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span};
 use std::{path::{Path, PathBuf}, io::{Write, Read}};
 
 pub struct Test {
@@ -92,8 +92,8 @@ impl Test {
         tests
     }
 
-    fn compile(&self) -> (Compilation, CompilationOutcome) {
-        let mut compilation = Compilation::from_source_and_options(&self.source, self.options);
+    fn compile(&self) -> (CompilationUnit, CompilationOutcome) {
+        let mut compilation = CompilationUnit::from_source_and_options(&self.source, self.options);
         let actual_errors = compilation
             .diagnostics()
             .filter(|e| e.severity == Severity::Error)
@@ -156,7 +156,7 @@ fn fmt_suffix(optimize: bool, node: bool) -> &'static str {
     }
 }
 
-fn run_program(mut compilation: Compilation, runner: Runner) -> Vec<String> {
+fn run_program(mut compilation: CompilationUnit, runner: Runner) -> Vec<String> {
     match runner {
         Runner::Interpreter => {
             match compilation.interpret() {

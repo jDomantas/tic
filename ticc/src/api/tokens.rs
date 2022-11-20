@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use internal_iterator::{InternalIterator, IteratorExt};
 use ticc_syntax::cursor::SyntaxElement;
-use crate::{Compilation, Span};
+use crate::{CompilationUnit, Span};
 use crate::compiler::syntax::{TriviaKind, TokenKind as Syntax};
 use crate::compiler::ir;
 
@@ -25,7 +25,7 @@ pub struct Token {
     pub span: Span,
 }
 
-pub(crate) fn tokens(compilation: &mut Compilation) -> impl Iterator<Item = Token> + '_ {
+pub(crate) fn tokens(compilation: &mut CompilationUnit) -> impl Iterator<Item = Token> + '_ {
     compilation.compile_to_end();
 
     let def_kinds = compilation.items

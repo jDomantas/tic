@@ -1,8 +1,8 @@
 use lsp_types::{Diagnostic, DiagnosticSeverity};
-use ticc::{Compilation, Severity};
+use ticc::{CompilationUnit, Severity};
 use crate::utils::LocationTranslator;
 
-pub fn get_diagnostics(compilation: &mut Compilation) -> Vec<Diagnostic> {
+pub fn get_diagnostics(compilation: &mut CompilationUnit) -> Vec<Diagnostic> {
     let source = compilation.source();
     let mut translator = LocationTranslator::for_source(&source);
 
@@ -31,7 +31,7 @@ mod tests {
     use lsp_types::{Position, Range};
 
     fn first_error_position(source: &str) -> Range {
-        let mut compilation = Compilation::from_source(source);
+        let mut compilation = CompilationUnit::from_source(source);
         get_diagnostics(&mut compilation)
             .into_iter()
             .next()

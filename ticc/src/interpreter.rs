@@ -1,9 +1,9 @@
 use std::fmt::Write;
 use ticc_core::ir;
 use ticc_eval::Value;
-use crate::{Compilation, Trap};
+use crate::{CompilationUnit, Trap};
 
-pub(crate) fn eval(compilation: &mut Compilation) -> Result<String, Trap> {
+pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
     let program = crate::codegen::emit_core(compilation);
     let mut env = ticc_eval::Env::new();
     let mut output = String::new();
