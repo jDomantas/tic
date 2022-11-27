@@ -2,10 +2,12 @@
 pub(crate) mod error;
 pub(crate) mod codegen;
 pub(crate) mod compiler;
+pub(crate) mod import;
 pub(crate) mod interpreter;
 pub(crate) mod lint;
 pub(crate) mod api;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use compiler::{DefSet, Scope, ir, parser};
 pub use ticc_syntax::{Pos, Span};
@@ -82,7 +84,13 @@ impl CompilationUnit {
 
     pub fn complete(mut self) -> CompleteUnit {
         self.compile_to_end();
-        CompleteUnit { unit: Arc::new(self) }
+        let exports = import::collect_exports(&self);
+        CompleteUnit {
+            props: Arc::new(CompleteUnitProps {
+                unit: self,
+                exports,
+            }),
+        }
     }
 
     fn compile_to_end(&mut self) {
@@ -131,7 +139,12 @@ impl CompilationUnit {
 
 #[derive(Clone)]
 pub struct CompleteUnit {
-    unit: Arc<CompilationUnit>,
+    props: Arc<CompleteUnitProps>,
+}
+
+struct CompleteUnitProps {
+    unit: CompilationUnit,
+    exports: HashMap<String, (ir::Symbol, ir::DefKind)>,
 }
 
 trait ToCompletedUnit {
@@ -147,7 +160,7 @@ impl ToCompletedUnit for CompilationUnit {
 
 impl ToCompletedUnit for CompleteUnit {
     fn to_unit(&mut self) -> &CompilationUnit {
-        &self.unit
+        &self.props.unit
     }
 }
 

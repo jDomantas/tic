@@ -1,0 +1,2 @@
+import child(x, y, z) from "child.tic";
+--              ^ ERROR: module does not export y

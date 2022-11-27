@@ -1,0 +1,2 @@
+export let x : int = 0;
+export let z : int = 0;

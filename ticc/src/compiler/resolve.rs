@@ -3,6 +3,8 @@ use std::sync::Arc;
 use crate::{ModuleResolver, RawDiagnostic, Severity, ImportError};
 use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope, SymbolGen};
 
+use super::syntax::AstNode;
+
 pub(crate) fn resolve(
     item: &mut ir::Item,
     scope: &Scope<'_>,
@@ -74,30 +76,7 @@ impl<'a> ResolveSink for Resolver<'a> {
 fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope<'_>, module_resolver: Arc<dyn ModuleResolver>) {
     match item {
         node::Item::Import(i) => {
-            if let Some(path) = i.path() {
-                let text = path.text();
-                // TODO: properly strip quotes & unescape
-                let text = &text[1..(text.len() - 1)];
-                match module_resolver.lookup(text) {
-                    Ok(_unit) => {
-                        // TODO: register namespace and exposed items
-                    }
-                    Err(ImportError::DoesNotExist) => {
-                        sink.record_error(RawDiagnostic {
-                            span: path.span(),
-                            severity: Severity::Error,
-                            message: err_fmt!("cannot find module"),
-                        });
-                    }
-                    Err(ImportError::ImportCycle) => {
-                        sink.record_error(RawDiagnostic {
-                            span: path.span(),
-                            severity: Severity::Error,
-                            message: err_fmt!("import cycle"),
-                        });
-                    }
-                }
-            }
+            resolve_import_item(sink, i, module_resolver);
         }
         node::Item::Type(i) => {
             resolve_type_item(sink, i, scope);
@@ -105,6 +84,58 @@ fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope
         node::Item::Value(i) => {
             resolve_value_item(sink, i, scope);
         }
+    }
+}
+
+fn resolve_import_item(sink: &mut impl ResolveSink, item: node::ImportItem<'_>, module_resolver: Arc<dyn ModuleResolver>) {
+    let Some(path) = item.path() else {
+        return;
+    };
+    let text = path.text();
+    // TODO: properly strip quotes & unescape
+    let text = &text[1..(text.len() - 1)];
+    let unit = match module_resolver.lookup(text) {
+        Ok(unit) => unit,
+        Err(ImportError::DoesNotExist) => {
+            sink.record_error(RawDiagnostic {
+                span: path.span(),
+                severity: Severity::Error,
+                message: err_fmt!("cannot find module"),
+            });
+            return;
+        }
+        Err(ImportError::ImportCycle) => {
+            sink.record_error(RawDiagnostic {
+                span: path.span(),
+                severity: Severity::Error,
+                message: err_fmt!("import cycle"),
+            });
+            return;
+        }
+    };
+
+    // TODO: register namespace even if exposed list is not present
+    let Some(exposed) = item.exposed_list() else {
+        return;
+    };
+
+    for name in exposed.imported_names() {
+        let Some((symbol, kind)) = unit.props.exports.get(name.token().text()).cloned() else {
+            sink.record_error(RawDiagnostic {
+                span: name.token().span(),
+                severity: Severity::Error,
+                message: err_fmt!("module does not export ", name.token().text().to_owned()),
+            });
+            continue;
+        };
+        sink.record_def(ir::Def {
+            // TODO: very broken
+            symbol,
+            kind,
+            vis: ir::Visibility::Module,
+            span: name.token().span(),
+            node: name.syntax().id(),
+        })
     }
 }
 
