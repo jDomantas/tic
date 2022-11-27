@@ -1,0 +1,2 @@
+import test from "test-internal";
+import test(a, b) from "test-internal";

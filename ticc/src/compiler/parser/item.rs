@@ -33,6 +33,18 @@ pub(super) fn item(p: &mut Parser<'_>) -> bool {
         p.expect(TokenKind::Semicolon);
         m.complete(p, SyntaxKind::TypeItem);
         true
+    } else if p.at(TokenKind::Import) {
+        let m = p.start();
+        p.bump(TokenKind::Import);
+        p.expect_name();
+        if p.at(TokenKind::LeftParen) {
+            exposed_list(p);
+        }
+        p.expect(TokenKind::From);
+        p.expect(TokenKind::String);
+        p.expect(TokenKind::Semicolon);
+        m.complete(p, SyntaxKind::ImportItem);
+        true
     } else {
         p.error_recover_item();
         false
@@ -68,4 +80,18 @@ fn type_case(p: &mut Parser<'_>, pipe_optional: bool) {
         }
     }
     m.complete(p, SyntaxKind::TypeCase);
+}
+
+fn exposed_list(p: &mut Parser<'_>) {
+    let m = p.start();
+    p.bump(TokenKind::LeftParen);
+    while !p.at(TokenKind::RightParen) {
+        p.expect_name();
+        if !p.at(TokenKind::Comma) {
+            break;
+        }
+        p.bump(TokenKind::Comma);
+    }
+    p.expect(TokenKind::RightParen);
+    m.complete(p, SyntaxKind::ExposedList);
 }

@@ -123,7 +123,9 @@ impl Parser<'_> {
     }
 
     fn at(&mut self, token: TokenKind) -> bool {
-        self.expected_tokens.push(token);
+        if token != TokenKind::Error {
+            self.expected_tokens.push(token);
+        }
         self.peek() == Some(token)
     }
 
@@ -212,6 +214,9 @@ impl Parser<'_> {
             severity: Severity::Error,
             message: err_fmt!(message),
         }));
+        if self.at(TokenKind::Error) {
+            self.bump(TokenKind::Error);
+        }
     }
 
     fn error_recover(&mut self, hint: ParseHint) {
@@ -315,6 +320,8 @@ enum TokenOrTrivia {
 
 fn classify_token(token: LexerToken) -> TokenOrTrivia {
     match token {
+        LexerToken::Import => TokenOrTrivia::Token(TokenKind::Import),
+        LexerToken::From => TokenOrTrivia::Token(TokenKind::From),
         LexerToken::Export => TokenOrTrivia::Token(TokenKind::Export),
         LexerToken::Let => TokenOrTrivia::Token(TokenKind::Let),
         LexerToken::Match => TokenOrTrivia::Token(TokenKind::Match),
@@ -352,6 +359,7 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
         LexerToken::Name => TokenOrTrivia::Token(TokenKind::Ident),
         LexerToken::Hole => TokenOrTrivia::Token(TokenKind::Hole),
         LexerToken::Number => TokenOrTrivia::Token(TokenKind::Number),
+        LexerToken::String => TokenOrTrivia::Token(TokenKind::String),
         LexerToken::Space => TokenOrTrivia::Trivia(TriviaKind::Space),
         LexerToken::Newline => TokenOrTrivia::Trivia(TriviaKind::Newline),
         LexerToken::Comment => TokenOrTrivia::Trivia(TriviaKind::Comment),

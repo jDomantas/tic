@@ -3,6 +3,10 @@ use crate::{Pos, Span};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Copy, Clone, Logos)]
 pub(crate) enum TokenKind {
+    #[token("import")]
+    Import,
+    #[token("from")]
+    From,
     #[token("export")]
     Export,
     #[token("let")]
@@ -77,6 +81,8 @@ pub(crate) enum TokenKind {
     Hole,
     #[regex("[0-9][a-zA-Z0-9_]*")]
     Number,
+    #[regex("\"[^\"\\n]*\"")]
+    String,
     #[regex(" +")]
     Space,
     #[regex(r"\r?\n")]
