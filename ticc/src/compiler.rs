@@ -83,18 +83,6 @@ impl<'a> Scope<'a> {
     }
 }
 
-pub(crate) struct SymbolGen {
-    pub(crate) next: ir::Symbol,
-}
-
-impl SymbolGen {
-    pub(crate) fn gen(&mut self) -> ir::Symbol {
-        let symbol = self.next;
-        self.next.0 += 1;
-        symbol
-    }
-}
-
 #[derive(Default)]
 pub(crate) struct DefSet {
     pub(crate) defs: HashMap<ir::Symbol, ir::Def>,

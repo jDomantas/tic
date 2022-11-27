@@ -15,7 +15,16 @@ pub(crate) struct Item {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
-pub(crate) struct Symbol(pub(crate) u32);
+pub(crate) struct Symbol(u64);
+
+impl Symbol {
+    pub(crate) fn fresh() -> Symbol {
+        use std::sync::atomic;
+        static NEXT: atomic::AtomicU64 = atomic::AtomicU64::new(0);
+        let value = NEXT.fetch_add(1, atomic::Ordering::Relaxed);
+        Symbol(value)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) enum DefKind {

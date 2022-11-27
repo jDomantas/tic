@@ -41,13 +41,6 @@ impl resolve::ResolveSink for Resolver {
 
     fn record_error(&mut self, _err: RawDiagnostic) {}
 
-    fn generate_symbol(&mut self) -> ir::Symbol {
-        // these symbols will not be visible anywhere and
-        // resolver does not require them to be unique,
-        // so don't bother with generate anything meaningful
-        ir::Symbol(0)
-    }
-
     fn on_name(&mut self, name: node::Name<'_>, usage: resolve::NameUsage, scope: &Scope<'_>) {
         let span = name.syntax().span();
         if self.pos < span.start() || span.end() < self.pos {

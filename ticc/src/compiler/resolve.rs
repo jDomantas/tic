@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{ModuleResolver, RawDiagnostic, Severity, ImportError};
-use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope, SymbolGen};
+use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope};
 
 use super::syntax::AstNode;
 
@@ -9,13 +9,11 @@ pub(crate) fn resolve(
     item: &mut ir::Item,
     scope: &Scope<'_>,
     module_resolver: Arc<dyn ModuleResolver>,
-    symbols: &mut SymbolGen,
 ) {
     let mut resolver = Resolver {
         defs: &mut item.defs,
         refs: &mut item.refs,
         diagnostics: &mut item.diagnostics,
-        symbols,
     };
     resolve_raw(&item.syntax, scope, module_resolver, &mut resolver);
 }
@@ -35,7 +33,6 @@ pub(crate) trait ResolveSink {
     fn record_def(&mut self, def: ir::Def);
     fn record_ref(&mut self, r: ir::Ref);
     fn record_error(&mut self, err: RawDiagnostic);
-    fn generate_symbol(&mut self) -> ir::Symbol;
     fn on_name(&mut self, name: node::Name<'_>, usage: NameUsage, scope: &Scope<'_>);
 }
 
@@ -50,7 +47,6 @@ struct Resolver<'a> {
     defs: &'a mut Vec<ir::Def>,
     refs: &'a mut Vec<ir::Ref>,
     diagnostics: &'a mut Vec<RawDiagnostic>,
-    symbols: &'a mut SymbolGen,
 }
 
 impl<'a> ResolveSink for Resolver<'a> {
@@ -64,10 +60,6 @@ impl<'a> ResolveSink for Resolver<'a> {
 
     fn record_error(&mut self, err: RawDiagnostic) {
         self.diagnostics.push(err);
-    }
-
-    fn generate_symbol(&mut self) -> ir::Symbol {
-        self.symbols.gen()
     }
 
     fn on_name(&mut self, _name: node::Name<'_>, _usage: NameUsage, _scope: &Scope<'_>) {}
@@ -129,7 +121,6 @@ fn resolve_import_item(sink: &mut impl ResolveSink, item: node::ImportItem<'_>, 
             continue;
         };
         sink.record_def(ir::Def {
-            // TODO: very broken
             symbol,
             kind,
             vis: ir::Visibility::Module,
@@ -140,12 +131,12 @@ fn resolve_import_item(sink: &mut impl ResolveSink, item: node::ImportItem<'_>, 
 }
 
 fn resolve_type_item(sink: &mut impl ResolveSink, item: node::TypeItem<'_>, scope: &Scope<'_>) {
-    let symbol = sink.generate_symbol();
+    let symbol = ir::Symbol::fresh();
     let mut scope = Scope::with_parent(scope);
     let mut param_symbols = Vec::new();
     if let Some(params) = item.params() {
         for param in params.params() {
-            let symbol = sink.generate_symbol();
+            let symbol = ir::Symbol::fresh();
             param_symbols.push(symbol);
             sink.record_def(ir::Def {
                 symbol,
@@ -213,7 +204,7 @@ fn resolve_type_case<'a>(
             None
         } else {
             ctor_names.push(name_text);
-            let symbol = sink.generate_symbol();
+            let symbol = ir::Symbol::fresh();
             let mut fn_ty = ir::Type::Named(
                 type_symbol,
                 param_symbols.iter().map(|&s| ir::Type::Named(s, Vec::new())).collect(),
@@ -322,7 +313,7 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, ty: node::Type<'a>, s
                     sink.record_ref(ir::Ref::new(symbol, name));
                     Some(symbol)
                 } else if name.token().text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
-                    let symbol = sink.generate_symbol();
+                    let symbol = ir::Symbol::fresh();
                     type_vars.push(symbol);
                     sink.record_def(ir::Def::new(
                         symbol,
@@ -378,7 +369,7 @@ fn resolve_value_item(sink: &mut impl ResolveSink, item: node::ValueItem, scope:
         } else {
             ir::Visibility::Module
         };
-        let symbol = sink.generate_symbol();
+        let symbol = ir::Symbol::fresh();
         sink.record_def(ir::Def::new(
             symbol,
             ir::DefKind::Value {
@@ -439,7 +430,7 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
                 resolve_expr(sink, expr, &impl_scope);
             }
             if let Some(name) = expr.name() {
-                let symbol = sink.generate_symbol();
+                let symbol = ir::Symbol::fresh();
                 sink.record_def(ir::Def::new(
                     symbol,
                     ir::DefKind::Value {
@@ -479,7 +470,7 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
         node::Expr::Lambda(expr) => {
             let mut scope = Scope::with_parent(scope);
             if let Some(name) = expr.param() {
-                let symbol = sink.generate_symbol();
+                let symbol = ir::Symbol::fresh();
                 sink.record_def(ir::Def::new(
                     symbol,
                     ir::DefKind::Value {
@@ -520,7 +511,7 @@ fn resolve_match_case(sink: &mut impl ResolveSink, case: node::MatchCase, scope:
     let mut scope = Scope::with_parent(scope);
     if let Some(vars) = case.vars() {
         for var in vars.vars() {
-            let symbol = sink.generate_symbol();
+            let symbol = ir::Symbol::fresh();
             sink.record_def(ir::Def::new(
                 symbol,
                 ir::DefKind::Value {

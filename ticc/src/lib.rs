@@ -21,7 +21,6 @@ pub struct CompilationUnit {
     key: ModuleKey,
     src: Arc<str>,
     items: Vec<ir::Item>,
-    next_symbol: Vec<ir::Symbol>,
     options: Options,
     modules: Arc<dyn ModuleResolver>,
 }
@@ -36,7 +35,6 @@ impl CompilationUnit {
             key: ModuleKey::fresh_key(),
             src: src.into(),
             items: Vec::new(),
-            next_symbol: Vec::new(),
             options,
             modules,
         }
@@ -118,16 +116,13 @@ impl CompilationUnit {
             let tail = &self.src[compiled..];
             let item_start = Pos::new(compiled as u32);
             let mut item = parser::parse_one_item(tail, item_start);
-            let next_symbol = self.next_symbol.last().copied().unwrap_or(ir::Symbol(0));
-            let mut symbols = compiler::SymbolGen { next: next_symbol };
-            compiler::resolve::resolve(&mut item, &scope, self.modules.clone(), &mut symbols);
+            compiler::resolve::resolve(&mut item, &scope, self.modules.clone());
             defs.add_item(&item);
             compiler::numck::check_numbers(&mut item);
             compiler::kindck::kind_check(&mut item, &defs);
             compiler::typeck::type_check(&mut item, &defs);
             compiler::matchck::check_matches(&mut item, &defs);
             self.items.push(item);
-            self.next_symbol.push(symbols.next);
             scope.add_item(&self.src, self.items.last().unwrap(), false);
         }
     }
