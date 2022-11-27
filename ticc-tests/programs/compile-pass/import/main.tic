@@ -1,0 +1,2 @@
+import test from "other.tic";
+import test(a, b) from "other.tic";

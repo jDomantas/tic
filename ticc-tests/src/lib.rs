@@ -1,10 +1,17 @@
-use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span, ModuleResolver};
-use std::{path::{Path, PathBuf}, io::{Write, Read}, sync::Arc};
+use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span, ModuleResolver, CompleteUnit};
+use std::{path::{Path, PathBuf}, io::{Write, Read}, sync::{Arc, Mutex}, collections::HashMap};
+
+#[derive(Clone)]
+pub struct ModuleSource {
+    pub path: PathBuf,
+    pub source: String,
+}
 
 pub struct Test {
     pub key: String,
     pub path: PathBuf,
-    pub source: String,
+    pub main: String,
+    pub source: HashMap<String, ModuleSource>,
     pub options: Options,
     pub expected_errors: Vec<Diagnostic>,
     pub kind: TestKind,
@@ -50,7 +57,83 @@ enum TestDefKind {
 }
 
 impl Test {
-    fn from_file(prefix: &Path, path: PathBuf, kind: TestDefKind) -> Vec<Test> {
+    fn from_dir(prefix: &Path, path: PathBuf, kind: TestDefKind) -> Vec<Test> {
+        let dir = std::fs::read_dir(&path).unwrap_or_else(|e| {
+            panic!("failed to read {}: {}", path.display(), e)
+        });
+        let mut modules = HashMap::new();
+        let mut expected_errors = Vec::new();
+        let mut expected_output = Vec::new();
+        for entry in dir {
+            let entry = entry.unwrap_or_else(|e| {
+                panic!("failed to read {}: {}", path.display(), e)
+            });
+            let file_name = entry.file_name().into_string().unwrap_or_else(|e| {
+                panic!("file {} has invalid filename", e.to_string_lossy())
+            });
+            let file_path = entry.path();
+            let source = std::fs::read_to_string(&file_path).unwrap_or_else(|e| {
+                panic!("failed to read {}: {}", path.display(), e);
+            });
+            if file_name == "main.tic" {
+                expected_errors = extract_expected_errors(&path, &source);
+                if kind != TestDefKind::CompileFail && expected_errors.len() > 0 {
+                    panic!("test {} is not compile-fail but has error markers", path.display());
+                }
+                expected_output = extract_expected_outputs(&path, &source);
+                if kind != TestDefKind::Run && expected_output.len() > 0 {
+                    panic!("test {} is not compile-pass but has output markers", path.display());
+                }
+            } else {
+                let expected_errors = extract_expected_errors(&path, &source);
+                if expected_errors.len() > 0 {
+                    panic!("child module does not support expected errors");
+                }
+                let expected_output = extract_expected_outputs(&path, &source);
+                if expected_output.len() > 0 {
+                    panic!("expected output can only be specified in main module: {}", file_path.display());
+                }
+            }
+            modules.insert(file_name.to_owned(), ModuleSource {
+                path: path.clone(),
+                source,
+            });
+        }
+        if !modules.contains_key("main.tic") {
+            panic!("test {} does not have main.tic", path.display());
+        }
+        let key_path = path.strip_prefix(prefix).unwrap_or(&path);
+        let mut tests = Vec::new();
+        let mut add_test_case = |kind: TestKind, optimize: bool, node: bool| {
+            tests.push(Test {
+                key: format!("{} {}", key_path.display(), fmt_suffix(optimize, node)),
+                path: path.clone(),
+                main: "main.tic".to_owned(),
+                source: modules.clone(),
+                options: Options { verify: true, optimize },
+                expected_errors: expected_errors.clone(),
+                kind,
+            });
+        };
+        match kind {
+            TestDefKind::CompileFail => {
+                add_test_case(TestKind::Compile, false, false);
+            }
+            TestDefKind::CompilePass => {
+                add_test_case(TestKind::Compile, false, false);
+                add_test_case(TestKind::Compile, true, false);
+            }
+            TestDefKind::Run => {
+                add_test_case(TestKind::Run { runner: Runner::Interpreter, expected_output: expected_output.clone() }, false, false);
+                add_test_case(TestKind::Run { runner: Runner::Interpreter, expected_output: expected_output.clone() }, true, false);
+                add_test_case(TestKind::Run { runner: Runner::Node, expected_output: expected_output.clone() }, false, true);
+                add_test_case(TestKind::Run { runner: Runner::Node, expected_output }, true, true);
+            }
+        }
+        tests
+    }
+
+    fn from_file(prefix: &Path, path: PathBuf, path_name: String, kind: TestDefKind) -> Vec<Test> {
         let source = std::fs::read_to_string(&path).unwrap_or_else(|e| {
             panic!("failed to read {}: {}", path.display(), e);
         });
@@ -68,7 +151,13 @@ impl Test {
             tests.push(Test {
                 key: format!("{} {}", key_path.display(), fmt_suffix(optimize, node)),
                 path: path.clone(),
-                source: source.clone(),
+                main: path_name.clone(),
+                source: HashMap::from([
+                    (path_name.clone(), ModuleSource {
+                        path: path.clone(),
+                        source: source.clone(),
+                    }),
+                ]),
                 options: Options { verify: true, optimize },
                 expected_errors: expected_errors.clone(),
                 kind,
@@ -93,10 +182,17 @@ impl Test {
     }
 
     fn compile(&self) -> (CompilationUnit, CompilationOutcome) {
+        let resolver = FileSetModuleResolver::for_files(
+            self.source
+                .iter()
+                .map(|(k, v)| (k.clone(), LazyModule::new(v.source.clone())))
+                .collect(),
+            &self.main,
+        );
         let mut compilation = CompilationUnit::new(
-            &self.source,
+            &self.source[&self.main].source,
             self.options,
-            Arc::new(BuiltinModuleResolver),
+            resolver,
         );
         let actual_errors = compilation
             .diagnostics()
@@ -154,7 +250,7 @@ impl Test {
 struct BuiltinModuleResolver;
 
 impl ModuleResolver for BuiltinModuleResolver {
-    fn lookup(&self, name: &str) -> Result<ticc::CompleteUnit, ticc::ImportError> {
+    fn lookup(self: Arc<Self>, name: &str) -> Result<ticc::CompleteUnit, ticc::ImportError> {
         match name {
             "test-internal" => {
                 let source = "export let a: int = 1; export let b: int = 2;";
@@ -337,9 +433,22 @@ fn get_tests_in_dir(prefix: &Path, dir: &Path, kind: TestDefKind) -> Vec<Test> {
             Ok(entry) => entry,
             Err(e) => panic!("failed to read {}: {}", dir.display(), e),
         };
-        let mut path = dir.to_owned();
-        path.push(&entry.file_name());
-        tests.extend(Test::from_file(prefix, path, kind));
+        let ty = match entry.file_type() {
+            Ok(ty) => ty,
+            Err(e) => panic!("failed to read: {}: {}", dir.display(), e),
+        };
+        if ty.is_file() {
+            let mut path = dir.to_owned();
+            path.push(&entry.file_name());
+            let name = entry.file_name().to_string_lossy().into_owned();
+            tests.extend(Test::from_file(prefix, path, name, kind));
+        } else if ty.is_dir() {
+            let mut path = dir.to_owned();
+            path.push(&entry.file_name());
+            tests.extend(Test::from_dir(prefix, path, kind));
+        } else {
+            panic!("unrecognized test: {}", entry.path().display());
+        }
     }
     tests
 }
@@ -435,5 +544,76 @@ fn compiler_tests() {
                 panic!("test {} failed\nrun `cargo run -p ticc-tests` for more details", test.key);
             }
         }
+    }
+}
+
+struct FileSetModuleResolver {
+    files: HashMap<String, LazyModule>,
+}
+
+impl FileSetModuleResolver {
+    fn for_files(files: HashMap<String, LazyModule>, path: &str) -> Arc<ChildResolver> {
+        let resolver = Arc::new(FileSetModuleResolver {
+            files,
+        });
+        Arc::new(ChildResolver { key: path.to_owned(), root: resolver, parent: None })
+    }
+}
+
+struct ChildResolver {
+    key: String,
+    root: Arc<FileSetModuleResolver>,
+    parent: Option<Arc<ChildResolver>>,
+}
+
+impl ModuleResolver for ChildResolver {
+    fn lookup(self: Arc<Self>, name: &str) -> Result<CompleteUnit, ticc::ImportError> {
+        let mut resolver = &*self;
+        loop {
+            if resolver.key == name {
+                return Err(ticc::ImportError::ImportCycle);
+            }
+            match &resolver.parent {
+                Some(r) => resolver = r,
+                None => break,
+            }
+        }
+        let m = match self.root.files.get(name) {
+            Some(m) => m,
+            None => return Err(ticc::ImportError::DoesNotExist),
+        };
+        Ok(m.to_unit(|| Arc::new(ChildResolver {
+            key: name.to_owned(),
+            root: self.root.clone(),
+            parent: Some(self.clone()),
+        })))
+    }
+}
+
+struct LazyModule {
+    source: String,
+    module: Mutex<Option<CompleteUnit>>,
+}
+
+impl LazyModule {
+    fn new(source: String) -> LazyModule {
+        LazyModule {
+            source,
+            module: Default::default(),
+        }
+    }
+
+    fn to_unit(&self, resolver: impl FnOnce() -> Arc<dyn ModuleResolver>) -> CompleteUnit {
+        self.module
+            .lock()
+            .unwrap()
+            .get_or_insert_with(|| {
+                CompilationUnit::new(
+                    &self.source,
+                    Options::default(),
+                    resolver(),
+                ).complete()
+            })
+            .clone()
     }
 }

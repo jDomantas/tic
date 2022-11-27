@@ -5,17 +5,42 @@ type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 fn main() {
+    let mut run_node = true;
+    let mut optimize = true;
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--no-node" => run_node = false,
+            "--no-opt" => optimize = false,
+            "--fast" => {
+                run_node = false;
+                optimize = false;
+            }
+            _ => {
+                panic!("unrecognized argument: {:?}", arg);
+            }
+        }
+    }
+
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("programs");
     let prefix = dir.clone();
 
-    ticc_tests::verify_node_is_present();
+    if run_node {
+        ticc_tests::verify_node_is_present();
+    }
 
     let tests = ticc_tests::get_tests(dir);
 
     for test in tests {
+        if test.options.optimize && !optimize {
+            continue;
+        }
+        if matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !run_node {
+            continue;
+        }
         let path = test.path.strip_prefix(&prefix).unwrap_or(&test.path);
         let outcome = test.run();
+        let source = &test.source[&test.main].source;
         match outcome {
             ticc_tests::TestOutcome::Success => {
                 println!("test {} ... ok", test.key);
@@ -24,12 +49,12 @@ fn main() {
                 println!("test {} ... FAILED", test.key);
                 if !comp.extra_errors.is_empty() {
                     println!("compiler reported {} extra errors", comp.extra_errors.len());
-                    print_diagnostics(&path.display().to_string(), &test.source, comp.extra_errors.iter().cloned()).unwrap();
+                    print_diagnostics(&path.display().to_string(), source, comp.extra_errors.iter().cloned()).unwrap();
                     println!();
                 }
                 if !comp.missing_errors.is_empty() {
                     println!("compiler missed {} errors", comp.missing_errors.len());
-                    print_diagnostics(&path.display().to_string(), &test.source, comp.missing_errors.iter().cloned()).unwrap();
+                    print_diagnostics(&path.display().to_string(), source, comp.missing_errors.iter().cloned()).unwrap();
                     println!();
                 }
                 if !comp.wrong_messages.is_empty() {
@@ -40,7 +65,7 @@ fn main() {
                             actual.message += &format!(" (checked for: {:?})", expected.message);
                             actual
                         });
-                    print_diagnostics(&path.display().to_string(), &test.source, errors).unwrap();
+                    print_diagnostics(&path.display().to_string(), source, errors).unwrap();
                     println!();
                 }
             }

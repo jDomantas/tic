@@ -1,0 +1,2 @@
+import recursive from "bad-import-2.tic";
+--                    ^^^^^^^^^^^^^^^^^^ ERROR: import cycle

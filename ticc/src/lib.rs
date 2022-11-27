@@ -112,7 +112,7 @@ impl CompilationUnit {
             let mut item = parser::parse_one_item(tail, item_start);
             let next_symbol = self.next_symbol.last().copied().unwrap_or(ir::Symbol(0));
             let mut symbols = compiler::SymbolGen { next: next_symbol };
-            compiler::resolve::resolve(&mut item, &scope, &*self.modules, &mut symbols);
+            compiler::resolve::resolve(&mut item, &scope, self.modules.clone(), &mut symbols);
             defs.add_item(&item);
             compiler::numck::check_numbers(&mut item);
             compiler::kindck::kind_check(&mut item, &defs);
@@ -152,7 +152,7 @@ impl ToCompletedUnit for CompleteUnit {
 }
 
 pub trait ModuleResolver {
-    fn lookup(&self, name: &str) -> Result<CompleteUnit, ImportError>;
+    fn lookup(self: Arc<Self>, name: &str) -> Result<CompleteUnit, ImportError>;
 }
 
 pub struct NoopModuleResolver;
@@ -164,7 +164,7 @@ impl NoopModuleResolver {
 }
 
 impl ModuleResolver for NoopModuleResolver {
-    fn lookup(&self, _name: &str) -> Result<CompleteUnit, ImportError> {
+    fn lookup(self: Arc<Self>, _name: &str) -> Result<CompleteUnit, ImportError> {
         Err(ImportError::DoesNotExist)
     }
 }
@@ -172,6 +172,7 @@ impl ModuleResolver for NoopModuleResolver {
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
 pub enum ImportError {
     DoesNotExist,
+    ImportCycle,
 }
 
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]

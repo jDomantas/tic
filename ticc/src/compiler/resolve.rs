@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use crate::{ModuleResolver, RawDiagnostic, Severity, ImportError};
 use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope, SymbolGen};
 
 pub(crate) fn resolve(
     item: &mut ir::Item,
     scope: &Scope<'_>,
-    module_resolver: &dyn ModuleResolver,
+    module_resolver: Arc<dyn ModuleResolver>,
     symbols: &mut SymbolGen,
 ) {
     let mut resolver = Resolver {
@@ -19,7 +21,7 @@ pub(crate) fn resolve(
 pub(crate) fn resolve_raw(
     syntax: &ItemSyntax,
     scope: &Scope<'_>,
-    module_resolver: &dyn ModuleResolver,
+    module_resolver: Arc<dyn ModuleResolver>,
     sink: &mut impl ResolveSink,
 ) {
     if let Some(item) = syntax.item() {
@@ -69,7 +71,7 @@ impl<'a> ResolveSink for Resolver<'a> {
     fn on_name(&mut self, _name: node::Name<'_>, _usage: NameUsage, _scope: &Scope<'_>) {}
 }
 
-fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope<'_>, module_resolver: &dyn ModuleResolver) {
+fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope<'_>, module_resolver: Arc<dyn ModuleResolver>) {
     match item {
         node::Item::Import(i) => {
             if let Some(path) = i.path() {
@@ -85,6 +87,13 @@ fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope
                             span: path.span(),
                             severity: Severity::Error,
                             message: err_fmt!("cannot find module"),
+                        });
+                    }
+                    Err(ImportError::ImportCycle) => {
+                        sink.record_error(RawDiagnostic {
+                            span: path.span(),
+                            severity: Severity::Error,
+                            message: err_fmt!("import cycle"),
                         });
                     }
                 }
