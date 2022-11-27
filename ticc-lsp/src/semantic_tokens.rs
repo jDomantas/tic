@@ -49,6 +49,7 @@ pub const DEFINED_TYPES: &[&str] = &[
     "number", // TokenKind::Number
     "comment", // TokenKind::Comment
     "typeParameter", // TokenKind::TypeVariable
+    "string", // TokenKind::String
 ];
 
 fn token_type(t: TokenKind) -> u32 {
@@ -63,5 +64,6 @@ fn token_type(t: TokenKind) -> u32 {
         TokenKind::Number => 6,
         TokenKind::Comment => 7,
         TokenKind::TypeVariable => 8,
+        TokenKind::String => 9,
     }
 }

@@ -61,6 +61,9 @@ impl<'a> ResolveSink for Resolver<'a> {
 
 fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope<'_>) {
     match item {
+        node::Item::Import(_) => {
+            // TODO: resolve imports
+        }
         node::Item::Type(i) => {
             resolve_type_item(sink, i, scope);
         }

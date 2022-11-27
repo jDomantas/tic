@@ -67,9 +67,13 @@ macro_rules! nodes {
 
 nodes! {
     pub(crate) enum Item {
+        Import(ImportItem),
         Value(ValueItem),
         Type(TypeItem),
     }
+
+    pub(crate) struct ImportItem { SyntaxKind::ImportItem }
+    pub(crate) struct ExposedList { SyntaxKind::ExposedList }
 
     pub(crate) struct TypeItem { SyntaxKind::TypeItem }
 
@@ -134,6 +138,21 @@ nodes! {
     pub(crate) struct BinaryOp { SyntaxKind::BinaryOp }
 
     pub(crate) struct Name { SyntaxKind::Name }
+}
+
+impl<'a> ImportItem<'a> {
+    pub(crate) fn import_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Import) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
+    pub(crate) fn exposed_list(&self) -> Option<ExposedList<'a>> { child(&self.syntax) }
+    pub(crate) fn from_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::From) }
+    pub(crate) fn path(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::String) }
+    pub(crate) fn semi_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Semicolon) }
+}
+
+impl<'a> ExposedList<'a> {
+    pub(crate) fn left_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::LeftParen) }
+    pub(crate) fn imported_names(&self) -> impl Iterator<Item = Name<'a>> + 'a { children(&self.syntax) }
+    pub(crate) fn right_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::RightParen) }
 }
 
 impl<'a> TypeItem<'a> {

@@ -5,6 +5,8 @@ pub use crate::pos::{Pos, Span};
 
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
 pub enum SyntaxKind {
+    ImportItem,
+    ExposedList,
     TypeItem,
     ValueItem,
     TypeParams,
@@ -39,6 +41,8 @@ pub enum SyntaxKind {
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Hash, Clone, Copy)]
 pub enum TokenKind {
+    Import,
+    From,
     Type,
     Equals,
     Pipe,
@@ -62,6 +66,7 @@ pub enum TokenKind {
     True,
     False,
     Number,
+    String,
     Ident,
     Hole,
     Backslash,
@@ -88,6 +93,8 @@ impl std::fmt::Display for TokenKind {
 impl TokenKind {
     pub fn to_str(self) -> &'static str {
         match self {
+            TokenKind::Import => "`import`",
+            TokenKind::From => "`from`",
             TokenKind::Export => "`export`",
             TokenKind::Let => "`let`",
             TokenKind::Match => "`match`",
@@ -125,6 +132,7 @@ impl TokenKind {
             TokenKind::Ident => "name",
             TokenKind::Hole => "hole",
             TokenKind::Number => "number",
+            TokenKind::String => "string",
             TokenKind::Error => "bad token",
         }
     }

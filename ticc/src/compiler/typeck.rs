@@ -41,7 +41,7 @@ pub(crate) fn type_check(item: &mut ir::Item, defs: &DefSet) {
         }
     }
     match syntax.item() {
-        Some(node::Item::Type(_)) => {}
+        Some(node::Item::Import(_) | node::Item::Type(_)) => {}
         Some(node::Item::Value(i)) => {
             let expected_ty = if let Some(name) = i.name() {
                 let span = name.token().span();

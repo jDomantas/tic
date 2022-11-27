@@ -45,6 +45,9 @@ pub(crate) fn generate_core(compilation: &CompilationUnit) -> cir::Program<'_> {
         }
         if let Some(item) = item.syntax.item() {
             match item {
+                node::Item::Import(_) => {
+                    // TODO: codegen import
+                }
                 node::Item::Value(v) => generator.gen_value_item(v),
                 node::Item::Type(t) => {
                     generator.gen_type_item(t, false);

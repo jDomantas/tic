@@ -16,6 +16,7 @@ pub enum TokenKind {
     Operator,
     Punctuation,
     Number,
+    String,
     Comment,
 }
 
@@ -86,6 +87,8 @@ pub(crate) fn tokens(compilation: &mut CompilationUnit) -> impl Iterator<Item = 
 
 fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenKind> {
     match token {
+        Syntax::Import |
+        Syntax::From |
         Syntax::Type |
         Syntax::Int |
         Syntax::Bool |
@@ -121,6 +124,7 @@ fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenK
         Syntax::NotEq |
         Syntax::ArgPipe => Some(TokenKind::Operator),
         Syntax::Number => Some(TokenKind::Number),
+        Syntax::String => Some(TokenKind::String),
         Syntax::Ident => Some(match def_kind {
             Some(ir::DefKind::Value { .. }) => TokenKind::Value,
             Some(ir::DefKind::Ctor { .. }) => TokenKind::Ctor,
