@@ -1,0 +1,6 @@
+import child(add, mul) from "child.tic";
+
+export let a : int = add 1 2;
+-- EXPECT: a = 3
+export let b : int = mul (add 3 4) 5;
+-- EXPECT: b = 35

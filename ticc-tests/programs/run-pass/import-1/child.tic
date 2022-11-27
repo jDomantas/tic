@@ -1,0 +1,2 @@
+export let add : int -> int -> int = \a -> \b -> a + b;
+export let mul : int -> int -> int = \a -> \b -> a * b;

@@ -117,7 +117,10 @@ impl<'a> TypePrinter<'a> {
         if let Some(name) = self.name_cache.get(&symbol).copied() {
             return name;
         }
-        let def = find_def(self.compilation, symbol).unwrap();
+        let Some(def) = find_def(self.compilation, symbol) else {
+            // TODO: figure out names for defs from other modules
+            return "???";
+        };
         let name = &self.compilation.src[def.span.source_range()];
         self.name_cache.insert(symbol, name);
         name

@@ -1,0 +1,11 @@
+type List a = Nil | Cons a rec;
+
+export let nil : List a = Nil;
+export let cons : a -> List a -> List a = Cons;
+
+export let sum : List int -> int =
+    \fold list ->
+        match list with
+        | Nil -> 0
+        | Cons x xs -> x + xs
+        end;

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::{RawDiagnostic, Span};
+use crate::{RawDiagnostic, Span, CompleteUnit, ModuleKey};
 use crate::compiler::syntax::{ItemSyntax, NodeId, node};
 
 use super::syntax::AstNode;
@@ -43,6 +43,9 @@ pub(crate) enum DefKind {
         is_var: bool,
         ctors: Ctors,
     },
+    Module {
+        unit: CompleteUnit,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +66,7 @@ pub(crate) enum Visibility {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Def {
+    pub(crate) module: ModuleKey,
     pub(crate) symbol: Symbol,
     pub(crate) kind: DefKind,
     pub(crate) vis: Visibility,
@@ -72,12 +76,14 @@ pub(crate) struct Def {
 
 impl Def {
     pub(crate) fn new(
+        module: ModuleKey,
         symbol: Symbol,
         kind: DefKind,
         vis: Visibility,
         name: node::Name<'_>,
     ) -> Def {
         Def {
+            module,
             symbol,
             kind,
             vis,

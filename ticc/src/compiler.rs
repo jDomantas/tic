@@ -48,6 +48,9 @@ impl<'a> Scope<'a> {
                 ir::DefKind::Type { .. } => {
                     self.types.insert(name, def.symbol);
                 }
+                ir::DefKind::Module { .. } => {
+                    // TODO: support namespaced syntax
+                }
             }
         }
     }
@@ -95,6 +98,12 @@ impl DefSet {
 
     pub(crate) fn add_item(&mut self, item: &ir::Item) {
         for def in item.defs.iter() {
+            if let ir::DefKind::Module { unit } = &def.kind {
+                // add all types because exports might refer to them by their symbols
+                for (&sym, def) in &unit.props.types {
+                    self.defs.entry(sym).or_insert_with(|| def.clone());
+                }
+            }
             self.defs.insert(def.symbol, def.clone());
         }
     }

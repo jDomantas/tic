@@ -1,0 +1,6 @@
+import list(nil, cons, sum) from "list.tic";
+
+export let foo : int =
+    let lst = cons 1 (cons 2 (cons 3 nil));
+    sum lst;
+-- EXPECT: foo = 6

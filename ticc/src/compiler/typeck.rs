@@ -37,7 +37,8 @@ pub(crate) fn type_check(item: &mut ir::Item, defs: &DefSet) {
                     fields,
                 });
             }
-            ir::DefKind::Type { .. } => {}
+            ir::DefKind::Type { .. } |
+            ir::DefKind::Module { .. } => {}
         }
     }
     match syntax.item() {

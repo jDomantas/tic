@@ -1,0 +1,8 @@
+import child(x, y, z) from "child.tic";
+
+let xx : bool = x;
+--              ^ ERROR: expected bool, got int
+let yy : int = y;
+--             ^ ERROR: expected int, got bool
+let zz : int = z;
+--             ^ ERROR: expected int, got ???

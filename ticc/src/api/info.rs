@@ -35,6 +35,10 @@ fn def_info(compilation: &CompilationUnit, pos: Pos) -> Option<Info> {
             }
             format!("{}: {}", name, kind)
         }
+        ir::DefKind::Module { .. } => {
+            // TODO: return info about modules
+            return None;
+        }
     };
     Some(Info {
         span: r.span,

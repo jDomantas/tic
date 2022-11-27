@@ -16,7 +16,8 @@ pub(crate) fn kind_check(item: &mut ir::Item, defs: &DefSet) {
                     }
                 }
             }
-            ir::DefKind::Type { .. } => {}
+            ir::DefKind::Type { .. } |
+            ir::DefKind::Module { .. } => {}
         }
     }
 

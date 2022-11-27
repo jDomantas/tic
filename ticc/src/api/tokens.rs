@@ -130,6 +130,7 @@ fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenK
             Some(ir::DefKind::Ctor { .. }) => TokenKind::Ctor,
             Some(ir::DefKind::Type { is_var: true, .. }) => TokenKind::TypeVariable,
             Some(ir::DefKind::Type { is_var: false, .. }) => TokenKind::Type,
+            Some(ir::DefKind::Module { .. }) => TokenKind::Type, // TODO: highlight modules as namespaces
             None => TokenKind::Value,
         }),
         Syntax::Hole => Some(TokenKind::Value),

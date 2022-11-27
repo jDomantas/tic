@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use crate::{ModuleResolver, RawDiagnostic, Severity, ImportError};
+use crate::{ModuleResolver, RawDiagnostic, Severity, ImportError, ModuleKey};
 use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope};
 
 use super::syntax::AstNode;
 
 pub(crate) fn resolve(
+    module: ModuleKey,
     item: &mut ir::Item,
     scope: &Scope<'_>,
     module_resolver: Arc<dyn ModuleResolver>,
@@ -15,17 +16,18 @@ pub(crate) fn resolve(
         refs: &mut item.refs,
         diagnostics: &mut item.diagnostics,
     };
-    resolve_raw(&item.syntax, scope, module_resolver, &mut resolver);
+    resolve_raw(&item.syntax, module, scope, module_resolver, &mut resolver);
 }
 
 pub(crate) fn resolve_raw(
     syntax: &ItemSyntax,
+    module: ModuleKey,
     scope: &Scope<'_>,
     module_resolver: Arc<dyn ModuleResolver>,
     sink: &mut impl ResolveSink,
 ) {
     if let Some(item) = syntax.item() {
-        resolve_item(sink, item, scope, module_resolver);
+        resolve_item(sink, module, item, scope, module_resolver);
     }
 }
 
@@ -65,21 +67,21 @@ impl<'a> ResolveSink for Resolver<'a> {
     fn on_name(&mut self, _name: node::Name<'_>, _usage: NameUsage, _scope: &Scope<'_>) {}
 }
 
-fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope<'_>, module_resolver: Arc<dyn ModuleResolver>) {
+fn resolve_item(sink: &mut impl ResolveSink, module: ModuleKey, item: node::Item<'_>, scope: &Scope<'_>, module_resolver: Arc<dyn ModuleResolver>) {
     match item {
         node::Item::Import(i) => {
-            resolve_import_item(sink, i, module_resolver);
+            resolve_import_item(sink, module, i, module_resolver);
         }
         node::Item::Type(i) => {
-            resolve_type_item(sink, i, scope);
+            resolve_type_item(sink, module, i, scope);
         }
         node::Item::Value(i) => {
-            resolve_value_item(sink, i, scope);
+            resolve_value_item(sink, module, i, scope);
         }
     }
 }
 
-fn resolve_import_item(sink: &mut impl ResolveSink, item: node::ImportItem<'_>, module_resolver: Arc<dyn ModuleResolver>) {
+fn resolve_import_item(sink: &mut impl ResolveSink, module: ModuleKey, item: node::ImportItem<'_>, module_resolver: Arc<dyn ModuleResolver>) {
     let Some(path) = item.path() else {
         return;
     };
@@ -106,31 +108,39 @@ fn resolve_import_item(sink: &mut impl ResolveSink, item: node::ImportItem<'_>, 
         }
     };
 
-    // TODO: register namespace even if exposed list is not present
-    let Some(exposed) = item.exposed_list() else {
-        return;
-    };
-
-    for name in exposed.imported_names() {
-        let Some((symbol, kind)) = unit.props.exports.get(name.token().text()).cloned() else {
-            sink.record_error(RawDiagnostic {
-                span: name.token().span(),
-                severity: Severity::Error,
-                message: err_fmt!("module does not export ", name.token().text().to_owned()),
-            });
-            continue;
-        };
+    if let Some(name) = item.name() {
         sink.record_def(ir::Def {
-            symbol,
-            kind,
+            module,
+            symbol: ir::Symbol::fresh(),
+            kind: ir::DefKind::Module { unit: unit.clone() },
             vis: ir::Visibility::Module,
             span: name.token().span(),
             node: name.syntax().id(),
-        })
+        });
     }
+
+    if let Some(exposed) = item.exposed_list() {
+        for name in exposed.imported_names() {
+            let Some(def) = unit.props.exports.get(name.token().text()).cloned() else {
+                sink.record_error(RawDiagnostic {
+                    span: name.token().span(),
+                    severity: Severity::Error,
+                    message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                });
+                continue;
+            };
+            sink.record_def(ir::Def::new(
+                module,
+                def.symbol,
+                def.kind,
+                ir::Visibility::Module,
+                name,
+            ));
+        }
+    };
 }
 
-fn resolve_type_item(sink: &mut impl ResolveSink, item: node::TypeItem<'_>, scope: &Scope<'_>) {
+fn resolve_type_item(sink: &mut impl ResolveSink, module: ModuleKey, item: node::TypeItem<'_>, scope: &Scope<'_>) {
     let symbol = ir::Symbol::fresh();
     let mut scope = Scope::with_parent(scope);
     let mut param_symbols = Vec::new();
@@ -139,6 +149,7 @@ fn resolve_type_item(sink: &mut impl ResolveSink, item: node::TypeItem<'_>, scop
             let symbol = ir::Symbol::fresh();
             param_symbols.push(symbol);
             sink.record_def(ir::Def {
+                module,
                 symbol,
                 kind: ir::DefKind::Type {
                     param_count: 0,
@@ -155,11 +166,12 @@ fn resolve_type_item(sink: &mut impl ResolveSink, item: node::TypeItem<'_>, scop
     let mut ctors = Vec::new();
     let mut ctor_names = Vec::new();
     for case in item.cases() {
-        let sym = resolve_type_case(sink, case, &scope, symbol, &param_symbols, &mut ctor_names);
+        let sym = resolve_type_case(sink, module, case, &scope, symbol, &param_symbols, &mut ctor_names);
         ctors.extend(sym);
     }
     if let Some(name) = item.name() {
         sink.record_def(ir::Def::new(
+            module,
             symbol,
             ir::DefKind::Type {
                 param_count: param_symbols.len(),
@@ -174,6 +186,7 @@ fn resolve_type_item(sink: &mut impl ResolveSink, item: node::TypeItem<'_>, scop
 
 fn resolve_type_case<'a>(
     sink: &mut impl ResolveSink,
+    module: ModuleKey,
     case: node::TypeCase<'a>,
     scope: &Scope<'_>,
     type_symbol: ir::Symbol,
@@ -221,6 +234,7 @@ fn resolve_type_case<'a>(
                 );
             }
             sink.record_def(ir::Def::new(
+                module,
                 symbol,
                 ir::DefKind::Ctor {
                     type_symbol,
@@ -289,18 +303,18 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
     }
 }
 
-fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, ty: node::Type<'a>, scope: &mut Scope<'a>, type_vars: &mut Vec<ir::Symbol>) -> ir::Type {
+fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, module: ModuleKey, ty: node::Type<'a>, scope: &mut Scope<'a>, type_vars: &mut Vec<ir::Symbol>) -> ir::Type {
     match ty {
         node::Type::Int(_) => ir::Type::Int,
         node::Type::Bool(_) => ir::Type::Bool,
         node::Type::Fn(ty) => {
             let from = if let Some(ty) = ty.from() {
-                resolve_type_with_vars(sink, ty, scope, type_vars)
+                resolve_type_with_vars(sink, module, ty, scope, type_vars)
             } else {
                 ir::Type::Error
             };
             let to = if let Some(ty) = ty.to() {
-                resolve_type_with_vars(sink, ty, scope, type_vars)
+                resolve_type_with_vars(sink, module, ty, scope, type_vars)
             } else {
                 ir::Type::Error
             };
@@ -316,6 +330,7 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, ty: node::Type<'a>, s
                     let symbol = ir::Symbol::fresh();
                     type_vars.push(symbol);
                     sink.record_def(ir::Def::new(
+                        module,
                         symbol,
                         ir::DefKind::Type {
                             param_count: 0,
@@ -340,13 +355,13 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, ty: node::Type<'a>, s
             };
             let mut args = Vec::new();
             for ty in ty.type_args() {
-                args.push(resolve_type_with_vars(sink, ty, scope, type_vars));
+                args.push(resolve_type_with_vars(sink, module, ty, scope, type_vars));
             }
             symbol.map(|s| ir::Type::Named(s, args)).unwrap_or(ir::Type::Error)
         }
         node::Type::Paren(ty) => {
             if let Some(ty) = ty.inner() {
-                resolve_type_with_vars(sink, ty, scope, type_vars)
+                resolve_type_with_vars(sink, module, ty, scope, type_vars)
             } else {
                 ir::Type::Error
             }
@@ -355,11 +370,11 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, ty: node::Type<'a>, s
     }
 }
 
-fn resolve_value_item(sink: &mut impl ResolveSink, item: node::ValueItem, scope: &Scope<'_>) {
+fn resolve_value_item(sink: &mut impl ResolveSink, module: ModuleKey, item: node::ValueItem, scope: &Scope<'_>) {
     let mut scope = Scope::with_parent(scope);
     let mut type_vars = Vec::new();
     let ty = if let Some(ty) = item.type_() {
-        resolve_type_with_vars(sink, ty, &mut scope, &mut type_vars)
+        resolve_type_with_vars(sink, module, ty, &mut scope, &mut type_vars)
     } else {
         ir::Type::Infer
     };
@@ -371,6 +386,7 @@ fn resolve_value_item(sink: &mut impl ResolveSink, item: node::ValueItem, scope:
         };
         let symbol = ir::Symbol::fresh();
         sink.record_def(ir::Def::new(
+            module,
             symbol,
             ir::DefKind::Value {
                 ty,
@@ -381,11 +397,11 @@ fn resolve_value_item(sink: &mut impl ResolveSink, item: node::ValueItem, scope:
         ));
     }
     if let Some(expr) = item.expr() {
-        resolve_expr(sink, expr, &scope);
+        resolve_expr(sink, module, expr, &scope);
     }
 }
 
-fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>) {
+fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr, scope: &Scope<'_>) {
     match expr {
         node::Expr::Name(expr) => {
             if let Some(name) = expr.name() {
@@ -403,18 +419,18 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
         }
         node::Expr::Apply(expr) => {
             if let Some(e) = expr.function() {
-                resolve_expr(sink, e, scope);
+                resolve_expr(sink, module, e, scope);
             }
             if let Some(e) = expr.arg() {
-                resolve_expr(sink, e, scope);
+                resolve_expr(sink, module, e, scope);
             }
         }
         node::Expr::Binary(expr) => {
             if let Some(e) = expr.lhs() {
-                resolve_expr(sink, e, scope);
+                resolve_expr(sink, module, e, scope);
             }
             if let Some(e) = expr.rhs() {
-                resolve_expr(sink, e, scope);
+                resolve_expr(sink, module, e, scope);
             }
         }
         node::Expr::Let(expr) => {
@@ -422,16 +438,17 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
             let mut type_vars = Vec::new();
             let mut impl_scope = Scope::with_parent(&scope);
             let ty = if let Some(ty) = expr.type_() {
-                resolve_type_with_vars(sink, ty, &mut impl_scope, &mut type_vars)
+                resolve_type_with_vars(sink, module, ty, &mut impl_scope, &mut type_vars)
             } else {
                 ir::Type::Infer
             };
             if let Some(expr) = expr.value() {
-                resolve_expr(sink, expr, &impl_scope);
+                resolve_expr(sink, module, expr, &impl_scope);
             }
             if let Some(name) = expr.name() {
                 let symbol = ir::Symbol::fresh();
                 sink.record_def(ir::Def::new(
+                    module,
                     symbol,
                     ir::DefKind::Value {
                         ty,
@@ -443,26 +460,26 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
                 scope.values.insert(name.token().text(), symbol);
             }
             if let Some(expr) = expr.rest() {
-                resolve_expr(sink, expr, &scope);
+                resolve_expr(sink, module, expr, &scope);
             }
         }
         node::Expr::Match(expr) => {
             if let Some(e) = expr.discr() {
-                resolve_expr(sink, e, scope);
+                resolve_expr(sink, module, e, scope);
             }
             for case in expr.cases() {
-                resolve_match_case(sink, case, scope);
+                resolve_match_case(sink, module, case, scope);
             }
         }
         node::Expr::If(expr) => {
             if let Some(e) = expr.cond() {
-                resolve_expr(sink, e, scope);
+                resolve_expr(sink, module, e, scope);
             }
             if let Some(e) = expr.then_value() {
-                resolve_expr(sink, e, scope);
+                resolve_expr(sink, module, e, scope);
             }
             if let Some(e) = expr.else_value() {
-                resolve_expr(sink, e, scope);
+                resolve_expr(sink, module, e, scope);
             }
         }
         node::Expr::Bool(_) => {}
@@ -472,6 +489,7 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
             if let Some(name) = expr.param() {
                 let symbol = ir::Symbol::fresh();
                 sink.record_def(ir::Def::new(
+                    module,
                     symbol,
                     ir::DefKind::Value {
                         ty: ir::Type::Infer,
@@ -483,19 +501,19 @@ fn resolve_expr(sink: &mut impl ResolveSink, expr: node::Expr, scope: &Scope<'_>
                 scope.values.insert(name.token().text(), symbol);
             }
             if let Some(expr) = expr.body() {
-                resolve_expr(sink, expr, &scope);
+                resolve_expr(sink, module, expr, &scope);
             }
         }
         node::Expr::Paren(expr) => {
             if let Some(inner) = expr.inner() {
-                resolve_expr(sink, inner, scope);
+                resolve_expr(sink, module, inner, scope);
             }
         }
         node::Expr::Hole(_) => {}
     }
 }
 
-fn resolve_match_case(sink: &mut impl ResolveSink, case: node::MatchCase, scope: &Scope<'_>) {
+fn resolve_match_case(sink: &mut impl ResolveSink, module: ModuleKey, case: node::MatchCase, scope: &Scope<'_>) {
     if let Some(name) = case.ctor() {
         sink.on_name(name, NameUsage::Ctor, scope);
         if let Some(symbol) = scope.lookup_ctor(name.token().text()) {
@@ -513,6 +531,7 @@ fn resolve_match_case(sink: &mut impl ResolveSink, case: node::MatchCase, scope:
         for var in vars.vars() {
             let symbol = ir::Symbol::fresh();
             sink.record_def(ir::Def::new(
+                module,
                 symbol,
                 ir::DefKind::Value {
                     ty: ir::Type::Infer,
@@ -525,6 +544,6 @@ fn resolve_match_case(sink: &mut impl ResolveSink, case: node::MatchCase, scope:
         }
     }
     if let Some(expr) = case.body() {
-        resolve_expr(sink, expr, &scope);
+        resolve_expr(sink, module, expr, &scope);
     }
 }

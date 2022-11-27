@@ -8,6 +8,7 @@ pub(crate) mod lint;
 pub(crate) mod api;
 
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 use compiler::{DefSet, Scope, ir, parser};
 pub use ticc_syntax::{Pos, Span};
@@ -83,10 +84,12 @@ impl CompilationUnit {
     pub fn complete(mut self) -> CompleteUnit {
         self.compile_to_end();
         let exports = import::collect_exports(&self);
+        let types = import::collect_types(&self);
         CompleteUnit {
             props: Arc::new(CompleteUnitProps {
                 unit: self,
                 exports,
+                types,
             }),
         }
     }
@@ -116,7 +119,7 @@ impl CompilationUnit {
             let tail = &self.src[compiled..];
             let item_start = Pos::new(compiled as u32);
             let mut item = parser::parse_one_item(tail, item_start);
-            compiler::resolve::resolve(&mut item, &scope, self.modules.clone());
+            compiler::resolve::resolve(self.key, &mut item, &scope, self.modules.clone());
             defs.add_item(&item);
             compiler::numck::check_numbers(&mut item);
             compiler::kindck::kind_check(&mut item, &defs);
@@ -137,9 +140,22 @@ pub struct CompleteUnit {
     props: Arc<CompleteUnitProps>,
 }
 
+impl fmt::Debug for CompleteUnit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        struct Dots;
+        impl fmt::Debug for Dots {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("...")
+            }
+        }
+        f.debug_struct("CompleteUnit").field("props", &Dots).finish()
+    }
+}
+
 struct CompleteUnitProps {
     unit: CompilationUnit,
-    exports: HashMap<String, (ir::Symbol, ir::DefKind)>,
+    exports: HashMap<String, ir::Def>,
+    types: HashMap<ir::Symbol, ir::Def>,
 }
 
 trait ToCompletedUnit {

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use ticc_syntax::TokenKind;
 use ticc_core::ir as cir;
-use crate::CompilationUnit;
+use crate::{CompilationUnit, ModuleKey};
 use crate::compiler::ir;
 use crate::compiler::syntax::{AstNode, NodeId, node};
 
@@ -19,15 +19,14 @@ pub(crate) fn generate_core(compilation: &CompilationUnit) -> cir::Program<'_> {
         folded_type_names: HashMap::new(),
         ctors: HashMap::new(),
         type_ctors: HashMap::new(),
+        emitted_modules: HashSet::new(),
     };
-    for item in &compilation.items {
-        generator.insts = &item.type_insts;
-        generator.name_symbols.clear();
-        generator.types.clear();
-        let refs = item.defs.iter().map(|d| d.to_ref()).chain(item.refs.iter().copied());
-        for r in refs {
-            generator.name_symbols.insert(r.node, r.symbol);
-        }
+    emit_module(&mut generator, compilation, true);
+    generator.program
+}
+
+fn emit_module<'a: 'b, 'b>(generator: &mut Generator<'a, 'b>, module: &'a CompilationUnit, emit_exports: bool) {
+    for item in &module.items {
         for d in &item.defs {
             match &d.kind {
                 ir::DefKind::Value { type_vars, ty } => {
@@ -38,17 +37,28 @@ pub(crate) fn generate_core(compilation: &CompilationUnit) -> cir::Program<'_> {
                     generator.ctor_fields.insert(d.symbol, fields);
                 }
                 ir::DefKind::Type { .. } => {}
+                ir::DefKind::Module { unit } => {
+                    if !generator.emitted_modules.contains(&unit.props.unit.key) {
+                        generator.emitted_modules.insert(unit.props.unit.key);
+                        emit_module(generator, &unit.props.unit, false);
+                    }
+                }
             }
+        }
+        generator.insts = &item.type_insts;
+        generator.name_symbols.clear();
+        generator.types.clear();
+        let refs = item.defs.iter().map(|d| d.to_ref()).chain(item.refs.iter().copied());
+        for r in refs {
+            generator.name_symbols.insert(r.node, r.symbol);
         }
         for (&node, ty) in &item.types {
             generator.types.insert(node, ty);
         }
         if let Some(item) = item.syntax.item() {
             match item {
-                node::Item::Import(_) => {
-                    // TODO: codegen import
-                }
-                node::Item::Value(v) => generator.gen_value_item(v),
+                node::Item::Import(_) => {}
+                node::Item::Value(v) => generator.gen_value_item(v, emit_exports),
                 node::Item::Type(t) => {
                     generator.gen_type_item(t, false);
                     generator.gen_type_item(t, true);
@@ -56,7 +66,6 @@ pub(crate) fn generate_core(compilation: &CompilationUnit) -> cir::Program<'_> {
             }
         }
     }
-    generator.program
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,6 +89,7 @@ struct Generator<'a, 'b> {
     ctor_fields: HashMap<ir::Symbol, &'a [ir::Field]>,
     ctors: HashMap<ir::Symbol, Ctor>,
     type_ctors: HashMap<cir::Name, Vec<Ctor>>,
+    emitted_modules: HashSet<ModuleKey>,
 }
 
 impl<'a, 'b> Generator<'a, 'b> {
@@ -274,9 +284,9 @@ impl<'a, 'b> Generator<'a, 'b> {
         });
     }
 
-    fn gen_value_item(&mut self, item: node::ValueItem<'a>) {
+    fn gen_value_item(&mut self, item: node::ValueItem<'a>, emit_exports: bool) {
         let name = self.gen_name(item.name().unwrap());
-        let export_name = if item.export_token().is_some() {
+        let export_name = if emit_exports && item.export_token().is_some() {
             Some(item.name().unwrap().syntax.text().to_owned())
         } else {
             None
