@@ -2,6 +2,14 @@
 
 use ticc::{Pos, Span};
 
+pub fn single_file_compilation(source: &str) -> ticc::CompilationUnit {
+    ticc::CompilationUnit::new(
+        source,
+        ticc::Options::default(),
+        ticc::NoopModuleResolver::new(),
+    )
+}
+
 pub fn extract_spans(source: &str) -> (String, Vec<Span>) {
     let mut fixed_source = String::new();
     let mut spans = Vec::new();

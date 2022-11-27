@@ -16,23 +16,27 @@ pub use crate::api::completion::Completion;
 pub use crate::codegen::Options;
 
 pub struct CompilationUnit {
+    key: ModuleKey,
     src: Arc<str>,
     items: Vec<ir::Item>,
     next_symbol: Vec<ir::Symbol>,
     options: Options,
+    modules: Arc<dyn ModuleResolver>,
 }
 
 impl CompilationUnit {
-    pub fn from_source(src: &str) -> CompilationUnit {
-        CompilationUnit::from_source_and_options(src, Options::default())
-    }
-
-    pub fn from_source_and_options(src: &str, options: Options) -> CompilationUnit {
+    pub fn new(
+        src: &str,
+        options: Options,
+        modules: Arc<dyn ModuleResolver>,
+    ) -> CompilationUnit {
         CompilationUnit {
+            key: ModuleKey::fresh_key(),
             src: src.into(),
             items: Vec::new(),
             next_symbol: Vec::new(),
             options,
+            modules,
         }
     }
 
@@ -76,6 +80,11 @@ impl CompilationUnit {
         interpreter::eval(self)
     }
 
+    pub fn complete(mut self) -> CompleteUnit {
+        self.compile_to_end();
+        CompleteUnit { unit: Arc::new(self) }
+    }
+
     fn compile_to_end(&mut self) {
         self.compile_up_to(self.src.len());
     }
@@ -117,6 +126,63 @@ impl CompilationUnit {
 
     fn compiled_length(&self) -> usize {
         self.items.last().map(|i| i.span.end().source_pos()).unwrap_or(0)
+    }
+}
+
+#[derive(Clone)]
+pub struct CompleteUnit {
+    unit: Arc<CompilationUnit>,
+}
+
+trait ToCompletedUnit {
+    fn to_unit(&mut self) -> &CompilationUnit;
+}
+
+impl ToCompletedUnit for CompilationUnit {
+    fn to_unit(&mut self) -> &CompilationUnit {
+        self.compile_to_end();
+        self
+    }
+}
+
+impl ToCompletedUnit for CompleteUnit {
+    fn to_unit(&mut self) -> &CompilationUnit {
+        &self.unit
+    }
+}
+
+pub trait ModuleResolver {
+    fn lookup(&self, name: &str) -> Result<CompleteUnit, ImportError>;
+}
+
+pub struct NoopModuleResolver;
+
+impl NoopModuleResolver {
+    pub fn new() -> Arc<NoopModuleResolver> {
+        Arc::new(NoopModuleResolver)
+    }
+}
+
+impl ModuleResolver for NoopModuleResolver {
+    fn lookup(&self, _name: &str) -> Result<CompleteUnit, ImportError> {
+        Err(ImportError::DoesNotExist)
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
+pub enum ImportError {
+    DoesNotExist,
+}
+
+#[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
+pub struct ModuleKey(u64);
+
+impl ModuleKey {
+    fn fresh_key() -> ModuleKey {
+        use std::sync::atomic;
+        static NEXT: atomic::AtomicU64 = atomic::AtomicU64::new(0);
+        let value = NEXT.fetch_add(1, atomic::Ordering::Relaxed);
+        ModuleKey(value)
     }
 }
 

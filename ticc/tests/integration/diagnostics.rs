@@ -1,8 +1,8 @@
-use ticc::CompilationUnit;
+use crate::common;
 
 #[test]
 fn no_errors() {
-    let mut compilation = CompilationUnit::from_source(r#"
+    let mut compilation = common::single_file_compilation(r#"
         type List a = Nil | Cons a rec;
 
         export let map : (a -> b) -> List a -> List b =

@@ -31,7 +31,11 @@ mod tests {
     use lsp_types::{Position, Range};
 
     fn first_error_position(source: &str) -> Range {
-        let mut compilation = CompilationUnit::from_source(source);
+        let mut compilation = CompilationUnit::new(
+            source,
+            ticc::Options::default(),
+            ticc::NoopModuleResolver::new(),
+        );
         get_diagnostics(&mut compilation)
             .into_iter()
             .next()

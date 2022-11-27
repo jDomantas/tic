@@ -49,7 +49,11 @@ impl CompilationSet {
     }
 
     fn add_file(&mut self, file: FileKey, source: &str) {
-        let compilation = CompilationUnit::from_source(source);
+        let compilation = CompilationUnit::new(
+            source,
+            ticc::Options::default(),
+            ticc::NoopModuleResolver::new(),
+        );
         self.compilations.insert(file, compilation);
     }
 

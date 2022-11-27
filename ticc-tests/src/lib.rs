@@ -93,7 +93,11 @@ impl Test {
     }
 
     fn compile(&self) -> (CompilationUnit, CompilationOutcome) {
-        let mut compilation = CompilationUnit::from_source_and_options(&self.source, self.options);
+        let mut compilation = CompilationUnit::new(
+            &self.source,
+            self.options,
+            ticc::NoopModuleResolver::new(),
+        );
         let actual_errors = compilation
             .diagnostics()
             .filter(|e| e.severity == Severity::Error)
