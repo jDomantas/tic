@@ -112,7 +112,7 @@ impl CompilationUnit {
             let mut item = parser::parse_one_item(tail, item_start);
             let next_symbol = self.next_symbol.last().copied().unwrap_or(ir::Symbol(0));
             let mut symbols = compiler::SymbolGen { next: next_symbol };
-            compiler::resolve::resolve(&mut item, &scope, &mut symbols);
+            compiler::resolve::resolve(&mut item, &scope, &*self.modules, &mut symbols);
             defs.add_item(&item);
             compiler::numck::check_numbers(&mut item);
             compiler::kindck::kind_check(&mut item, &defs);

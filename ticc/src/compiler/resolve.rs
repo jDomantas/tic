@@ -1,19 +1,29 @@
-use crate::{RawDiagnostic, Severity};
+use crate::{ModuleResolver, RawDiagnostic, Severity, ImportError};
 use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope, SymbolGen};
 
-pub(crate) fn resolve(item: &mut ir::Item, scope: &Scope<'_>, symbols: &mut SymbolGen) {
+pub(crate) fn resolve(
+    item: &mut ir::Item,
+    scope: &Scope<'_>,
+    module_resolver: &dyn ModuleResolver,
+    symbols: &mut SymbolGen,
+) {
     let mut resolver = Resolver {
         defs: &mut item.defs,
         refs: &mut item.refs,
         diagnostics: &mut item.diagnostics,
         symbols,
     };
-    resolve_raw(&item.syntax, scope, &mut resolver);
+    resolve_raw(&item.syntax, scope, module_resolver, &mut resolver);
 }
 
-pub(crate) fn resolve_raw(syntax: &ItemSyntax, scope: &Scope<'_>, sink: &mut impl ResolveSink) {
+pub(crate) fn resolve_raw(
+    syntax: &ItemSyntax,
+    scope: &Scope<'_>,
+    module_resolver: &dyn ModuleResolver,
+    sink: &mut impl ResolveSink,
+) {
     if let Some(item) = syntax.item() {
-        resolve_item(sink, item, scope);
+        resolve_item(sink, item, scope, module_resolver);
     }
 }
 
@@ -59,10 +69,26 @@ impl<'a> ResolveSink for Resolver<'a> {
     fn on_name(&mut self, _name: node::Name<'_>, _usage: NameUsage, _scope: &Scope<'_>) {}
 }
 
-fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope<'_>) {
+fn resolve_item(sink: &mut impl ResolveSink, item: node::Item<'_>, scope: &Scope<'_>, module_resolver: &dyn ModuleResolver) {
     match item {
-        node::Item::Import(_) => {
-            // TODO: resolve imports
+        node::Item::Import(i) => {
+            if let Some(path) = i.path() {
+                let text = path.text();
+                // TODO: properly strip quotes & unescape
+                let text = &text[1..(text.len() - 1)];
+                match module_resolver.lookup(text) {
+                    Ok(_unit) => {
+                        // TODO: register namespace and exposed items
+                    }
+                    Err(ImportError::DoesNotExist) => {
+                        sink.record_error(RawDiagnostic {
+                            span: path.span(),
+                            severity: Severity::Error,
+                            message: err_fmt!("cannot find module"),
+                        });
+                    }
+                }
+            }
         }
         node::Item::Type(i) => {
             resolve_type_item(sink, i, scope);

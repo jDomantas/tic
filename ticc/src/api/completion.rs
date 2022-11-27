@@ -25,7 +25,7 @@ pub fn completions_at(compilation: &mut CompilationUnit, pos: Pos) -> Option<Vec
         pos,
         results: None,
     };
-    resolve::resolve_raw(&parsed.syntax, &scope, &mut resolver);
+    resolve::resolve_raw(&parsed.syntax, &scope, &*compilation.modules, &mut resolver);
     resolver.results
 }
 

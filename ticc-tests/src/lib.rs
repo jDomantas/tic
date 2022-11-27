@@ -1,5 +1,5 @@
-use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span};
-use std::{path::{Path, PathBuf}, io::{Write, Read}};
+use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span, ModuleResolver};
+use std::{path::{Path, PathBuf}, io::{Write, Read}, sync::Arc};
 
 pub struct Test {
     pub key: String,
@@ -96,7 +96,7 @@ impl Test {
         let mut compilation = CompilationUnit::new(
             &self.source,
             self.options,
-            ticc::NoopModuleResolver::new(),
+            Arc::new(BuiltinModuleResolver),
         );
         let actual_errors = compilation
             .diagnostics()
@@ -147,6 +147,25 @@ impl Test {
                     TestOutcome::BadRun(run_outcome)
                 }
             }
+        }
+    }
+}
+
+struct BuiltinModuleResolver;
+
+impl ModuleResolver for BuiltinModuleResolver {
+    fn lookup(&self, name: &str) -> Result<ticc::CompleteUnit, ticc::ImportError> {
+        match name {
+            "test-internal" => {
+                let source = "export let a: int = 1; export let b: int = 2;";
+                let compilation = CompilationUnit::new(
+                    source,
+                    ticc::Options::default(),
+                    ticc::NoopModuleResolver::new(),
+                );
+                Ok(compilation.complete())
+            }
+            _ => Err(ticc::ImportError::DoesNotExist),
         }
     }
 }
