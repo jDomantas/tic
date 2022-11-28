@@ -193,10 +193,11 @@ impl ModuleResolver for NoopModuleResolver {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
+#[derive(Debug)]
 pub enum ImportError {
     DoesNotExist,
     ImportCycle,
+    Io(std::io::Error),
 }
 
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]

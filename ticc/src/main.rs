@@ -1,6 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap};
 use codespan_reporting as cr;
 use structopt::StructOpt;
+use ticc::{CompleteUnit, Diagnostic, CompilationUnit, Severity, ModuleResolver};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -48,13 +49,24 @@ fn main() {
         optimize: opt.optimize,
     };
 
+    let (root_resolver, resolver) = FileModuleResolver::for_root_file(path.clone());
+
     let mut compilation = ticc::CompilationUnit::new(
         &source,
         options,
-        ticc::NoopModuleResolver::new(),
+        resolver,
     );
 
-    if print_diagnostics(&path.to_string_lossy(), &source, compilation.diagnostics()).is_err() {
+    let diagnostics = compilation.diagnostics().collect::<Vec<_>>();
+
+    if let Some((path, source, errors)) = root_resolver.props.lock().unwrap().errors.take() {
+        if print_diagnostics(&path.to_string_lossy(), &source, errors.into_iter()).is_err() {
+            std::process::exit(1);
+        }
+        std::process::exit(1);
+    }
+
+    if print_diagnostics(&path.to_string_lossy(), &source, diagnostics.into_iter()).is_err() {
         std::process::exit(1);
     }
 
@@ -138,4 +150,99 @@ fn print_diagnostics(
         cr::term::emit(&mut stream, &config, &files, &diagnostic)?;
     }
     Ok(())
+}
+
+struct FileModuleResolver {
+    props: Mutex<Props>,
+}
+
+#[derive(Default)]
+struct Props {
+    cache: HashMap<PathBuf, CompleteUnit>,
+    errors: Option<(PathBuf, String, Vec<Diagnostic>)>,
+}
+
+impl FileModuleResolver {
+    fn for_root_file(path: PathBuf) -> (Arc<FileModuleResolver>, Arc<ChildResolver>) {
+        let resolver = Arc::new(FileModuleResolver {
+            props: Default::default(),
+        });
+        let child = Arc::new(ChildResolver {
+            path,
+            root: resolver.clone(),
+            parent: None,
+        });
+        (resolver, child)
+    }
+}
+
+struct ChildResolver {
+    path: PathBuf,
+    root: Arc<FileModuleResolver>,
+    parent: Option<Arc<ChildResolver>>,
+}
+
+impl ChildResolver {
+    fn relative_lookup(&self, name: &str) -> PathBuf {
+        let mut path = self.path.clone();
+        path.pop();
+        for segment in name.split('/') {
+            path.push(segment);
+        }
+        path
+    }
+}
+
+impl ModuleResolver for ChildResolver {
+    fn lookup(self: Arc<Self>, name: &str) -> Result<CompleteUnit, ticc::ImportError> {
+        let path = self.relative_lookup(name);
+        let mut resolver = &*self;
+        loop {
+            if resolver.path == path {
+                return Err(ticc::ImportError::ImportCycle);
+            }
+            match &resolver.parent {
+                Some(r) => resolver = r,
+                None => break,
+            }
+        }
+
+        {
+            let root = self.root.props.lock().unwrap();
+            if let Some(unit) = root.cache.get(&path).cloned() {
+                return Ok(unit);
+            }
+        }
+
+        let source = match std::fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(e) => return Err(ticc::ImportError::Io(e)),
+        };
+
+        let child_resolver = Arc::new(ChildResolver {
+            path: path.clone(),
+            root: self.root.clone(),
+            parent: Some(self.clone()),
+        });
+        let mut unit =  CompilationUnit::new(
+            &source,
+            Default::default(),
+            child_resolver,
+        );
+
+        let diagnostics = unit.diagnostics().collect::<Vec<_>>();
+        let unit = unit.complete();
+
+        {
+            let mut root = self.root.props.lock().unwrap();
+            root.cache.insert(path.clone(), unit.clone());
+        }
+
+        if diagnostics.iter().any(|d| d.severity == Severity::Error) {
+            let mut root = self.root.props.lock().unwrap();
+            root.errors.get_or_insert((path, source, diagnostics));
+        }
+
+        Ok(unit)
+    }
 }

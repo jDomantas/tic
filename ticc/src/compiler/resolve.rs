@@ -106,6 +106,14 @@ fn resolve_import_item(sink: &mut impl ResolveSink, module: ModuleKey, item: nod
             });
             return;
         }
+        Err(ImportError::Io(err)) => {
+            sink.record_error(RawDiagnostic {
+                span: path.span(),
+                severity: Severity::Error,
+                message: err_fmt!("failed to read module: ", err.to_string()),
+            });
+            return;
+        }
     };
 
     if let Some(name) = item.name() {
