@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ticc_syntax::Pos;
 use crate::{CompilationUnit, RawDiagnostic};
 use crate::compiler::{Scope, ir, resolve, syntax::{AstNode, node}};
@@ -48,11 +50,13 @@ impl resolve::ResolveSink for Resolver {
         }
         let mut completions = Vec::new();
         let mut scope = Some(scope);
+        let empty = HashMap::new();
         while let Some(current) = scope {
             let map = match usage {
                 resolve::NameUsage::Type => &current.types,
                 resolve::NameUsage::Value => &current.values,
                 resolve::NameUsage::Ctor => &current.ctors,
+                resolve::NameUsage::Module => &empty, // TODO: autocomplete for module names
             };
             completions.extend(map
                 .keys()

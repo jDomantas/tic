@@ -43,6 +43,7 @@ pub(crate) enum NameUsage {
     Type,
     Value,
     Ctor,
+    Module,
 }
 
 struct Resolver<'a> {
@@ -298,21 +299,47 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
             ir::Type::Fn(Box::new(from), Box::new(to))
         }
         node::Type::Named(ty) => {
-            let symbol = if let Some(name) = ty.name() {
-                sink.on_name(name, NameUsage::Type, scope);
-                if let Some(symbol) = scope.lookup_type(name.token().text()) {
-                    sink.record_ref(ir::Ref::new(symbol, name));
-                    Some(symbol)
-                } else {
-                    sink.record_error(RawDiagnostic {
-                        span: name.token().span(),
-                        severity: Severity::Error,
-                        message: err_fmt!("undefined type"),
-                    });
-                    None
+            let symbol = match (ty.namespace(), ty.name()) {
+                (Some(namespace), Some(name)) => {
+                    sink.on_name(namespace, NameUsage::Module, scope);
+                    sink.on_name(name, NameUsage::Value, scope);
+                    if let Some(module) = scope.lookup_module(namespace.token().text()) {
+                        // TODO: sink.record_ref for the module usage
+                        if let Some(def) = module.props.exports.get(name.token().text()) {
+                            sink.record_ref(ir::Ref::new(def.symbol, name));
+                            Some(def.symbol)
+                        } else {
+                            sink.record_error(RawDiagnostic {
+                                span: namespace.token().span(),
+                                severity: Severity::Error,
+                                message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                            });
+                            None
+                        }
+                    } else {
+                        sink.record_error(RawDiagnostic {
+                            span: namespace.token().span(),
+                            severity: Severity::Error,
+                            message: err_fmt!("undefined module"),
+                        });
+                        None
+                    }
                 }
-            } else {
-                None
+                (None, Some(name)) =>{
+                    sink.on_name(name, NameUsage::Type, scope);
+                    if let Some(symbol) = scope.lookup_type(name.token().text()) {
+                        sink.record_ref(ir::Ref::new(symbol, name));
+                        Some(symbol)
+                    } else {
+                        sink.record_error(RawDiagnostic {
+                            span: name.token().span(),
+                            severity: Severity::Error,
+                            message: err_fmt!("undefined type"),
+                        });
+                        None
+                    }
+                }
+                (_, None) => None,
             };
             let mut args = Vec::new();
             for ty in ty.type_args() {
@@ -349,37 +376,63 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, module: ModuleKey, ty
             ir::Type::Fn(Box::new(from), Box::new(to))
         }
         node::Type::Named(ty) => {
-            let symbol = if let Some(name) = ty.name() {
-                sink.on_name(name, NameUsage::Type, scope);
-                if let Some(symbol) = scope.lookup_type(name.token().text()) {
-                    sink.record_ref(ir::Ref::new(symbol, name));
-                    Some(symbol)
-                } else if name.token().text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
-                    let symbol = ir::Symbol::fresh();
-                    type_vars.push(symbol);
-                    sink.record_def(ir::Def::new(
-                        module,
-                        symbol,
-                        ir::DefKind::Type {
-                            param_count: 0,
-                            is_var: true,
-                            ctors: ir::Ctors::Opaque,
-                        },
-                        ir::Visibility::Local,
-                        name,
-                    ));
-                    scope.types.insert(name.token().text(), symbol);
-                    Some(symbol)
-                } else {
-                    sink.record_error(RawDiagnostic {
-                        span: name.token().span(),
-                        severity: Severity::Error,
-                        message: err_fmt!("undefined type"),
-                    });
-                    None
+            let symbol = match (ty.namespace(), ty.name()) {
+                (Some(namespace), Some(name)) => {
+                    sink.on_name(namespace, NameUsage::Module, scope);
+                    sink.on_name(name, NameUsage::Value, scope);
+                    if let Some(module) = scope.lookup_module(namespace.token().text()) {
+                        // TODO: sink.record_ref for the module usage
+                        if let Some(def) = module.props.exports.get(name.token().text()) {
+                            sink.record_ref(ir::Ref::new(def.symbol, name));
+                            Some(def.symbol)
+                        } else {
+                            sink.record_error(RawDiagnostic {
+                                span: namespace.token().span(),
+                                severity: Severity::Error,
+                                message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                            });
+                            None
+                        }
+                    } else {
+                        sink.record_error(RawDiagnostic {
+                            span: namespace.token().span(),
+                            severity: Severity::Error,
+                            message: err_fmt!("undefined module"),
+                        });
+                        None
+                    }
                 }
-            } else {
-                None
+                (None, Some(name)) =>{
+                    sink.on_name(name, NameUsage::Type, scope);
+                    if let Some(symbol) = scope.lookup_type(name.token().text()) {
+                        sink.record_ref(ir::Ref::new(symbol, name));
+                        Some(symbol)
+                    } else if name.token().text().chars().next().unwrap().is_ascii_lowercase() && ty.type_args().next().is_none() {
+                        let symbol = ir::Symbol::fresh();
+                        type_vars.push(symbol);
+                        sink.record_def(ir::Def::new(
+                            module,
+                            symbol,
+                            ir::DefKind::Type {
+                                param_count: 0,
+                                is_var: true,
+                                ctors: ir::Ctors::Opaque,
+                            },
+                            ir::Visibility::Local,
+                            name,
+                        ));
+                        scope.types.insert(name.token().text(), symbol);
+                        Some(symbol)
+                    } else {
+                        sink.record_error(RawDiagnostic {
+                            span: name.token().span(),
+                            severity: Severity::Error,
+                            message: err_fmt!("undefined type"),
+                        });
+                        None
+                    }
+                }
+                (_, None) => None,
             };
             let mut args = Vec::new();
             for ty in ty.type_args() {
@@ -441,6 +494,30 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
                         span: name.token().span(),
                         severity: Severity::Error,
                         message: err_fmt!("undefined variable"),
+                    });
+                }
+            }
+        }
+        node::Expr::NamespacedName(expr) => {
+            if let (Some(namespace), Some(name)) = (expr.namespace(), expr.name()) {
+                sink.on_name(namespace, NameUsage::Module, scope);
+                sink.on_name(name, NameUsage::Value, scope);
+                if let Some(module) = scope.lookup_module(namespace.token().text()) {
+                    // TODO: sink.record_ref for the module usage
+                    if let Some(def) = module.props.exports.get(name.token().text()) {
+                        sink.record_ref(ir::Ref::new(def.symbol, name))
+                    } else {
+                        sink.record_error(RawDiagnostic {
+                            span: namespace.token().span(),
+                            severity: Severity::Error,
+                            message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                        });
+                    }
+                } else {
+                    sink.record_error(RawDiagnostic {
+                        span: namespace.token().span(),
+                        severity: Severity::Error,
+                        message: err_fmt!("undefined module"),
                     });
                 }
             }
@@ -542,17 +619,42 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
 }
 
 fn resolve_match_case(sink: &mut impl ResolveSink, module: ModuleKey, case: node::MatchCase, scope: &Scope<'_>) {
-    if let Some(name) = case.ctor() {
-        sink.on_name(name, NameUsage::Ctor, scope);
-        if let Some(symbol) = scope.lookup_ctor(name.token().text()) {
-            sink.record_ref(ir::Ref::new(symbol, name));
-        } else {
-            sink.record_error(RawDiagnostic {
-                span: name.token().span(),
-                severity: Severity::Error,
-                message: err_fmt!("undefined constructor"),
-            });
+    match (case.namespace(), case.ctor()) {
+        (Some(namespace), Some(name)) => {
+            sink.on_name(namespace, NameUsage::Module, scope);
+            sink.on_name(name, NameUsage::Ctor, scope);
+            if let Some(module) = scope.lookup_module(namespace.token().text()) {
+                // TODO: sink.record_ref for the module usage
+                if let Some(def) = module.props.exports.get(name.token().text()) {
+                    sink.record_ref(ir::Ref::new(def.symbol, name));
+                } else {
+                    sink.record_error(RawDiagnostic {
+                        span: namespace.token().span(),
+                        severity: Severity::Error,
+                        message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                    });
+                }
+            } else {
+                sink.record_error(RawDiagnostic {
+                    span: namespace.token().span(),
+                    severity: Severity::Error,
+                    message: err_fmt!("undefined module"),
+                });
+            }
         }
+        (None, Some(name)) =>{
+            sink.on_name(name, NameUsage::Ctor, scope);
+            if let Some(symbol) = scope.lookup_ctor(name.token().text()) {
+                sink.record_ref(ir::Ref::new(symbol, name));
+            } else {
+                sink.record_error(RawDiagnostic {
+                    span: name.token().span(),
+                    severity: Severity::Error,
+                    message: err_fmt!("undefined constructor"),
+                });
+            }
+        }
+        (_, None) => {}
     }
     let mut scope = Scope::with_parent(scope);
     if let Some(vars) = case.vars() {

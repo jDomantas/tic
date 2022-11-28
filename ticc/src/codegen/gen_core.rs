@@ -332,6 +332,16 @@ impl<'a, 'b> Generator<'a, 'b> {
                 }
                 expr
             }
+            node::Expr::NamespacedName(n) => {
+                let name = n.name().unwrap();
+                let inst = &self.insts[&name.syntax().id()];
+                let cir_name = self.lookup_name(name);
+                let mut expr = cir::Expr::Name(cir_name);
+                for ty in inst {
+                    expr = cir::Expr::PiApply(Box::new(expr), self.gen_ty(ty));
+                }
+                expr
+            }
             node::Expr::Apply(ap) => {
                 let f = self.gen_expr(ap.function().unwrap());
                 let arg = self.gen_expr(ap.arg().unwrap());

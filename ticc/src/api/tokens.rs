@@ -107,6 +107,7 @@ fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenK
         Syntax::Equals |
         Syntax::Pipe |
         Syntax::Comma |
+        Syntax::Dot |
         Syntax::Arrow |
         Syntax::LeftParen |
         Syntax::RightParen |

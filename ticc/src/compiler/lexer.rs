@@ -73,6 +73,8 @@ pub(crate) enum TokenKind {
     Pipe,
     #[token(",")]
     Comma,
+    #[token(".")]
+    Dot,
     #[token(";")]
     Semicolon,
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*")]

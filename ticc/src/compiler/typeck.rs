@@ -395,6 +395,15 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
             }
+            node::Expr::NamespacedName(expr) => {
+                if let Some(name) = expr.name() {
+                    let span = name.token().span();
+                    if let Some(&sym) = self.symbols.get(&name.syntax().id()) {
+                        let ty = self.instantiate_name(sym, name.syntax().id());
+                        self.unify(expected, ty, span);
+                    }
+                }
+            }
             node::Expr::Apply(expr) => {
                 let a = self.fresh_var();
                 let b = self.fresh_var();

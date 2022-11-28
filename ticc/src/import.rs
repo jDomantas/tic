@@ -20,7 +20,7 @@ pub(crate) fn collect_types(unit: &CompilationUnit) -> HashMap<ir::Symbol, ir::D
     for item in &unit.items {
         for def in &item.defs {
             match &def.kind {
-                ir::DefKind::Value { .. } => {}
+                ir::DefKind::Value { .. } | // TODO: rename, this adds everything (not just types)
                 ir::DefKind::Ctor { .. } |
                 ir::DefKind::Type { .. } => {
                     defs.insert(def.symbol, def.clone());

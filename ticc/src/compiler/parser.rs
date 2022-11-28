@@ -355,6 +355,7 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
         LexerToken::Arrow => TokenOrTrivia::Token(TokenKind::Arrow),
         LexerToken::Pipe => TokenOrTrivia::Token(TokenKind::Pipe),
         LexerToken::Comma => TokenOrTrivia::Token(TokenKind::Comma),
+        LexerToken::Dot => TokenOrTrivia::Token(TokenKind::Dot),
         LexerToken::Semicolon => TokenOrTrivia::Token(TokenKind::Semicolon),
         LexerToken::Name => TokenOrTrivia::Token(TokenKind::Ident),
         LexerToken::Hole => TokenOrTrivia::Token(TokenKind::Hole),

@@ -108,6 +108,7 @@ nodes! {
 
     pub(crate) enum Expr {
         Name(NameExpr),
+        NamespacedName(NamespacedNameExpr),
         Apply(ApplyExpr),
         Binary(BinaryExpr),
         Let(LetExpr),
@@ -121,6 +122,7 @@ nodes! {
     }
 
     pub(crate) struct NameExpr { SyntaxKind::NameExpr }
+    pub(crate) struct NamespacedNameExpr { SyntaxKind::NamespacedNameExpr }
     pub(crate) struct ApplyExpr { SyntaxKind::ApplyExpr }
     pub(crate) struct BinaryExpr { SyntaxKind::BinaryExpr }
     pub(crate) struct LetExpr { SyntaxKind::LetExpr }
@@ -138,6 +140,12 @@ nodes! {
     pub(crate) struct BinaryOp { SyntaxKind::BinaryOp }
 
     pub(crate) struct Name { SyntaxKind::Name }
+}
+
+impl std::fmt::Debug for Name<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Name").field("text", &self.syntax().text()).finish()
+    }
 }
 
 impl<'a> ImportItem<'a> {
@@ -215,7 +223,9 @@ impl<'a> FnType<'a> {
 }
 
 impl<'a> NamedType<'a> {
-    pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
+    pub(crate) fn namespace(&self) -> Option<Name<'a>> { if self.dot().is_some() { child(&self.syntax) } else { None } }
+    pub(crate) fn dot(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Dot) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { if self.dot().is_some() { child2(&self.syntax) } else { child(&self.syntax) } }
     pub(crate) fn type_args(&self) -> impl Iterator<Item = Type<'a>> + 'a { children(&self.syntax) }
 }
 
@@ -238,6 +248,12 @@ impl<'a> ValueItem<'a> {
 
 impl<'a> NameExpr<'a> {
     pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
+}
+
+impl<'a> NamespacedNameExpr<'a> {
+    pub(crate) fn namespace(&self) -> Option<Name<'a>> { child(&self.syntax) }
+    pub(crate) fn dot(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Dot) }
+    pub(crate) fn name(&self) -> Option<Name<'a>> { child2(&self.syntax) }
 }
 
 impl<'a> ApplyExpr<'a> {
@@ -312,7 +328,9 @@ impl<'a> HoleExpr<'a> {
 
 impl<'a> MatchCase<'a> {
     pub(crate) fn pipe_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Pipe) }
-    pub(crate) fn ctor(&self) -> Option<Name<'a>> { child(&self.syntax) }
+    pub(crate) fn namespace(&self) -> Option<Name<'a>> { if self.dot().is_some() { child(&self.syntax) } else { None } }
+    pub(crate) fn dot(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Dot) }
+    pub(crate) fn ctor(&self) -> Option<Name<'a>> { if self.dot().is_some() { child2(&self.syntax) } else { child(&self.syntax) } }
     pub(crate) fn vars(&self) -> Option<MatchVars<'a>> { child(&self.syntax) }
     pub(crate) fn arrow_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Arrow) }
     pub(crate) fn body(&self) -> Option<Expr<'a>> { child(&self.syntax) }

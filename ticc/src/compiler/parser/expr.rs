@@ -54,6 +54,10 @@ fn match_case(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump(TokenKind::Pipe);
     p.expect_name();
+    if p.at(TokenKind::Dot) {
+        p.bump(TokenKind::Dot);
+        p.expect_name();
+    }
     let v = p.start();
     while p.at(TokenKind::Ident) {
         p.bump_name();
@@ -119,7 +123,13 @@ fn atom_expr(p: &mut Parser<'_>) -> Option<CompletedMarker> {
     } else if p.at(TokenKind::Ident) {
         let m = p.start();
         p.bump_name();
-        Some(m.complete(p, SyntaxKind::NameExpr))
+        if p.at(TokenKind::Dot) {
+            p.bump(TokenKind::Dot);
+            p.expect_name();
+            Some(m.complete(p, SyntaxKind::NamespacedNameExpr))
+        } else {
+            Some(m.complete(p, SyntaxKind::NameExpr))
+        }
     } else if p.at(TokenKind::Hole) {
         let m = p.start();
         p.bump(TokenKind::Hole);

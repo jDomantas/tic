@@ -10,11 +10,14 @@ pub(crate) mod typeck;
 
 use std::collections::HashMap;
 
+use crate::CompleteUnit;
+
 #[derive(Default)]
 pub(crate) struct Scope<'a> {
     pub(crate) values: HashMap<&'a str, ir::Symbol>,
     pub(crate) types: HashMap<&'a str, ir::Symbol>,
     pub(crate) ctors: HashMap<&'a str, ir::Symbol>,
+    pub(crate) modules: HashMap<&'a str, CompleteUnit>,
     pub(crate) parent: Option<&'a Scope<'a>>,
 }
 
@@ -37,19 +40,19 @@ impl<'a> Scope<'a> {
             }
             let span = def.span;
             let name = &source[span.start().source_pos()..span.end().source_pos()];
-            match def.kind {
+            match &def.kind {
                 ir::DefKind::Value { .. } => {
                     self.values.insert(name, def.symbol);
                 }
-                ir::DefKind::Ctor { ..  }=> {
+                ir::DefKind::Ctor { .. }=> {
                     self.ctors.insert(name, def.symbol);
                     self.values.insert(name, def.symbol);
                 }
                 ir::DefKind::Type { .. } => {
                     self.types.insert(name, def.symbol);
                 }
-                ir::DefKind::Module { .. } => {
-                    // TODO: support namespaced syntax
+                ir::DefKind::Module { unit } => {
+                    self.modules.insert(name, unit.clone());
                 }
             }
         }
@@ -80,6 +83,16 @@ impl<'a> Scope<'a> {
             Some(ty)
         } else if let Some(parent) = self.parent {
             parent.lookup_ctor(name)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn lookup_module(&self, name: &str) -> Option<CompleteUnit> {
+        if let Some(unit) = self.modules.get(name) {
+            Some(unit.clone())
+        } else if let Some(parent) = self.parent {
+            parent.lookup_module(name)
         } else {
             None
         }

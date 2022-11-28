@@ -1,0 +1,15 @@
+import list(Nil) from "list.tic";
+
+let sum2 : list.List int -> int =
+    \fold list ->
+        match list with
+        | Nil -> 0
+        | list.Cons x xs -> xs + 2 * x
+        end;
+
+let list : list.List int = list.Cons 1 (list.Cons 2 (list.Cons 3 list.Nil));
+
+export let a : int = list.sum list;
+-- EXPECT: a = 6
+export let b : int = sum2 list;
+-- EXPECT: b = 12
