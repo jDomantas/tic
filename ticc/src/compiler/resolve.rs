@@ -183,8 +183,13 @@ fn resolve_type_item(sink: &mut impl ResolveSink, module: ModuleKey, item: node:
     }
     let mut ctors = Vec::new();
     let mut ctor_names = Vec::new();
+    let ctor_vis = if item.export_cases_token().is_some() {
+        ir::Visibility::Export
+    } else {
+        ir::Visibility::Module
+    };
     for case in item.cases() {
-        let sym = resolve_type_case(sink, module, case, &scope, symbol, &param_symbols, &mut ctor_names);
+        let sym = resolve_type_case(sink, module, case, &scope, symbol, &param_symbols, &mut ctor_names, ctor_vis);
         ctors.extend(sym);
     }
     if let Some(name) = item.name() {
@@ -196,7 +201,11 @@ fn resolve_type_item(sink: &mut impl ResolveSink, module: ModuleKey, item: node:
                 is_var: false,
                 ctors: ir::Ctors::List(ctors),
             },
-            ir::Visibility::Module,
+            if item.export_token().is_some() {
+                ir::Visibility::Export
+            } else {
+                ir::Visibility::Module
+            },
             name,
         ));
     }
@@ -210,6 +219,7 @@ fn resolve_type_case<'a>(
     type_symbol: ir::Symbol,
     param_symbols: &[ir::Symbol],
     ctor_names: &mut Vec<&'a str>,
+    ctor_vis: ir::Visibility,
 ) -> Option<ir::Symbol> {
     let mut fields = Vec::new();
     for field in case.fields() {
@@ -260,7 +270,7 @@ fn resolve_type_case<'a>(
                     fields,
                     fn_ty,
                 },
-                ir::Visibility::Module,
+                ctor_vis,
                 name,
             ));
             Some(symbol)

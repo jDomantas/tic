@@ -1,37 +1,29 @@
-use super::{ParseHint, Parser, SyntaxKind, TokenKind};
+use super::{ParseHint, Parser, SyntaxKind, TokenKind, Marker};
 
 pub(super) fn item(p: &mut Parser<'_>) -> bool {
     p.hint(ParseHint::Item);
 
-    if p.at(TokenKind::Export) || p.at(TokenKind::Let) {
+    if p.at(TokenKind::Export) {
         let m = p.start();
-        if p.at(TokenKind::Export) {
-            p.bump(TokenKind::Export);
+        p.bump(TokenKind::Export);
+        if p.at(TokenKind::Let) {
+            value_item(p, m);
+            true
+        } else if p.at(TokenKind::Type) {
+            type_item(p, m);
+            true
+        } else {
+            m.complete(p, SyntaxKind::Error);
+            p.error_recover_item();
+            true
         }
-        p.expect(TokenKind::Let);
-        p.expect_name();
-        // missing type on top-level definition is a semantic error
-        if p.at(TokenKind::Colon) {
-            p.bump(TokenKind::Colon);
-            super::type_::type_(p);
-        }
-        p.expect(TokenKind::Equals);
-        super::expr::expr(p);
-        p.expect(TokenKind::Semicolon);
-        m.complete(p, SyntaxKind::ValueItem);
+    } else if p.at(TokenKind::Let) {
+        let m = p.start();
+        value_item(p, m);
         true
     } else if p.at(TokenKind::Type) {
         let m = p.start();
-        p.bump(TokenKind::Type);
-        p.expect_name();
-        type_params(p);
-        p.expect(TokenKind::Equals);
-        type_case(p, true);
-        while p.at(TokenKind::Pipe) {
-            type_case(p, false);
-        }
-        p.expect(TokenKind::Semicolon);
-        m.complete(p, SyntaxKind::TypeItem);
+        type_item(p, m);
         true
     } else if p.at(TokenKind::Import) {
         let m = p.start();
@@ -51,6 +43,36 @@ pub(super) fn item(p: &mut Parser<'_>) -> bool {
         p.error_recover_item();
         false
     }
+}
+
+fn value_item(p: &mut Parser<'_>, m: Marker) {
+    p.expect(TokenKind::Let);
+    p.expect_name();
+    // TODO: missing type on top-level definition is a semantic error
+    if p.at(TokenKind::Colon) {
+        p.bump(TokenKind::Colon);
+        super::type_::type_(p);
+    }
+    p.expect(TokenKind::Equals);
+    super::expr::expr(p);
+    p.expect(TokenKind::Semicolon);
+    m.complete(p, SyntaxKind::ValueItem);
+}
+
+fn type_item(p: &mut Parser<'_>, m: Marker) {
+    p.bump(TokenKind::Type);
+    p.expect_name();
+    type_params(p);
+    p.expect(TokenKind::Equals);
+    if p.at(TokenKind::Export) {
+        p.bump(TokenKind::Export);
+    }
+    type_case(p, true);
+    while p.at(TokenKind::Pipe) {
+        type_case(p, false);
+    }
+    p.expect(TokenKind::Semicolon);
+    m.complete(p, SyntaxKind::TypeItem);
 }
 
 fn type_params(p: &mut Parser<'_>) {

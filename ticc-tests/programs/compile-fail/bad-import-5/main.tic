@@ -1,0 +1,5 @@
+import (Foo, Bar) from "child-1.tic";
+--           ^^^ ERROR: does not export Bar
+
+import (Baz, Quux) from "child-2.tic";
+--      ^^^ ERROR: does not export Baz

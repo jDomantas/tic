@@ -156,12 +156,28 @@ impl<'a> ExposedList<'a> {
 }
 
 impl<'a> TypeItem<'a> {
+    pub(crate) fn export_token(&self) -> Option<SyntaxToken<'a>> { type_export_token(&self.syntax, true) }
     pub(crate) fn type_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Type) }
     pub(crate) fn name(&self) -> Option<Name<'a>> { child(&self.syntax) }
     pub(crate) fn params(&self) -> Option<TypeParams<'a>> { child(&self.syntax) }
     pub(crate) fn equals_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Equals) }
+    pub(crate) fn export_cases_token(&self) -> Option<SyntaxToken<'a>> { type_export_token(&self.syntax, false) }
     pub(crate) fn cases(&self) -> impl Iterator<Item = TypeCase<'a>> + 'a { children(&self.syntax) }
     pub(crate) fn semi_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Semicolon) }
+}
+
+fn type_export_token<'a>(node: &SyntaxNode<'a>, before_eq: bool) -> Option<SyntaxToken<'a>> {
+    if before_eq {
+        node.all_children()
+            .filter_map(|c| c.into_token())
+            .take_while(|t| t.kind() != TokenKind::Equals)
+            .find(|t| t.kind() == TokenKind::Export)
+    } else {
+        node.all_children()
+            .filter_map(|c| c.into_token())
+            .skip_while(|t| t.kind() != TokenKind::Equals)
+            .find(|t| t.kind() == TokenKind::Export)
+    }
 }
 
 impl<'a> TypeParams<'a> {
