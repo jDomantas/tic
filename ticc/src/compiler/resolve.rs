@@ -89,7 +89,9 @@ fn resolve_import_item(sink: &mut impl ResolveSink, module: ModuleKey, item: nod
     let text = path.text();
     // TODO: properly strip quotes & unescape
     let text = &text[1..(text.len() - 1)];
-    let unit = match module_resolver.lookup(text) {
+    let unit = crate::builtin::lookup_module(text).map(Ok)
+        .unwrap_or_else(|| module_resolver.lookup(text));
+    let unit = match unit {
         Ok(unit) => unit,
         Err(ImportError::DoesNotExist) => {
             sink.record_error(RawDiagnostic {

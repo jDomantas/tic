@@ -1,0 +1,52 @@
+import option(Option, Some, None) from "std/option";
+
+export type List a = export Nil | Cons a rec;
+
+export let map : (a -> b) -> List a -> List b =
+    \f -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs -> Cons (f x) xs
+        end;
+
+export let filter : (a -> bool) -> List a -> List a =
+    \f -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs -> if f x then Cons x xs else xs
+        end;
+
+export let sum : List int -> int =
+    \fold list ->
+        match list with
+        | Nil -> 0
+        | Cons x xs -> x + xs
+        end;
+
+export let any : List bool -> bool =
+    \fold list ->
+        match list with
+        | Nil -> false
+        | Cons x xs -> if x then true else xs
+        end;
+
+export let all : List bool -> bool =
+    \fold list ->
+        match list with
+        | Nil -> true
+        | Cons x xs -> if x then xs else false
+        end;
+
+export let head : List a -> Option a =
+    \list ->
+        match list with
+        | Nil -> None
+        | Cons x _ -> Some x
+        end;
+
+export let tail : List a -> Option (List a) =
+    \list ->
+        match list with
+        | Nil -> None
+        | Cons _ xs -> Some xs
+        end;

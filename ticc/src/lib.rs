@@ -1,5 +1,6 @@
 #[macro_use]
 pub(crate) mod error;
+pub(crate) mod builtin;
 pub(crate) mod codegen;
 pub(crate) mod compiler;
 pub(crate) mod import;
@@ -23,14 +24,14 @@ pub struct CompilationUnit {
     src: Arc<str>,
     items: Vec<ir::Item>,
     options: Options,
-    modules: Arc<dyn ModuleResolver>,
+    modules: Arc<dyn ModuleResolver + Send + Sync>,
 }
 
 impl CompilationUnit {
     pub fn new(
         src: &str,
         options: Options,
-        modules: Arc<dyn ModuleResolver>,
+        modules: Arc<dyn ModuleResolver + Send + Sync>,
     ) -> CompilationUnit {
         CompilationUnit {
             key: ModuleKey::fresh_key(),

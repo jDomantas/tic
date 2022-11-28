@@ -1,0 +1,12 @@
+import list(Nil) from "std/list";
+
+let test : list.List int = list.Cons 1 (list.Cons 2 (list.Cons 3 Nil));
+
+export let sum : int = list.sum test;
+-- EXPECT: sum = 6
+
+export let mapped : list.List bool = list.map (\x -> x > 1) test;
+-- EXPECT: mapped = Cons false (Cons true (Cons true Nil))
+
+export let filtered : list.List int = list.filter (\x -> x != 2) test;
+-- EXPECT: filtered = Cons 1 (Cons 3 Nil)

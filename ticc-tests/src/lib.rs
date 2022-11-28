@@ -603,7 +603,7 @@ impl LazyModule {
         }
     }
 
-    fn to_unit(&self, resolver: impl FnOnce() -> Arc<dyn ModuleResolver>) -> CompleteUnit {
+    fn to_unit(&self, resolver: impl FnOnce() -> Arc<dyn ModuleResolver + Send + Sync>) -> CompleteUnit {
         self.module
             .lock()
             .unwrap()

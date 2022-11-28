@@ -1,0 +1,1 @@
+export type Result t e = export Ok t | Err e;
