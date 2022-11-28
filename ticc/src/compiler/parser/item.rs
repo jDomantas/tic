@@ -36,7 +36,9 @@ pub(super) fn item(p: &mut Parser<'_>) -> bool {
     } else if p.at(TokenKind::Import) {
         let m = p.start();
         p.bump(TokenKind::Import);
-        p.expect_name();
+        if p.at(TokenKind::Ident) {
+            p.bump_name();
+        }
         if p.at(TokenKind::LeftParen) {
             exposed_list(p);
         }

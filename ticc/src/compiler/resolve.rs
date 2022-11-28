@@ -125,6 +125,16 @@ fn resolve_import_item(sink: &mut impl ResolveSink, module: ModuleKey, item: nod
             span: name.token().span(),
             node: name.syntax().id(),
         });
+    } else {
+        // TODO: don't create this fake def (currently needed for codegen to pick up the module)
+        sink.record_def(ir::Def {
+            module,
+            symbol: ir::Symbol::fresh(),
+            kind: ir::DefKind::Module { unit: unit.clone() },
+            vis: ir::Visibility::Module,
+            span: item.syntax().span(),
+            node: item.syntax().id(),
+        });
     }
 
     if let Some(exposed) = item.exposed_list() {

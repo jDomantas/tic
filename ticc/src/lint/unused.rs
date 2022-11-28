@@ -33,6 +33,10 @@ pub(crate) fn lints(compilation: &mut CompilationUnit) -> Vec<RawDiagnostic> {
     let mut lints = Vec::new();
     for item in &compilation.items {
         for d in &item.defs {
+            // TODO: get rid of this once the def is not needed for codegen
+            if matches!(d.kind, DefKind::Module { .. }) {
+                continue;
+            }
             let name = &compilation.src[d.span.source_range()];
             if !used.contains(&d.symbol) && name.chars().next() != Some('_') {
                 lints.push(RawDiagnostic {
