@@ -176,6 +176,26 @@ impl Validator {
                     }
                 }
             }
+            ir::Expr::Intrinsic(i, xs) => {
+                match i {
+                    ir::Intrinsic::StringLen => {
+                        self.assert_params_fit([ir::Ty::String], xs);
+                        ir::Ty::Int
+                    }
+                    ir::Intrinsic::StringConcat => {
+                        self.assert_params_fit([ir::Ty::String, ir::Ty::String], xs);
+                        ir::Ty::String
+                    }
+                    ir::Intrinsic::StringCharAt => {
+                        self.assert_params_fit([ir::Ty::Int, ir::Ty::String], xs);
+                        ir::Ty::Int
+                    }
+                    ir::Intrinsic::StringSubstring => {
+                        self.assert_params_fit([ir::Ty::Int, ir::Ty::Int, ir::Ty::String], xs);
+                        ir::Ty::String
+                    }
+                }
+            }
             ir::Expr::If(c, t, e) => {
                 let c = self.check_expr(c);
                 assert_fits(&c, &ir::Ty::Bool);
@@ -308,6 +328,16 @@ impl Validator {
                     }
                 }
             }
+        }
+    }
+
+    fn assert_params_fit<const N: usize>(&mut self, params: [ir::Ty; N], actual: &[ir::Expr]) {
+        if params.len() != actual.len() {
+            panic!("expected {} params, got {}", N, actual.len());
+        }
+        for (ty, x) in params.iter().zip(actual) {
+            let x = self.check_expr(x);
+            assert_fits(&x, ty);
         }
     }
 }

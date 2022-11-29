@@ -11,6 +11,8 @@ pub(crate) fn generate_js(program: cir::Program) -> String {
         indent: 0,
         debug: &program.names,
     };
+    generator.output.push_str("function $stringCharAt(i, s) { return i < 0 || i >= s.length ? 0 : s.charCodeAt(i); }\n");
+    generator.output.push_str("function $stringSubstring(i, l, s) { return i < 0 || i + l > s.length ? '' : s.substr(i, l); }\n");
     for def in ir.stmts {
         generator.emit_stmt(def);
     }
@@ -177,6 +179,37 @@ impl Generator<'_> {
                 }
                 self.output.push(')');
             }
+            ir::Expr::Intrinsic(a, b) => {
+                match a {
+                    cir::Intrinsic::StringLen => {
+                        self.emit_expr(&b[0], Prec::Atom);
+                        self.output.push_str(".length");
+                    }
+                    cir::Intrinsic::StringConcat => {
+                        self.output.push_str("(");
+                        self.emit_expr(&b[0], Prec::Call);
+                        self.output.push_str(" + ");
+                        self.emit_expr(&b[1], Prec::Call);
+                        self.output.push_str(")");
+                    }
+                    cir::Intrinsic::StringCharAt => {
+                        self.output.push_str("$stringCharAt(");
+                        self.emit_expr(&b[0], Prec::Min);
+                        self.output.push_str(", ");
+                        self.emit_expr(&b[1], Prec::Min);
+                        self.output.push_str(")");
+                    }
+                    cir::Intrinsic::StringSubstring => {
+                        self.output.push_str("$stringSubstring(");
+                        self.emit_expr(&b[0], Prec::Min);
+                        self.output.push_str(", ");
+                        self.emit_expr(&b[1], Prec::Min);
+                        self.output.push_str(", ");
+                        self.emit_expr(&b[2], Prec::Min);
+                        self.output.push_str(")");
+                    }
+                }
+            }
             ir::Expr::Op(a, op, b) => {
                 self.emit_expr(a, expr_prec);
                 self.output.push_str(match op {
@@ -296,7 +329,8 @@ fn expr_prec(expr: &ir::Expr) -> Prec {
         ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Construct(_, _) => Prec::Atom,
-        ir::Expr::Call(_, _) => Prec::Call,
+        ir::Expr::Call(_, _) |
+        ir::Expr::Intrinsic(_, _) => Prec::Call,
         ir::Expr::Op(_, ir::Op::Add, _) |
         ir::Expr::Op(_, ir::Op::Subtract, _) => Prec::Sum,
         ir::Expr::Op(_, ir::Op::Multiply, _) => Prec::Product,

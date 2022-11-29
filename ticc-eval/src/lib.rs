@@ -50,6 +50,14 @@ impl Value {
         }
     }
 
+    fn into_string(self) -> Rc<str> {
+        if let Value::String(x) = self {
+            x
+        } else {
+            panic!("value is not a string");
+        }
+    }
+
     fn into_composite(self) -> (ir::Name, Rc<[Value]>) {
         if let Value::Composite(x, y) = self {
             (x, y)
@@ -149,6 +157,35 @@ fn eval_impl(env: &Rc<dyn EvalEnv>, expr: &ir::Expr) -> Result<Value, Trap> {
             } else {
                 eval_impl(env, e)
             }
+        }
+        ir::Expr::Intrinsic(i, xs) => {
+            Ok(match i {
+                ir::Intrinsic::StringLen => {
+                    let s = eval_impl(env, &xs[0])?.into_string();
+                    Value::Int(s.len() as u64)
+                }
+                ir::Intrinsic::StringConcat => {
+                    let s1 = eval_impl(env, &xs[0])?.into_string();
+                    let s2 = eval_impl(env, &xs[1])?.into_string();
+                    let mut res = String::with_capacity(s1.len() + s2.len());
+                    res.push_str(&s1);
+                    res.push_str(&s2);
+                    Value::String(res.into())
+                }
+                ir::Intrinsic::StringCharAt => {
+                    let idx = eval_impl(env, &xs[0])?.into_int() as usize;
+                    let s = eval_impl(env, &xs[1])?.into_string();
+                    let ch = s.as_bytes().get(idx).copied().unwrap_or(0);
+                    Value::Int(u64::from(ch))
+                }
+                ir::Intrinsic::StringSubstring => {
+                    let start = eval_impl(env, &xs[0])?.into_int() as usize;
+                    let len = eval_impl(env, &xs[1])?.into_int() as usize;
+                    let s = eval_impl(env, &xs[2])?.into_string();
+                    let s = s.get(start..).unwrap_or("").get(..len).unwrap_or("");
+                    Value::String(s.into())
+                }
+            })
         }
         ir::Expr::Op(a, op, b) => {
             let a = eval_impl(env, a)?.into_int();

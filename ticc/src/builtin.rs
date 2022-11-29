@@ -56,21 +56,37 @@ pub(crate) fn intrinsic_symbols() -> IntrinsicSymbols {
 fn get_intrinsic_symbols() -> IntrinsicSymbols {
     let module = lookup_module("std/intrinsics").unwrap();
     let mut iterate = None;
+    let mut string_length = None;
+    let mut string_concat = None;
+    let mut string_char_at = None;
+    let mut string_substring = None;
     for item in &module.props.unit.items {
         for def in &item.defs {
             let name = &module.props.unit.src[def.span.source_range()];
             match name {
                 "iterate" => iterate = Some(def.symbol),
+                "stringLength" => string_length = Some(def.symbol),
+                "stringConcat" => string_concat = Some(def.symbol),
+                "stringCharAt" => string_char_at = Some(def.symbol),
+                "stringSubstring" => string_substring = Some(def.symbol),
                 _ => {}
             }
         }
     }
     IntrinsicSymbols {
         iterate: iterate.expect("no iterate intrinsic"),
+        string_length: string_length.expect("no string_length intrinsic"),
+        string_concat: string_concat.expect("no string_concat intrinsic"),
+        string_char_at: string_char_at.expect("no string_char_at intrinsic"),
+        string_substring: string_substring.expect("no string_substring intrinsic"),
     }
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct IntrinsicSymbols {
     pub(crate) iterate: ir::Symbol,
+    pub(crate) string_length: ir::Symbol,
+    pub(crate) string_concat: ir::Symbol,
+    pub(crate) string_char_at: ir::Symbol,
+    pub(crate) string_substring: ir::Symbol,
 }

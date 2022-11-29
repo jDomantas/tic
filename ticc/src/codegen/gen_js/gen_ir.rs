@@ -76,6 +76,21 @@ impl Generator {
                     Err(end) => end,
                 }
             }
+            cir::Expr::Intrinsic(a, bs) => {
+                let mut helper = || -> Result<ir::Expr, ir::BlockEnd> {
+                    let mut args = Vec::new();
+                    for b in bs {
+                        let b = self.gen_expr(b, current_block);
+                        let b = self.extract_expr(b, current_block)?;
+                        args.push(b);
+                    }
+                    Ok(ir::Expr::Intrinsic(*a, args))
+                };
+                match helper() {
+                    Ok(expr) => ir::BlockEnd::Value(expr),
+                    Err(end) => end,
+                }
+            }
             cir::Expr::If(a, b, c) => {
                 let a = self.gen_expr(a, current_block);
                 let a = match self.extract_expr(a, current_block) {

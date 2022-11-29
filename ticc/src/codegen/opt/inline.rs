@@ -92,6 +92,12 @@ impl Inlinable {
                         b.iter().map(|b| copy(b, names)).collect(),
                     )
                 }
+                ir::Expr::Intrinsic(a, b) => {
+                    ir::Expr::Intrinsic(
+                        *a,
+                        b.iter().map(|b| copy(b, names)).collect(),
+                    )
+                }
                 ir::Expr::If(a, b, c) => {
                     ir::Expr::If(
                         Box::new(copy(a, names)),
@@ -205,6 +211,11 @@ fn walk_expressions(
                     go(b, f);
                 }
             }
+            ir::Expr::Intrinsic(_, a) => {
+                for a in a {
+                    go(a, f);
+                }
+            }
             ir::Expr::Op(a, _, b) |
             ir::Expr::LetRec(_, _, a, b) => {
                 go(a, f);
@@ -303,6 +314,9 @@ fn count_uses(e: &ir::Expr, name: &ir::Name, singular_lambda: bool) -> usize {
         ir::Expr::Name(x) => if x == name { 1 } else { 0 },
         ir::Expr::Call(a, b) => {
             count_uses(a, name, singular_lambda) + b.iter().map(|b| count_uses(b, name, singular_lambda)).sum::<usize>()
+        }
+        ir::Expr::Intrinsic(_, a) => {
+            a.iter().map(|a| count_uses(a, name, singular_lambda)).sum::<usize>()
         }
         ir::Expr::Op(a, _, b) |
         ir::Expr::Let(_, a, b) |

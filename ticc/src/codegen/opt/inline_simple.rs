@@ -69,6 +69,13 @@ fn count_uses(e: &ir::Expr, name: &ir::Name, lambda_single: bool) -> usize {
             }
             total
         }
+        ir::Expr::Intrinsic(_, a) => {
+            let mut total = 0;
+            for a in a {
+                total += count_uses(a, name, lambda_single);
+            }
+            total
+        }
         ir::Expr::Op(a, _, b) |
         ir::Expr::Let(_, a, b) |
         ir::Expr::LetRec(_, _, a, b) => count_uses(a, name, lambda_single) + count_uses(b, name, lambda_single),

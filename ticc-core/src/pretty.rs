@@ -128,6 +128,26 @@ impl Format<'_> {
                 }
                 self.builder.add_sticky_token(")", Sticky::Prev);
             }
+            ir::Expr::Intrinsic(i, args) => {
+                self.builder.add_token(match i {
+                    ir::Intrinsic::StringLen => "%stringLen",
+                    ir::Intrinsic::StringConcat => "%stringConcat",
+                    ir::Intrinsic::StringCharAt => "%stringCharAt",
+                    ir::Intrinsic::StringSubstring => "%stringSubstring",
+                });
+                self.builder.add_sticky_token("(", Sticky::Both);
+                match args.as_slice() {
+                    [] => {}
+                    [first, rest @ ..] => {
+                        self.write_expr(first, Prec::Min);
+                        for e in rest {
+                            self.builder.add_sticky_token(",", Sticky::Prev);
+                            self.write_expr(e, Prec::Min);
+                        }
+                    }
+                }
+                self.builder.add_sticky_token(")", Sticky::Prev);
+            }
             ir::Expr::If(a, b, c) => {
                 self.builder.add_token("if");
                 self.write_expr(a, Prec::Apply);
@@ -337,6 +357,7 @@ fn expr_prec(e: &ir::Expr) -> Prec {
         ir::Expr::String(_) |
         ir::Expr::Name(_) => Prec::Atom,
         ir::Expr::Call(_, _) |
+        ir::Expr::Intrinsic(_, _) |
         ir::Expr::Construct(_, _, _) => Prec::Atom,
         ir::Expr::Op(_, ir::Op::Add, _) |
         ir::Expr::Op(_, ir::Op::Subtract, _) => Prec::Add,
@@ -365,6 +386,7 @@ fn expr_node(e: &ir::Expr) -> Node {
         ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Call(_, _) |
+        ir::Expr::Intrinsic(_, _) |
         ir::Expr::Construct(_, _, _) |
         ir::Expr::Op(_, _, _) |
         ir::Expr::Lambda(_, _) |
@@ -390,6 +412,7 @@ fn is_atom(e: &ir::Expr) -> bool {
         ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Call(_, _) |
+        ir::Expr::Intrinsic(_, _) |
         ir::Expr::Trap(_, _) |
         ir::Expr::PiApply(_, _) => true,
         ir::Expr::If(_, _, _) |

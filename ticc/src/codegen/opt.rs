@@ -74,6 +74,11 @@ fn walk_expressions<'a>(expr: &'a ir::Expr, mut f: impl FnMut(&'a ir::Expr)) {
                     go(b, f);
                 }
             }
+            ir::Expr::Intrinsic(_, b) => {
+                for b in b {
+                    go(b, f);
+                }
+            }
             ir::Expr::Op(a, _, b) |
             ir::Expr::Let(_, a, b) |
             ir::Expr::LetRec(_, _, a, b) => {
@@ -121,6 +126,11 @@ fn walk_expressions_mut(expr: &mut ir::Expr, mut f: impl FnMut(&mut ir::Expr)) {
                     go(b, f);
                 }
             }
+            ir::Expr::Intrinsic(_, b) => {
+                for b in b {
+                    go(b, f);
+                }
+            }
             ir::Expr::Op(a, _, b) |
             ir::Expr::Let(_, a, b) |
             ir::Expr::LetRec(_, _, a, b) => {
@@ -163,6 +173,11 @@ fn walk_expressions_postorder_mut(expr: &mut ir::Expr, mut f: impl FnMut(&mut ir
             ir::Expr::Trap(_, _) => {}
             ir::Expr::Call(a, b) => {
                 go(a, f);
+                for b in b {
+                    go(b, f);
+                }
+            }
+            ir::Expr::Intrinsic(_, b) => {
                 for b in b {
                     go(b, f);
                 }

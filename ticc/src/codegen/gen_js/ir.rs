@@ -34,6 +34,7 @@ pub(crate) enum Expr {
     String(Rc<str>),
     Name(Name),
     Call(Box<Expr>, Vec<Expr>),
+    Intrinsic(cir::Intrinsic, Vec<Expr>),
     Op(Box<Expr>, Op, Box<Expr>),
     Construct(cir::Name, Vec<Expr>),
     Lambda(Vec<Name>, Box<Expr>),

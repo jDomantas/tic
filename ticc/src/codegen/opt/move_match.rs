@@ -56,6 +56,9 @@ fn is_simple(expr: &ir::Expr, allowed_fn: ir::Name) -> bool {
                 false
             }
         }
+        ir::Expr::Intrinsic(_, x) => {
+            x.iter().all(|x| is_simple(x, allowed_fn))
+        }
         ir::Expr::If(_, _, _) |
         ir::Expr::Op(_, _, _) |
         ir::Expr::Lambda(_, _) |

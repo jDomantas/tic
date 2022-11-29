@@ -300,6 +300,14 @@ impl<'a, 'b> Generator<'a, 'b> {
         self.fresh_inst(vars);
         let value = if sym == self.intrinsics.iterate {
             self.iterate_intrinsic()
+        } else if sym == self.intrinsics.string_length {
+            self.string_length_intrinsic()
+        } else if sym == self.intrinsics.string_concat {
+            self.string_concat_intrinsic()
+        } else if sym == self.intrinsics.string_char_at {
+            self.string_char_at_intrinsic()
+        } else if sym == self.intrinsics.string_substring {
+            self.string_substring_intrinsic()
         } else {
             let mut value = self.gen_expr(item.expr().unwrap());
             for &var in vars.iter().rev() {
@@ -670,6 +678,82 @@ impl<'a, 'b> Generator<'a, 'b> {
                                 Vec::from([cir::Expr::Name(n), cir::Expr::Name(x)]),
                             ))
                         )),
+                    )),
+                )),
+            )),
+        )
+    }
+
+    fn string_length_intrinsic(&mut self) -> cir::Expr {
+        // \(n : string) -> %stringLen(n)
+        let n = self.gen_fake_name("n");
+        cir::Expr::Lambda(
+            Vec::from([cir::LambdaParam { name: n, ty: cir::Ty::String }]),
+            Box::new(cir::Expr::Intrinsic(
+                cir::Intrinsic::StringLen,
+                Vec::from([
+                    cir::Expr::Name(n),
+                ]),
+            )),
+        )
+    }
+
+    fn string_concat_intrinsic(&mut self) -> cir::Expr {
+        // \(a : string) -> \(b : string) -> %stringConcat(a, b)
+        let a = self.gen_fake_name("a");
+        let b = self.gen_fake_name("b");
+        cir::Expr::Lambda(
+            Vec::from([cir::LambdaParam { name: a, ty: cir::Ty::String }]),
+            Box::new(cir::Expr::Lambda(
+                Vec::from([cir::LambdaParam { name: b, ty: cir::Ty::String }]),
+                Box::new(cir::Expr::Intrinsic(
+                    cir::Intrinsic::StringConcat,
+                    Vec::from([
+                        cir::Expr::Name(a),
+                        cir::Expr::Name(b),
+                    ]),
+                )),
+            )),
+        )
+    }
+
+    fn string_char_at_intrinsic(&mut self) -> cir::Expr {
+        // \(a : int) -> \(b : string) -> %stringCharAt(a, b)
+        let a = self.gen_fake_name("a");
+        let b = self.gen_fake_name("b");
+        cir::Expr::Lambda(
+            Vec::from([cir::LambdaParam { name: a, ty: cir::Ty::Int }]),
+            Box::new(cir::Expr::Lambda(
+                Vec::from([cir::LambdaParam { name: b, ty: cir::Ty::String }]),
+                Box::new(cir::Expr::Intrinsic(
+                    cir::Intrinsic::StringCharAt,
+                    Vec::from([
+                        cir::Expr::Name(a),
+                        cir::Expr::Name(b),
+                    ]),
+                )),
+            )),
+        )
+    }
+
+    fn string_substring_intrinsic(&mut self) -> cir::Expr {
+        // \(a : int) -> \(b : int) -> \(s : string) -> %stringSubstring(a, b, s)
+        let a = self.gen_fake_name("a");
+        let b = self.gen_fake_name("b");
+        let s = self.gen_fake_name("s");
+        cir::Expr::Lambda(
+            Vec::from([cir::LambdaParam { name: a, ty: cir::Ty::Int }]),
+            Box::new(cir::Expr::Lambda(
+                Vec::from([cir::LambdaParam { name: b, ty: cir::Ty::Int }]),
+                Box::new(cir::Expr::Lambda(
+                    Vec::from([cir::LambdaParam { name: s, ty: cir::Ty::String }]),
+                    Box::new(cir::Expr::Intrinsic(
+                        cir::Intrinsic::StringSubstring,
+                        Vec::from([
+                            cir::Expr::Name(a),
+                            cir::Expr::Name(b),
+                            cir::Expr::Name(s),
+                        ]),
                     )),
                 )),
             )),

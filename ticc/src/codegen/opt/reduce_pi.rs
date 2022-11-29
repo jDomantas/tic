@@ -80,6 +80,7 @@ fn replace_ty_in_expr(e: &mut ir::Expr, var: ir::TyVar, with: &ir::Ty) {
             ir::Expr::String(_) |
             ir::Expr::Name(_) |
             ir::Expr::Call(_, _) |
+            ir::Expr::Intrinsic(_, _) |
             ir::Expr::If(_, _, _) |
             ir::Expr::Op(_, _, _) |
             ir::Expr::Match(_, _) |

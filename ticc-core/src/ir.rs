@@ -12,6 +12,7 @@ pub enum Expr {
     Call(Box<Expr>, Vec<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Op(Box<Expr>, Op, Box<Expr>),
+    Intrinsic(Intrinsic, Vec<Expr>),
     Lambda(Vec<LambdaParam>, Box<Expr>),
     Match(Box<Expr>, Vec<Branch>),
     Construct(Name, Vec<Ty>, Vec<Expr>),
@@ -60,6 +61,14 @@ pub enum Op {
     GreaterEq,
     Equal,
     NotEqual,
+}
+
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Hash, Copy, Clone)]
+pub enum Intrinsic {
+    StringLen,
+    StringConcat,
+    StringCharAt,
+    StringSubstring,
 }
 
 #[derive(Debug, Hash, Clone)]

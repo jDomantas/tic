@@ -7,3 +7,12 @@ export let a : int = pow 2 10;
 -- EXPECT: a = 1024
 export let b : int = pow 10 5;
 -- EXPECT: b = 100000
+
+export let c : int = i.stringLength "1234567";
+-- EXPECT: c = 7
+export let d : string = i.stringConcat "abc" "1234";
+-- EXPECT: d = "abc1234"
+export let e : int = i.stringCharAt 4 "0123456";
+-- EXPECT: e = 52
+export let f : string = i.stringSubstring 3 5 "abcdefghijk";
+-- EXPECT: f = "defgh"
