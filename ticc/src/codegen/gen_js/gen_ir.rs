@@ -57,6 +57,7 @@ impl Generator {
         match expr {
             cir::Expr::Bool(b) => ir::Expr::Bool(*b).into(),
             cir::Expr::Int(x) => ir::Expr::Int(*x).into(),
+            cir::Expr::String(x) => ir::Expr::String(x.clone()).into(),
             cir::Expr::Name(n) => ir::Expr::Name((*n).into()).into(),
             cir::Expr::Call(a, bs) => {
                 let mut helper = || -> Result<ir::Expr, ir::BlockEnd> {

@@ -30,6 +30,7 @@ fn extract_ctor(e: &ir::Expr) -> Option<ir::Name> {
     match e {
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Call(_, _) |
         ir::Expr::Op(_, _, _) |
@@ -83,6 +84,7 @@ fn merge_branch(inner: &mut ir::Expr, outer: ir::Branch) {
         ir::Expr::PiApply(e, _) => merge_branch(e, outer),
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Call(_, _) |
         ir::Expr::If(_, _, _) |

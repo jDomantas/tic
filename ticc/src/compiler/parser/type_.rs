@@ -44,9 +44,17 @@ pub(super) fn atom_type(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         let m = p.start();
         p.bump(TokenKind::Bool);
         Some(m.complete(p, SyntaxKind::BoolType))
+    } else if p.at(TokenKind::StringTy) {
+        let m = p.start();
+        p.bump(TokenKind::StringTy);
+        Some(m.complete(p, SyntaxKind::StringType))
     } else if p.at(TokenKind::Ident) {
         let m = p.start();
         p.bump_name();
+        if p.at(TokenKind::Dot) {
+            p.bump(TokenKind::Dot);
+            p.expect_name();
+        }
         Some(m.complete(p, SyntaxKind::NamedType))
     } else if p.at(TokenKind::LeftParen) {
         let m = p.start();

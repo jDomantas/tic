@@ -122,7 +122,8 @@ impl Validator {
     fn check_ty(&mut self, ty: &ir::Ty) {
         match ty {
             ir::Ty::Bool |
-            ir::Ty::Int => {}
+            ir::Ty::Int |
+            ir::Ty::String => {}
             ir::Ty::Var(v) => {
                 self.names.assert_valid_ty(*v);
             }
@@ -152,6 +153,7 @@ impl Validator {
         match expr {
             ir::Expr::Bool(_) => ir::Ty::Bool,
             ir::Expr::Int(_) => ir::Ty::Int,
+            ir::Expr::String(_) => ir::Ty::String,
             ir::Expr::Name(n) => {
                 self.names.assert_valid(*n);
                 self.types[n].clone()
@@ -314,7 +316,8 @@ fn assert_fits(actual: &ir::Ty, expected: &ir::Ty) {
     fn check(actual: &ir::Ty, expected: &ir::Ty, pairs: &mut Vec<(ir::TyVar, ir::TyVar)>) -> bool {
         match (actual, expected) {
             (ir::Ty::Bool, ir::Ty::Bool) |
-            (ir::Ty::Int, ir::Ty::Int) => true,
+            (ir::Ty::Int, ir::Ty::Int) |
+            (ir::Ty::String, ir::Ty::String) => true,
             (ir::Ty::Var(a), ir::Ty::Var(b)) => {
                 a == b || pairs.contains(&(*a, *b))
             }
@@ -343,6 +346,7 @@ fn replace(ty: &mut ir::Ty, var: ir::TyVar, with: &ir::Ty) {
     match ty {
         ir::Ty::Bool => {}
         ir::Ty::Int => {}
+        ir::Ty::String => {}
         ir::Ty::Var(v) if *v == var => {
             *ty = with.clone();
         }

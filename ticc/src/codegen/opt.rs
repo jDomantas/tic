@@ -65,6 +65,7 @@ fn walk_expressions<'a>(expr: &'a ir::Expr, mut f: impl FnMut(&'a ir::Expr)) {
         match expr {
             ir::Expr::Bool(_) |
             ir::Expr::Int(_) |
+            ir::Expr::String(_) |
             ir::Expr::Name(_) |
             ir::Expr::Trap(_, _) => {}
             ir::Expr::Call(a, b) => {
@@ -111,6 +112,7 @@ fn walk_expressions_mut(expr: &mut ir::Expr, mut f: impl FnMut(&mut ir::Expr)) {
         match expr {
             ir::Expr::Bool(_) |
             ir::Expr::Int(_) |
+            ir::Expr::String(_) |
             ir::Expr::Name(_) |
             ir::Expr::Trap(_, _) => {}
             ir::Expr::Call(a, b) => {
@@ -156,6 +158,7 @@ fn walk_expressions_postorder_mut(expr: &mut ir::Expr, mut f: impl FnMut(&mut ir
         match expr {
             ir::Expr::Bool(_) |
             ir::Expr::Int(_) |
+            ir::Expr::String(_) |
             ir::Expr::Name(_) |
             ir::Expr::Trap(_, _) => {}
             ir::Expr::Call(a, b) => {

@@ -29,6 +29,8 @@ pub(crate) enum TokenKind {
     Int,
     #[token("bool")]
     Bool,
+    #[token("string")]
+    StringTy,
     #[token("true")]
     True,
     #[token("false")]

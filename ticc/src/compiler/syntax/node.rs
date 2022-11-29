@@ -91,6 +91,7 @@ nodes! {
     pub(crate) enum Type {
         Int(IntType),
         Bool(BoolType),
+        String(StringType),
         Fn(FnType),
         Named(NamedType),
         Paren(ParenType),
@@ -99,6 +100,7 @@ nodes! {
 
     pub(crate) struct IntType { SyntaxKind::IntType }
     pub(crate) struct BoolType { SyntaxKind::BoolType }
+    pub(crate) struct StringType { SyntaxKind::StringType }
     pub(crate) struct FnType { SyntaxKind::FnType }
     pub(crate) struct NamedType { SyntaxKind::NamedType }
     pub(crate) struct ParenType { SyntaxKind::ParenType }
@@ -116,6 +118,7 @@ nodes! {
         If(IfExpr),
         Bool(BoolExpr),
         Number(NumberExpr),
+        String(StringExpr),
         Lambda(LambdaExpr),
         Paren(ParenExpr),
         Hole(HoleExpr),
@@ -130,6 +133,7 @@ nodes! {
     pub(crate) struct IfExpr { SyntaxKind::IfExpr }
     pub(crate) struct BoolExpr { SyntaxKind::BoolExpr }
     pub(crate) struct NumberExpr { SyntaxKind::NumberExpr }
+    pub(crate) struct StringExpr { SyntaxKind::StringExpr }
     pub(crate) struct LambdaExpr { SyntaxKind::LambdaExpr }
     pub(crate) struct ParenExpr { SyntaxKind::ParenExpr }
     pub(crate) struct HoleExpr { SyntaxKind::HoleExpr }
@@ -214,6 +218,10 @@ impl<'a> IntType<'a> {
 
 impl<'a> BoolType<'a> {
     pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Bool).unwrap() }
+}
+
+impl<'a> StringType<'a> {
+    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::StringTy).unwrap() }
 }
 
 impl<'a> FnType<'a> {
@@ -302,6 +310,12 @@ impl<'a> BoolExpr<'a> {
 }
 
 impl<'a> NumberExpr<'a> {
+    pub(crate) fn token(&self) -> SyntaxToken {
+        self.syntax.all_children().find_map(|c| c.into_token()).unwrap()
+    }
+}
+
+impl<'a> StringExpr<'a> {
     pub(crate) fn token(&self) -> SyntaxToken {
         self.syntax.all_children().find_map(|c| c.into_token()).unwrap()
     }

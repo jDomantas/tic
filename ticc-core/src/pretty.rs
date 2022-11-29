@@ -93,6 +93,10 @@ impl Format<'_> {
         glue_number(&mut self.builder, x);
     }
 
+    fn write_string(&mut self, x: &str) {
+        self.builder.add_token(&format!("{x:?}"));
+    }
+
     fn write_expr(&mut self, expr: &ir::Expr, prec: Prec) {
         let node = expr_node(expr);
         self.builder.start_node(node);
@@ -107,6 +111,7 @@ impl Format<'_> {
             ir::Expr::Bool(true) => self.builder.add_token("true"),
             ir::Expr::Bool(false) => self.builder.add_token("false"),
             ir::Expr::Int(x) => self.write_number(*x),
+            ir::Expr::String(x) => self.write_string(x),
             ir::Expr::Name(n) => self.write_name(n),
             ir::Expr::Call(f, args) => {
                 self.write_expr(f, Prec::Apply);
@@ -283,6 +288,9 @@ impl Format<'_> {
             ir::Ty::Int => {
                 self.builder.add_token("int");
             }
+            ir::Ty::String => {
+                self.builder.add_token("string");
+            }
             ir::Ty::Var(v) => {
                 self.builder.add_sticky_token("t", Sticky::Next);
                 self.write_number(v.0);
@@ -326,6 +334,7 @@ fn expr_prec(e: &ir::Expr) -> Prec {
     match e {
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Name(_) => Prec::Atom,
         ir::Expr::Call(_, _) |
         ir::Expr::Construct(_, _, _) => Prec::Atom,
@@ -353,6 +362,7 @@ fn expr_node(e: &ir::Expr) -> Node {
     match e {
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Call(_, _) |
         ir::Expr::Construct(_, _, _) |
@@ -377,6 +387,7 @@ fn is_atom(e: &ir::Expr) -> bool {
     match e {
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Call(_, _) |
         ir::Expr::Trap(_, _) |
@@ -396,6 +407,7 @@ fn ty_prec(ty: &ir::Ty) -> Prec {
     match ty {
         ir::Ty::Bool |
         ir::Ty::Int |
+        ir::Ty::String |
         ir::Ty::Var(_) => Prec::Atom,
         ir::Ty::Named(_, _) |
         ir::Ty::Fn(_, _) |

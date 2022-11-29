@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
 pub struct Name { pub idx: u64, pub copy: u64 }
 
@@ -5,6 +7,7 @@ pub struct Name { pub idx: u64, pub copy: u64 }
 pub enum Expr {
     Bool(bool),
     Int(u64),
+    String(Rc<str>),
     Name(Name),
     Call(Box<Expr>, Vec<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
@@ -32,6 +35,7 @@ pub struct TyVar(pub(crate) u64);
 pub enum Ty {
     Bool,
     Int,
+    String,
     Var(TyVar),
     Named(Name, Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),

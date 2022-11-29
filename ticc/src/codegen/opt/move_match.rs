@@ -45,6 +45,7 @@ fn is_simple(expr: &ir::Expr, allowed_fn: ir::Name) -> bool {
     match expr {
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Trap(_, _) => true,
         ir::Expr::Call(f, x) => {

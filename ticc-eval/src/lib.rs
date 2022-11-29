@@ -9,6 +9,7 @@ use ticc_core::ir;
 pub enum Value {
     Int(u64),
     Bool(bool),
+    String(Rc<str>),
     Composite(ir::Name, Rc<[Value]>),
     Fn(Rc<dyn Fn(&[Value]) -> Result<Value, Trap>>),
 }
@@ -18,6 +19,7 @@ impl fmt::Debug for Value {
         match self {
             Value::Int(x) => f.debug_tuple("Int").field(x).finish(),
             Value::Bool(x) => f.debug_tuple("Bool").field(x).finish(),
+            Value::String(x) => f.debug_tuple("String").field(x).finish(),
             Value::Composite(x, xs) => {
                 let mut s = f.debug_tuple("Composite");
                 s.field(x);
@@ -132,6 +134,7 @@ fn eval_impl(env: &Rc<dyn EvalEnv>, expr: &ir::Expr) -> Result<Value, Trap> {
     match expr {
         ir::Expr::Bool(b) => Ok(Value::Bool(*b)),
         ir::Expr::Int(i) => Ok(Value::Int(*i)),
+        ir::Expr::String(s) => Ok(Value::String(s.clone())),
         ir::Expr::Name(n) => Ok(env.lookup(*n)),
         ir::Expr::Call(f, args) => {
             let f = eval_impl(env, f)?.into_fn();

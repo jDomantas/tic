@@ -77,6 +77,7 @@ fn replace_ty_in_expr(e: &mut ir::Expr, var: ir::TyVar, with: &ir::Ty) {
             }
             ir::Expr::Bool(_) |
             ir::Expr::Int(_) |
+            ir::Expr::String(_) |
             ir::Expr::Name(_) |
             ir::Expr::Call(_, _) |
             ir::Expr::If(_, _, _) |
@@ -95,6 +96,7 @@ fn replace_ty_in_ty(t: &mut ir::Ty, var: ir::TyVar, with: &ir::Ty) {
         }
         ir::Ty::Bool |
         ir::Ty::Int |
+        ir::Ty::String |
         ir::Ty::Var(_) => {}
         ir::Ty::Named(_, ts) => {
             for t in ts {

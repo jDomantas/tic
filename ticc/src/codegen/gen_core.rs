@@ -441,6 +441,12 @@ impl<'a, 'b> Generator<'a, 'b> {
                 let value = n.token().text().parse::<u64>().unwrap();
                 cir::Expr::Int(value)
             }
+            node::Expr::String(s) => {
+                let value = s.token().text();
+                // TODO: properly unescape
+                let value = &value[1..(value.len() - 1)];
+                cir::Expr::String(value.into())
+            }
             node::Expr::Lambda(l) if l.is_fold() => {
                 // let rec fold : Ty a -> Folded = \(x : Ty a) ->
                 //     let param : TyF a Folded = match x with
@@ -555,6 +561,7 @@ impl<'a, 'b> Generator<'a, 'b> {
         match ty {
             ir::Type::Int => cir::Ty::Int,
             ir::Type::Bool => cir::Ty::Bool,
+            ir::Type::String => cir::Ty::String,
             ir::Type::Named(n, args) => {
                 let inst = self.type_var_inst.get(n).copied();
                 if let Some(inst) = inst {

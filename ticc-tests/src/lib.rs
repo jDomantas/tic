@@ -296,6 +296,8 @@ fn run_program(mut compilation: CompilationUnit, runner: Runner) -> Vec<String> 
             function formatValue(value, wrap) {{
                 if (typeof value === 'number' || typeof value === 'boolean') {{
                     return '' + value;
+                }} else if (typeof value === 'string') {{
+                    return '\"' + value + '\"';
                 }} else if (typeof value === 'object') {{
                     let res = value[0];
                     for (let i = 1; i < value.length; i++) {{

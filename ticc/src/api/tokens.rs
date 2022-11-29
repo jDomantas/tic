@@ -92,6 +92,7 @@ fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenK
         Syntax::Type |
         Syntax::Int |
         Syntax::Bool |
+        Syntax::StringTy |
         Syntax::Rec |
         Syntax::Export |
         Syntax::Let |

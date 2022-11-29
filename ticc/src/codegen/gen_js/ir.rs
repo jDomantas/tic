@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 pub(crate) use ticc_core::ir::{self as cir, Op};
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -29,6 +31,7 @@ pub(crate) struct Export {
 pub(crate) enum Expr {
     Bool(bool),
     Int(u64),
+    String(Rc<str>),
     Name(Name),
     Call(Box<Expr>, Vec<Expr>),
     Op(Box<Expr>, Op, Box<Expr>),

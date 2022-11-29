@@ -128,6 +128,7 @@ pub(crate) enum Field {
 pub(crate) enum Type {
     Int,
     Bool,
+    String,
     Named(Symbol, Vec<Type>),
     Fn(Box<Type>, Box<Type>),
     Error,

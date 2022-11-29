@@ -59,6 +59,7 @@ fn count_uses(e: &ir::Expr, name: &ir::Name, lambda_single: bool) -> usize {
     match e {
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Trap(_, _) => 0,
         ir::Expr::Name(x) => if x == name { 1 } else { 0 },
         ir::Expr::Call(a, b) => {

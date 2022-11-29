@@ -164,6 +164,7 @@ impl Generator<'_> {
             ir::Expr::Bool(true) => self.output.push_str("true"),
             ir::Expr::Bool(false) => self.output.push_str("false"),
             ir::Expr::Int(x) => self.emit_num(*x),
+            ir::Expr::String(x) => self.output.push_str(&format!("{x:?}")),
             ir::Expr::Name(n) => self.emit_name(*n),
             ir::Expr::Call(a, b) => {
                 self.emit_expr(a, Prec::Call);
@@ -292,6 +293,7 @@ fn expr_prec(expr: &ir::Expr) -> Prec {
     match expr {
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Name(_) |
         ir::Expr::Construct(_, _) => Prec::Atom,
         ir::Expr::Call(_, _) => Prec::Call,

@@ -93,6 +93,7 @@ struct TyIdx(u32);
 enum Ty {
     Bool,
     Int,
+    String,
     Named(ir::Symbol),
     Apply(TyIdx, TyIdx),
     Fn(TyIdx, TyIdx),
@@ -154,6 +155,7 @@ impl Unifier {
             match ty {
                 Ty::Bool |
                 Ty::Int |
+                Ty::String |
                 Ty::Named(_) |
                 Ty::Error => false,
                 Ty::Apply(a, b) |
@@ -182,7 +184,8 @@ impl Unifier {
             (Some(Ty::Error), Some(_)) |
             (Some(_), Some(Ty::Error)) |
             (Some(Ty::Int), Some(Ty::Int)) |
-            (Some(Ty::Bool), Some(Ty::Bool)) => Ok(()),
+            (Some(Ty::Bool), Some(Ty::Bool)) |
+            (Some(Ty::String), Some(Ty::String)) => Ok(()),
             (Some(Ty::Named(a)), Some(Ty::Named(b))) if a == b => Ok(()),
             (Some(Ty::Apply(a1, a2)), Some(Ty::Apply(b1, b2))) |
             (Some(Ty::Fn(a1, a2)), Some(Ty::Fn(b1, b2))) |
@@ -230,6 +233,7 @@ impl Unifier {
         match ty {
             ir::Type::Int => self.allocate(Ty::Int),
             ir::Type::Bool => self.allocate(Ty::Bool),
+            ir::Type::String => self.allocate(Ty::String),
             ir::Type::Named(s, a) => {
                 let name = if let Some((_, idx)) = vars.iter().find(|(v, _)| v == s) {
                     *idx
@@ -267,6 +271,7 @@ impl Unifier {
         match ty {
             Ty::Bool => ir::Type::Bool,
             Ty::Int => ir::Type::Int,
+            Ty::String => ir::Type::String,
             Ty::Named(sym) => ir::Type::Named(sym, Vec::new()),
             Ty::Apply(a, b) => {
                 match self.to_ir(a) {
@@ -552,6 +557,10 @@ impl<'a> TypeChecker<'a> {
             node::Expr::Number(_) => {
                 let i = self.allocate(Ty::Int);
                 self.unify(expected, i, span);
+            }
+            node::Expr::String(_) => {
+                let s = self.allocate(Ty::String);
+                self.unify(expected, s, span);
             }
             node::Expr::Lambda(expr) => {
                 let arg_ty = if let Some(param) = expr.param() {

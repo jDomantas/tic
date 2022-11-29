@@ -32,6 +32,9 @@ fn write_value(value: &Value, atom: bool, names: &ir::NameGenerator<'_>, into: &
         Value::Bool(b) => {
             write!(into, "{}", b).unwrap();
         }
+        Value::String(s) => {
+            write!(into, "{:?}", s).unwrap();
+        }
         Value::Composite(ctor, fields) => {
             if atom && fields.len() > 0 {
                 into.push('(');

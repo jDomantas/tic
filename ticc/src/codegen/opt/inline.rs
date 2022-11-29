@@ -59,6 +59,7 @@ impl Inlinable {
             match ty {
                 ir::Ty::Bool => ir::Ty::Bool,
                 ir::Ty::Int => ir::Ty::Int,
+                ir::Ty::String => ir::Ty::String,
                 ir::Ty::Var(v) => ir::Ty::Var(names.rewrite_types.get(v).copied().unwrap_or(*v)),
                 ir::Ty::Named(n, args) => {
                     ir::Ty::Named(
@@ -83,6 +84,7 @@ impl Inlinable {
             match expr {
                 ir::Expr::Bool(b) => ir::Expr::Bool(*b),
                 ir::Expr::Int(i) => ir::Expr::Int(*i),
+                ir::Expr::String(s) => ir::Expr::String(s.clone()),
                 ir::Expr::Name(n) => ir::Expr::Name(names.rewrite_names.get(n).copied().unwrap_or(*n)),
                 ir::Expr::Call(a, b) => {
                     ir::Expr::Call(
@@ -194,6 +196,7 @@ fn walk_expressions(
         match expr {
             ir::Expr::Bool(_) |
             ir::Expr::Int(_) |
+            ir::Expr::String(_) |
             ir::Expr::Name(_) |
             ir::Expr::Trap(_, _) => {}
             ir::Expr::Call(a, b) => {
@@ -295,6 +298,7 @@ fn count_uses(e: &ir::Expr, name: &ir::Name, singular_lambda: bool) -> usize {
     match e {
         ir::Expr::Bool(_) |
         ir::Expr::Int(_) |
+        ir::Expr::String(_) |
         ir::Expr::Trap(_, _) => 0,
         ir::Expr::Name(x) => if x == name { 1 } else { 0 },
         ir::Expr::Call(a, b) => {

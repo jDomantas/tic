@@ -287,6 +287,7 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
     match ty {
         node::Type::Int(_) => ir::Type::Int,
         node::Type::Bool(_) => ir::Type::Bool,
+        node::Type::String(_) => ir::Type::String,
         node::Type::Fn(ty) => {
             let from = if let Some(ty) = ty.from() {
                 resolve_type(sink, ty, scope)
@@ -364,6 +365,7 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, module: ModuleKey, ty
     match ty {
         node::Type::Int(_) => ir::Type::Int,
         node::Type::Bool(_) => ir::Type::Bool,
+        node::Type::String(_) => ir::Type::String,
         node::Type::Fn(ty) => {
             let from = if let Some(ty) = ty.from() {
                 resolve_type_with_vars(sink, module, ty, scope, type_vars)
@@ -591,6 +593,7 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
         }
         node::Expr::Bool(_) => {}
         node::Expr::Number(_) => {}
+        node::Expr::String(_) => {}
         node::Expr::Lambda(expr) => {
             let mut scope = Scope::with_parent(scope);
             if let Some(name) = expr.param() {

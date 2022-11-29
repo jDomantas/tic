@@ -120,6 +120,10 @@ fn atom_expr(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         let m = p.start();
         p.bump_any();
         Some(m.complete(p, SyntaxKind::NumberExpr))
+    } else if p.at(TokenKind::String) {
+        let m = p.start();
+        p.bump_any();
+        Some(m.complete(p, SyntaxKind::StringExpr))
     } else if p.at(TokenKind::Ident) {
         let m = p.start();
         p.bump_name();

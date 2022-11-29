@@ -76,6 +76,7 @@ impl<'a> TypePrinter<'a> {
         match ty {
             ir::Type::Int => to.push_str("int"),
             ir::Type::Bool => to.push_str("bool"),
+            ir::Type::String => to.push_str("string"),
             ir::Type::Named(t, a) => {
                 if prec >= 2 && a.len() > 0 {
                     to.push('(');

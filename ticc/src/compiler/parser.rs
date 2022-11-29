@@ -333,6 +333,7 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
         LexerToken::Type => TokenOrTrivia::Token(TokenKind::Type),
         LexerToken::Int => TokenOrTrivia::Token(TokenKind::Int),
         LexerToken::Bool => TokenOrTrivia::Token(TokenKind::Bool),
+        LexerToken::StringTy => TokenOrTrivia::Token(TokenKind::StringTy),
         LexerToken::True => TokenOrTrivia::Token(TokenKind::True),
         LexerToken::False => TokenOrTrivia::Token(TokenKind::False),
         LexerToken::Fold => TokenOrTrivia::Token(TokenKind::Fold),
