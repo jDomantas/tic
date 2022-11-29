@@ -1,0 +1,9 @@
+import i from "std/intrinsics";
+
+let pow : int -> int -> int =
+    \x -> \p -> i.iterate p (\acc -> acc * x) 1;
+
+export let a : int = pow 2 10;
+-- EXPECT: a = 1024
+export let b : int = pow 10 5;
+-- EXPECT: b = 100000

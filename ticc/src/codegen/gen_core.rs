@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use ticc_syntax::TokenKind;
 use ticc_core::ir as cir;
+use crate::builtin::IntrinsicSymbols;
 use crate::{CompilationUnit, ModuleKey};
 use crate::compiler::ir;
 use crate::compiler::syntax::{AstNode, NodeId, node};
@@ -20,6 +21,7 @@ pub(crate) fn generate_core(compilation: &CompilationUnit) -> cir::Program<'_> {
         ctors: HashMap::new(),
         type_ctors: HashMap::new(),
         emitted_modules: HashSet::new(),
+        intrinsics: crate::builtin::intrinsic_symbols(),
     };
     emit_module(&mut generator, compilation, true);
     generator.program
@@ -90,6 +92,7 @@ struct Generator<'a, 'b> {
     ctors: HashMap<ir::Symbol, Ctor>,
     type_ctors: HashMap<cir::Name, Vec<Ctor>>,
     emitted_modules: HashSet<ModuleKey>,
+    intrinsics: IntrinsicSymbols,
 }
 
 impl<'a, 'b> Generator<'a, 'b> {
@@ -295,11 +298,16 @@ impl<'a, 'b> Generator<'a, 'b> {
         let (vars, ty) = self.symbol_types[&sym];
         let ty = self.inst_ty(vars, ty);
         self.fresh_inst(vars);
-        let mut value = self.gen_expr(item.expr().unwrap());
-        for &var in vars.iter().rev() {
-            let var = self.type_var_inst[&var];
-            value = cir::Expr::Pi(var, Box::new(value));
-        }
+        let value = if sym == self.intrinsics.iterate {
+            self.iterate_intrinsic()
+        } else {
+            let mut value = self.gen_expr(item.expr().unwrap());
+            for &var in vars.iter().rev() {
+                let var = self.type_var_inst[&var];
+                value = cir::Expr::Pi(var, Box::new(value));
+            }
+            value
+        };
         self.program.values.push(cir::ValueDef { name, ty, export_name, value });
     }
 
@@ -308,6 +316,10 @@ impl<'a, 'b> Generator<'a, 'b> {
         let symbol = self.name_symbols[&name.syntax().id()];
         self.symbol_names.insert(symbol, cir_name);
         cir_name
+    }
+
+    fn gen_fake_name(&mut self, name: &'static str) -> cir::Name {
+        self.program.names.new_fresh(name)
     }
 
     fn gen_invisible_name(&mut self, name: node::Name<'a>) -> cir::Name {
@@ -585,5 +597,75 @@ impl<'a, 'b> Generator<'a, 'b> {
                 }
             }
         }
+    }
+
+    fn iterate_intrinsic(&mut self) -> cir::Expr {
+        // Pi a ->
+        //     \(n : int) ->
+        //         \(f : a -> a) ->
+        //             \(x : a) ->
+        //                 let rec go : (int, a) -> a =
+        //                     \(n2 : int, x2 : a) ->
+        //                         if n2 <= 0
+        //                         then x2
+        //                         else go(n2 - 1, f(x2));
+        //                 go(n, x);
+        let a = self.program.ty.next();
+        let n = self.gen_fake_name("n");
+        let f = self.gen_fake_name("f");
+        let x = self.gen_fake_name("x");
+        let go = self.gen_fake_name("go");
+        let n2 = self.gen_fake_name("n2");
+        let x2 = self.gen_fake_name("x2");
+        cir::Expr::Pi(
+            a,
+            Box::new(cir::Expr::Lambda(
+                Vec::from([cir::LambdaParam { name: n, ty: cir::Ty::Int }]),
+                Box::new(cir::Expr::Lambda(
+                    Vec::from([cir::LambdaParam { name: f, ty: cir::Ty::Fn(Vec::from([cir::Ty::Var(a)]), Box::new(cir::Ty::Var(a))) }]),
+                    Box::new(cir::Expr::Lambda(
+                        Vec::from([cir::LambdaParam { name: x, ty: cir::Ty::Var(a) }]),
+                        Box::new(cir::Expr::LetRec(
+                            go,
+                            cir::Ty::Fn(Vec::from([cir::Ty::Int, cir::Ty::Var(a)]), Box::new(cir::Ty::Var(a))),
+                            Box::new(cir::Expr::Lambda(
+                                Vec::from([
+                                    cir::LambdaParam { name: n2, ty: cir::Ty::Int },
+                                    cir::LambdaParam { name: x2, ty: cir::Ty::Var(a) },
+                                ]),
+                                Box::new(cir::Expr::If(
+                                    Box::new(cir::Expr::Op(
+                                        Box::new(cir::Expr::Name(n2)),
+                                        cir::Op::LessEq,
+                                        Box::new(cir::Expr::Int(0)),
+                                    )),
+                                    Box::new(cir::Expr::Name(x2)),
+                                    Box::new(cir::Expr::Call(
+                                        Box::new(cir::Expr::Name(go)),
+                                        Vec::from([
+                                            cir::Expr::Op(
+                                                Box::new(cir::Expr::Name(n2)),
+                                                cir::Op::Subtract,
+                                                Box::new(cir::Expr::Int(1)),
+                                            ),
+                                            cir::Expr::Call(
+                                                Box::new(cir::Expr::Name(f)),
+                                                Vec::from([
+                                                    cir::Expr::Name(x2)
+                                                ])
+                                            )
+                                        ]),
+                                    )),
+                                )),
+                            )),
+                            Box::new(cir::Expr::Call(
+                                Box::new(cir::Expr::Name(go)),
+                                Vec::from([cir::Expr::Name(n), cir::Expr::Name(x)]),
+                            ))
+                        )),
+                    )),
+                )),
+            )),
+        )
     }
 }
