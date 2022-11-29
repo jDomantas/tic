@@ -1,0 +1,13 @@
+import i from "std/intrinsics";
+
+export let length : string -> int =
+    \s -> i.stringLength s;
+
+export let concat : string -> string -> string =
+    \a -> \b -> i.stringConcat a b;
+
+export let charAt : int -> string -> int =
+    \idx -> \s -> i.stringCharAt idx s;
+
+export let substring : int -> int -> string -> string =
+    \start -> \len -> \s -> i.stringSubstring start len s;

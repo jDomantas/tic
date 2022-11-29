@@ -1,2 +1,13 @@
 export let a : string = "foobar";
 -- EXPECT: a = "foobar"
+
+import str from "std/string";
+
+export let b : int = str.length a;
+-- EXPECT: b = 6
+export let c : string = str.concat a a;
+-- EXPECT: c = "foobarfoobar"
+export let d : int = str.charAt 4 a;
+-- EXPECT: d = 97
+export let e : string = str.substring 3 2 a;
+-- EXPECT: e = "ba"
