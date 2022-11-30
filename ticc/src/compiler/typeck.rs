@@ -71,10 +71,8 @@ pub(crate) fn type_check(item: &mut ir::Item, defs: &DefSet) {
     }
     for def in &mut item.defs {
         if let ir::DefKind::Value { ty, .. } = &mut def.kind {
-            // println!("typeck, ty: {:?}", ty);
             if let Some(&NameTy::Infer(inf)) = checker.symbol_types.get(&def.symbol) {
                 *ty = checker.unifier.to_ir(inf);
-                // println!("replaced with {:?}", ty);
             }
         }
     }
@@ -101,7 +99,7 @@ enum Ty {
     Error,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum TySlot {
     Infer,
     Next(TyIdx),
@@ -119,7 +117,8 @@ struct Unifier {
 impl Unifier {
     fn fresh_var(&mut self) -> TyIdx {
         self.slots.push(TySlot::Infer);
-        TyIdx(self.slots.len() as u32 - 1)
+        let idx = TyIdx(self.slots.len() as u32 - 1);
+        idx
     }
 
     fn allocate(&mut self, ty: Ty) -> TyIdx {
@@ -149,9 +148,11 @@ impl Unifier {
         }
     }
 
-    fn occurs(&self, ty: TyIdx, var: TyIdx) -> bool {
+    fn occurs(&self, var: TyIdx, ty: TyIdx) -> bool {
         debug_assert_eq!(var, self.final_idx(var));
-        if let Some(ty) = self.normalize(ty) {
+        if var == ty {
+            true
+        } else if let Some(ty) = self.normalize(ty) {
             match ty {
                 Ty::Bool |
                 Ty::Int |
@@ -161,7 +162,7 @@ impl Unifier {
                 Ty::Apply(a, b) |
                 Ty::Fn(a, b) |
                 Ty::Folded(a, b) => {
-                    self.occurs(a, var) || self.occurs(b, var)
+                    self.occurs(var, a) || self.occurs(var, b)
                 }
             }
         } else {
@@ -327,7 +328,9 @@ impl<'a> TypeChecker<'a> {
 
     fn unify(&mut self, expected: TyIdx, actual: TyIdx, span: Span) {
         match self.unifier.unify(expected, actual) {
-            Ok(()) => self.unifier.commit(),
+            Ok(()) => {
+                self.unifier.commit();
+            }
             Err(UnifyError) => {
                 self.unifier.rollback();
                 let expected = self.unifier.to_ir(expected);

@@ -1,0 +1,2 @@
+let a = \fold x -> x;
+--                 ^ ERROR: expected _, got {_ => _}
