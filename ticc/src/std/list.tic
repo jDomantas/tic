@@ -50,3 +50,12 @@ export let tail : List a -> Option (List a) =
         | Nil -> None
         | Cons _ xs -> Some xs
         end;
+
+export let reverse : List a -> List a =
+    \list ->
+        let go = \fold list -> \acc ->
+            match list with
+            | Nil -> acc
+            | Cons x xs -> xs (Cons x acc)
+            end;
+        go list Nil;
