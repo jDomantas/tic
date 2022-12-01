@@ -1,4 +1,5 @@
 import i from "std/intrinsics";
+import (List, Nil, Cons) from "std/list";
 
 export let length : string -> int =
     \s -> i.stringLength s;
@@ -11,3 +12,54 @@ export let charAt : int -> string -> int =
 
 export let substring : int -> int -> string -> string =
     \start -> \len -> \s -> i.stringSubstring start len s;
+
+type SplitState = SplitState int int (List string);
+
+export let split : int -> string -> List string =
+    \char -> \s ->
+        let step : SplitState -> SplitState =
+            \state -> match state with
+            | SplitState start cur res ->
+                if charAt cur s == char then
+                    let item = substring start (cur - start) s;
+                    let res = Cons item res;
+                    SplitState (cur + 1) (cur + 1) res
+                else
+                    SplitState start (cur + 1) res
+            end;
+        let final = i.iterate (length s) step (SplitState 0 0 Nil);
+        match final with
+        | SplitState start cur res ->
+            let item = substring start (cur - start) s;
+            let res = Cons item res;
+            res
+        end;
+
+export let lines : string -> List string =
+    \s ->
+        let extractLine : int -> int -> string =
+            \start -> \len ->
+                let line = substring start len s;
+                if charAt (length line - 1) line == 13 then
+                    substring 0 (length line - 1) line
+                else
+                    line;
+        let step : SplitState -> SplitState =
+            \state -> match state with
+            | SplitState start cur res ->
+                if charAt cur s == 10 then
+                    let item = extractLine start (cur - start);
+                    let res = Cons item res;
+                    SplitState (cur + 1) (cur + 1) res
+                else
+                    SplitState start (cur + 1) res
+            end;
+        let final = i.iterate (length s) step (SplitState 0 0 Nil);
+        match final with
+        | SplitState start cur res ->
+            if start == cur then
+                res
+            else
+                let item = extractLine start (cur - start);
+                Cons item res
+        end;
