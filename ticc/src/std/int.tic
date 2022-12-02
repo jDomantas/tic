@@ -1,0 +1,7 @@
+import i from "std/intrinsics";
+
+export let iterate : int -> (a -> a) -> a -> a =
+    \x -> \f -> \init -> i.iterate x f init;
+
+export let toString : int -> string =
+    \x -> i.intToString x;

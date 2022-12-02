@@ -1,0 +1,7 @@
+import ints from "std/int";
+
+export let a : string = ints.toString 123;
+-- EXPECT: a = "123"
+
+export let b : int = ints.iterate 10 (\x -> x * 2) 5;
+-- EXPECT: b = 5120
