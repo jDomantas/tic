@@ -32,6 +32,9 @@ struct Opt {
     /// Verify ir after codegen and optimization passes
     #[structopt(long)]
     verify_ir: bool,
+    /// Interpreter stack limit in megabytes
+    #[structopt(long = "stack")]
+    stack: Option<usize>,
 }
 
 fn main() {
@@ -103,7 +106,8 @@ fn main() {
             });
         }
     } else if opt.eval {
-        let result = match compilation.interpret() {
+        let res = run_with_stack(opt.stack, move || compilation.interpret());
+        let result = match res {
             Ok(output) => output,
             Err(trap) => format!("error: {}", trap.message),
         };
@@ -117,6 +121,20 @@ fn main() {
                 std::process::exit(1);
             });
         }
+    }
+}
+
+fn run_with_stack<T: Send + 'static>(stack: Option<usize>, f: impl (FnOnce() -> T) + Send + 'static) -> T {
+    match stack {
+        Some(s) => {
+            std::thread::Builder::new()
+                .stack_size(s.saturating_mul(1024 * 1024))
+                .spawn(f)
+                .expect("failed to spawn worker thread")
+                .join()
+                .unwrap()
+        }
+        None => f(),
     }
 }
 
