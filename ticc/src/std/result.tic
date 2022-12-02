@@ -57,3 +57,10 @@ export let okOr : Option a -> e -> Result a e =
         | Some x -> Ok x
         | None -> Err e
         end;
+
+export let apply : Result a e -> Result (a -> b) e -> Result b e =
+    \x -> \f ->
+        match f with
+        | Err e -> Err e
+        | Ok f -> map f x
+        end;

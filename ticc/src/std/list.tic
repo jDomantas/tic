@@ -1,4 +1,5 @@
 import option(Option, Some, None) from "std/option";
+import (Result, Ok, Err) from "std/result";
 
 export type List a = export Nil | Cons a rec;
 
@@ -117,5 +118,35 @@ export let minBy : (a -> a -> bool) -> List a -> Option a =
                     Some x
                 else
                     Some y
+            end
+        end;
+
+export let allSome : List (Option a) -> Option (List a) =
+    \fold list ->
+        match list with
+        | Nil -> Some Nil
+        | Cons x xs ->
+            match x with
+            | None -> None
+            | Some x ->
+                match xs with
+                | None -> None
+                | Some xs -> Some (Cons x xs)
+                end
+            end
+        end;
+
+export let allOk : List (Result a e) -> Result (List a) e =
+    \fold list ->
+        match list with
+        | Nil -> Ok Nil
+        | Cons x xs ->
+            match x with
+            | Err e -> Err e
+            | Ok x ->
+                match xs with
+                | Err e -> Err e
+                | Ok xs -> Ok (Cons x xs)
+                end
             end
         end;

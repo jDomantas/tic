@@ -27,3 +27,10 @@ export let unwrapOr : a -> Option a -> a =
         | None -> default
         | Some x -> x
         end;
+
+export let apply : Option a -> Option (a -> b) -> Option b =
+    \x -> \f ->
+        match f with
+        | None -> None
+        | Some f -> map f x
+        end;
