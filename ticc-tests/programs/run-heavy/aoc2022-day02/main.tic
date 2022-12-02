@@ -1,0 +1,184 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import list(List, Nil, Cons) from "std/list";
+import str from "std/string";
+
+type RPS = Rock | Paper | Scissors;
+type Action = X | Y | Z;
+
+type Round = Round RPS Action;
+
+type Outcome = Win | Lose | Draw;
+
+let outcome : RPS -> RPS -> Outcome =
+    \opponent -> \action ->
+        match opponent with
+        | Rock ->
+            match action with
+            | Rock -> Draw
+            | Paper -> Win
+            | Scissors -> Lose
+            end
+        | Paper ->
+            match action with
+            | Rock -> Lose
+            | Paper -> Draw
+            | Scissors -> Win
+            end
+        | Scissors ->
+            match action with
+            | Rock -> Win
+            | Paper -> Lose
+            | Scissors -> Draw
+            end
+        end;
+
+let points : RPS -> RPS -> int =
+    \opponent -> \action ->
+        let fromAction =
+            match action with
+            | Rock -> 1
+            | Paper -> 2
+            | Scissors -> 3
+            end;
+        let fromOutcome =
+            match outcome opponent action with
+            | Win -> 6
+            | Draw -> 3
+            | Lose -> 0
+            end;
+        fromAction + fromOutcome;
+
+let part1Points : Round -> int =
+    \round ->
+        match round with
+        | Round o a ->
+            let action =
+                match a with
+                | X -> Rock
+                | Y -> Paper
+                | Z -> Scissors
+                end;
+            points o action
+        end;
+
+let pickAction : RPS -> Outcome -> RPS =
+    \opponent -> \outcome ->
+        match opponent with
+        | Rock ->
+            match outcome with
+            | Win -> Paper
+            | Draw -> Rock
+            | Lose -> Scissors
+            end
+        | Paper ->
+            match outcome with
+            | Win -> Scissors
+            | Draw -> Paper
+            | Lose -> Rock
+            end
+        | Scissors ->
+            match outcome with
+            | Win -> Rock
+            | Draw -> Scissors
+            | Lose -> Paper
+            end
+        end;
+
+let part2Points : Round -> int =
+    \round ->
+        match round with
+        | Round o a ->
+            let outcome =
+                match a with
+                | X -> Lose
+                | Y -> Draw
+                | Z -> Win
+                end;
+            let action = pickAction o outcome;
+            points o action
+        end;
+
+let char : string -> int = \s -> str.charAt 0 s;
+
+let parseOpponent : int -> Option RPS =
+    \x ->
+        if x == 65 then
+            Some Rock
+        else if x == 66 then
+            Some Paper
+        else if x == 67 then
+            Some Scissors
+        else
+            None;
+
+let parseAction : int -> Option Action =
+    \x ->
+        if x == 88 then
+            Some X
+        else if x == 89 then
+            Some Y
+        else if x == 90 then
+            Some Z
+        else
+            None;
+
+let apply : Option a -> Option (a -> b) -> Option b =
+    \x -> \f -> option.andThen (\f -> option.map f x) f;
+
+let parseLine : string -> Option Round =
+    \line ->
+        if str.length line != 3 then
+            None
+        else if str.charAt 1 line != char " " then
+            None
+        else
+            Some Round
+            |> apply (parseOpponent (str.charAt 0 line))
+            |> apply (parseAction (str.charAt 2 line));
+
+let allSome : List (Option a) -> Option (List a) =
+    \fold list ->
+        match list with
+        | Nil -> Some Nil
+        | Cons x xs ->
+            match xs with
+            | None -> None
+            | Some xs ->
+                match x with
+                | None -> None
+                | Some x -> Some (Cons x xs)
+                end
+            end
+        end;
+
+let parseInput : string -> Option (List Round) =
+    \input ->
+        input
+        |> str.lines
+        |> list.map parseLine
+        |> allSome;
+
+let part1 : List Round -> int =
+    \rounds ->
+        rounds
+        |> list.map part1Points
+        |> list.sum;
+
+let part2 : List Round -> int =
+    \rounds ->
+        rounds
+        |> list.map part2Points
+        |> list.sum;
+
+export let main : string -> string =
+    \input ->
+        input
+        |> parseInput
+        |> option.map (\input ->
+            let part1 = part1 input;
+            let part2 = part2 input;
+            let res1 = str.concat "part 1: " (ints.toString part1);
+            let res2 = str.concat "part 2: " (ints.toString part2);
+            str.concat res1 (str.concat (str.fromChar 10) res2))
+        |> option.unwrapOr "failed to parse input";
