@@ -65,3 +65,16 @@ export let lines : string -> List string =
                 let item = substring start (cur - start) s;
                 list.reverse (Cons item res)
         end;
+
+type FoldState a = FoldState int a;
+
+export let foldChars : a -> (a -> int -> a) -> string -> a =
+    \init -> \f -> \s ->
+        let step = \state -> match state with
+            | FoldState idx acc ->
+                let acc = f acc (charAt idx s);
+                FoldState (idx + 1) acc
+            end;
+        match i.iterate (length s) step (FoldState 0 init) with
+        | FoldState _ res -> res
+        end;

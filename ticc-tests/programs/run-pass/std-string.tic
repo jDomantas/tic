@@ -81,3 +81,6 @@ export let testLines5 : List string =
     |> append cr
     |> str.lines;
 -- EXPECT: testLines5 = Cons "baz\r" Nil
+
+export let testFoldChars : int = str.foldChars 0 (\acc -> \x -> acc * 100 + x) "0-a!";
+-- EXPECT: testFoldChars = 48459733

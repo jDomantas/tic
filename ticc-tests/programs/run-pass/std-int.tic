@@ -1,7 +1,20 @@
-import ints from "std/int";
+import ints(ParseErr) from "std/int";
+import (Result) from "std/result";
 
-export let a : string = ints.toString 123;
--- EXPECT: a = "123"
+export let testToString : string = ints.toString 123;
+-- EXPECT: testToString = "123"
 
-export let b : int = ints.iterate 10 (\x -> x * 2) 5;
--- EXPECT: b = 5120
+export let testIterate : int = ints.iterate 10 (\x -> x * 2) 5;
+-- EXPECT: testIterate = 5120
+
+export let testParse1 : Result int ParseErr = ints.parse "123";
+-- EXPECT: testParse1 = Ok 123
+
+export let testParse2 : Result int ParseErr = ints.parse "123a";
+-- EXPECT: testParse2 = Err ParseErr
+
+export let testParse3 : Result int ParseErr = ints.parse "";
+-- EXPECT: testParse3 = Err ParseErr
+
+export let testParse4 : Result int ParseErr = ints.parse "00000";
+-- EXPECT: testParse4 = Ok 0

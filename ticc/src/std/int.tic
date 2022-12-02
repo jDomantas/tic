@@ -1,7 +1,35 @@
 import i from "std/intrinsics";
+import (Result, Ok, Err) from "std/result";
+import str from "std/string";
 
 export let iterate : int -> (a -> a) -> a -> a =
     \x -> \f -> \init -> i.iterate x f init;
 
 export let toString : int -> string =
     \x -> i.intToString x;
+
+type ParseState = Parsing int int | Error;
+
+export type ParseErr = export ParseErr;
+
+export let parse : string -> Result int ParseErr =
+    \s ->
+        let step = \state -> \ch ->
+            match state with
+            | Parsing idx acc ->
+                if ch < 48 then
+                    Error
+                else if ch >= 58 then
+                    Error
+                else
+                    Parsing (idx + 1) (acc * 10 + (ch - 48))
+            | Error ->
+                Error
+            end;
+        if str.length s == 0 then
+            Err ParseErr
+        else
+            match str.foldChars (Parsing 0 0) step s with
+            | Parsing _ acc -> Ok acc
+            | Error -> Err ParseErr
+            end;
