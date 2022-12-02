@@ -50,7 +50,13 @@ fn format_message(
                 type_printer.print_type(ty, &mut message);
             }
             RawSegment::Symbol(sym) => {
-                let def = super::find_def(compilation, *sym).unwrap();
+                let def = match super::find_def(compilation, *sym) {
+                    Some(d) => d,
+                    None => {
+                        message.push_str("WTF");
+                        continue;
+                    }
+                };
                 let name = &compilation.src[def.span.source_range()];
                 message.push_str(name);
             }

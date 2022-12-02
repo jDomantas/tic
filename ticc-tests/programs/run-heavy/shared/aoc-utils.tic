@@ -1,0 +1,13 @@
+import (Result, Ok, Err) from "std/result";
+import str from "std/string";
+
+export let makeSolution : (string -> Result a string) -> (a -> string) -> (a -> string) -> string -> string =
+    \parse -> \part1 -> \part2 -> \input ->
+        match parse input with
+        | Ok input ->
+            let part1 = str.concat "part 1: " (part1 input);
+            let part2 = str.concat "part 2: " (part2 input);
+            let nl = str.fromChar 10;
+            str.concat part1 (str.concat nl part2)
+        | Err e -> str.concat "failed to parse input: " e
+        end;

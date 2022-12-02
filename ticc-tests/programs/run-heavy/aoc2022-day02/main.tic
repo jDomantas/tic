@@ -1,7 +1,9 @@
 import ints from "std/int";
-import option(Option, Some, None) from "std/option";
+import option from "std/option";
+import result(Result, Ok, Err) from "std/result";
 import list(List) from "std/list";
 import str from "std/string";
+import utils from "../shared/aoc-utils.tic";
 
 type RPS = Rock | Paper | Scissors;
 
@@ -102,66 +104,58 @@ let part2Points : Round -> int =
 
 let char : string -> int = \s -> str.charAt 0 s;
 
-let parseOpponent : int -> Option RPS =
+let parseOpponent : int -> Result RPS string =
     \x ->
         if x == 65 then
-            Some Rock
+            Ok Rock
         else if x == 66 then
-            Some Paper
+            Ok Paper
         else if x == 67 then
-            Some Scissors
+            Ok Scissors
         else
-            None;
+            Err "invalid RPS";
 
-let parseAction : int -> Option Action =
+let parseAction : int -> Result Action string =
     \x ->
         if x == 88 then
-            Some X
+            Ok X
         else if x == 89 then
-            Some Y
+            Ok Y
         else if x == 90 then
-            Some Z
+            Ok Z
         else
-            None;
+            Err "invalid action";
 
-let parseLine : string -> Option Round =
+let parseLine : string -> Result Round string =
     \line ->
         if str.length line != 3 then
-            None
+            Err "bad line"
         else if str.charAt 1 line != char " " then
-            None
+            Err "bad line"
         else
-            Some Round
-            |> option.apply (parseOpponent (str.charAt 0 line))
-            |> option.apply (parseAction (str.charAt 2 line));
+            Ok Round
+            |> result.apply (parseOpponent (str.charAt 0 line))
+            |> result.apply (parseAction (str.charAt 2 line));
 
-let parseInput : string -> Option (List Round) =
+let parseInput : string -> Result (List Round) string =
     \input ->
         input
         |> str.lines
         |> list.map parseLine
-        |> list.allSome;
+        |> list.allOk;
 
-let part1 : List Round -> int =
+let part1 : List Round -> string =
     \rounds ->
         rounds
         |> list.map part1Points
-        |> list.sum;
+        |> list.sum
+        |> ints.toString;
 
-let part2 : List Round -> int =
+let part2 : List Round -> string =
     \rounds ->
         rounds
         |> list.map part2Points
-        |> list.sum;
+        |> list.sum
+        |> ints.toString;
 
-export let main : string -> string =
-    \input ->
-        input
-        |> parseInput
-        |> option.map (\input ->
-            let part1 = part1 input;
-            let part2 = part2 input;
-            let res1 = str.concat "part 1: " (ints.toString part1);
-            let res2 = str.concat "part 2: " (ints.toString part2);
-            str.concat res1 (str.concat (str.fromChar 10) res2))
-        |> option.unwrapOr "failed to parse input";
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

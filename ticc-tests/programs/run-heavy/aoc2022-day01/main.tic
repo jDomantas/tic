@@ -1,26 +1,27 @@
 import ints from "std/int";
 import str from "std/string";
-import option(Option, Some, None) from "std/option";
-import result from "std/result";
+import option from "std/option";
+import result(Result, Ok) from "std/result";
 import list(List, Nil, Cons) from "std/list";
+import utils from "../shared/aoc-utils.tic";
 
 type InputLine = Empty | Number int;
 
-let parseInputLine : string -> Option InputLine =
+let parseInputLine : string -> Result InputLine string =
     \line ->
         if str.length line == 0 then
-            Some Empty
+            Ok Empty
         else
             ints.parse line
-            |> result.ok
-            |> option.map Number;
+            |> result.map Number
+            |> result.mapErr (\_ -> "failed to parse int");
 
-let parseInput : string -> Option (List InputLine) =
+let parseInput : string -> Result (List InputLine) string =
     \input ->
         input
         |> str.lines
         |> list.map parseInputLine
-        |> list.allSome;
+        |> list.allOk;
 
 let groupLines : List InputLine -> List (List int) =
     \fold lines ->
@@ -70,59 +71,26 @@ let top3 : List int -> SolutionAcc =
             end
         end;
 
-let solvePart1 : List InputLine -> Option int =
+let part1 : List InputLine -> string =
     \input ->
         input
         |> groupLines
         |> list.map list.sum
-        |> list.max;
+        |> list.max
+        |> option.map ints.toString
+        |> option.unwrapOr "no elves";
 
-let solvePart2 : List InputLine -> Option int =
+let part2 : List InputLine -> string =
     \input ->
         let top = input
         |> groupLines
         |> list.map list.sum
         |> top3;
         match top with
-        | Three a b c -> Some (a + b + c)
-        | Two _ _ -> None
-        | One _ -> None
-        | Zero -> None
+        | Three a b c -> ints.toString (a + b + c)
+        | Two _ _ -> "less than 3 elves"
+        | One _ -> "less than 3 elves"
+        | Zero -> "less than 3 elves"
         end;
 
-type Tuple a b = Tuple a b;
-
-let solve : string -> Option (Tuple int int) =
-    \input ->
-        match parseInput input with
-        | None -> None
-        | Some input ->
-            match solvePart1 input with
-            | None -> None
-            | Some part1 ->
-                match solvePart2 input with
-                | None -> None
-                | Some part2 -> Some (Tuple part1 part2)
-                end
-            end
-        end;
-
-let showResult : Option (Tuple int int) -> string =
-    \res ->
-        match res with
-        | None -> "failed to parse input"
-        | Some t ->
-            match t with
-            | Tuple part1 part2 ->
-                let nl = str.fromChar 10;
-                let part1 = str.concat "part 1: " (ints.toString part1);
-                let part2 = str.concat "part 2: " (ints.toString part2);
-                str.concat part1 (str.concat nl part2)
-            end
-        end;
-
-export let main : string -> string =
-    \input ->
-        input
-        |> solve
-        |> showResult;
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

@@ -71,7 +71,7 @@ pub struct ModuleSet {
 }
 
 impl ModuleSet {
-    fn from_dir(path: &Path, allow_io_dirs: bool) -> ModuleSet {
+    fn from_dir_without_main(path: &Path, allow_io_dirs: bool) -> ModuleSet {
         let mut modules = HashMap::new();
         for (kind, entry) in util::read_dir(path) {
             if kind.is_dir() {
@@ -90,14 +90,19 @@ impl ModuleSet {
                 panic!("dir {} has unexpected entry {}", path.display(), entry.file_name().to_string_lossy());
             }
         }
-        if !modules.contains_key("main.tic") {
-            panic!("test {} does not have a main.tic", path.display());
-        }
         ModuleSet {
             path: path.to_owned(),
             modules,
             main: "main.tic".to_owned(),
         }
+    }
+
+    fn from_dir(path: &Path, allow_io_dirs: bool) -> ModuleSet {
+        let m = ModuleSet::from_dir_without_main(path, allow_io_dirs);
+        if !m.modules.contains_key("main.tic") {
+            panic!("test {} does not have a main.tic", path.display());
+        }
+        m
     }
 
     fn from_file(path: &Path) -> ModuleSet {
@@ -577,16 +582,33 @@ fn get_heavy_tests(root: &Path, allow_creating_outputs: bool) -> Vec<Test> {
         path.push("run-heavy");
         path
     };
+    let shared = {
+        let mut path = dir.clone();
+        path.push("shared");
+        path
+    };
+    let shared_modules = if shared.exists() {
+        let m = ModuleSet::from_dir_without_main(&shared, false);
+        m.extract_expected_errors(false);
+        m.extract_expected_outputs(false);
+        m.modules.into_iter().map(|(k, v)| (format!("../shared/{k}"), v)).collect()
+    } else {
+        HashMap::new()
+    };
     let mut tests = Vec::new();
     for (ty, entry) in util::read_dir(&dir) {
+        if entry.file_name() == "shared" {
+            continue;
+        }
         let entry_path = entry.path();
-        let modules = if ty.is_file() {
+        let mut modules = if ty.is_file() {
             panic!("heavy tests must be directories: {}", entry_path.display());
         } else if ty.is_dir() {
             ModuleSet::from_dir(&entry_path, true)
         } else {
             panic!("unrecognized test: {}", entry_path.display());
         };
+        modules.modules.extend(shared_modules.iter().map(|(k, v)| (k.clone(), v.clone())));
         tests.extend(get_heavy_test_cases(root, modules, &entry_path, allow_creating_outputs));
     }
     tests
