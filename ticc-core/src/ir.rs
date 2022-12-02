@@ -69,6 +69,7 @@ pub enum Intrinsic {
     StringConcat,
     StringCharAt,
     StringSubstring,
+    StringFromChar,
     IntToString,
 }
 

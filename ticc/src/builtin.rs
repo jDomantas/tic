@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use crate::{CompleteUnit, CompilationUnit, NoopModuleResolver, compiler::ir};
+use crate::{CompleteUnit, CompilationUnit, NoopModuleResolver, compiler::ir::{self, Visibility}};
 
 struct LazyModule {
     source: &'static str,
@@ -64,9 +64,13 @@ fn get_intrinsic_symbols() -> IntrinsicSymbols {
     let mut string_concat = None;
     let mut string_char_at = None;
     let mut string_substring = None;
+    let mut string_from_char = None;
     let mut int_to_string = None;
     for item in &module.props.unit.items {
         for def in &item.defs {
+            if def.vis != Visibility::Export {
+                continue;
+            }
             let name = &module.props.unit.src[def.span.source_range()];
             match name {
                 "iterate" => iterate = Some(def.symbol),
@@ -74,8 +78,9 @@ fn get_intrinsic_symbols() -> IntrinsicSymbols {
                 "stringConcat" => string_concat = Some(def.symbol),
                 "stringCharAt" => string_char_at = Some(def.symbol),
                 "stringSubstring" => string_substring = Some(def.symbol),
+                "stringFromChar" => string_from_char = Some(def.symbol),
                 "intToString" => int_to_string = Some(def.symbol),
-                _ => {}
+                _ => panic!("unknown intrinsic: {}", name),
             }
         }
     }
@@ -85,6 +90,7 @@ fn get_intrinsic_symbols() -> IntrinsicSymbols {
         string_concat: string_concat.expect("no string_concat intrinsic"),
         string_char_at: string_char_at.expect("no string_char_at intrinsic"),
         string_substring: string_substring.expect("no string_substring intrinsic"),
+        string_from_char: string_from_char.expect("no string_from_char intrinsic"),
         int_to_string: int_to_string.expect("no int_to_string intrinsic"),
     }
 }
@@ -96,5 +102,6 @@ pub(crate) struct IntrinsicSymbols {
     pub(crate) string_concat: ir::Symbol,
     pub(crate) string_char_at: ir::Symbol,
     pub(crate) string_substring: ir::Symbol,
+    pub(crate) string_from_char: ir::Symbol,
     pub(crate) int_to_string: ir::Symbol,
 }

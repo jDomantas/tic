@@ -1,0 +1,4 @@
+import str from "std/string";
+
+export let a : string = str.fromChar 99;
+-- EXPECT: a = "c"

@@ -213,6 +213,11 @@ impl Generator<'_> {
                         self.emit_expr(&b[0], Prec::Atom);
                         self.output.push(')');
                     }
+                    cir::Intrinsic::StringFromChar => {
+                        self.output.push_str("String.fromCharCode(");
+                        self.emit_expr(&b[0], Prec::Min);
+                        self.output.push(')');
+                    }
                 }
             }
             ir::Expr::Op(a, op, b) => {

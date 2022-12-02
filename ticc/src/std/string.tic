@@ -13,6 +13,9 @@ export let charAt : int -> string -> int =
 export let substring : int -> int -> string -> string =
     \start -> \len -> \s -> i.stringSubstring start len s;
 
+export let fromChar : int -> string =
+    \c -> i.stringFromChar c;
+
 type SplitState = SplitState int int (List string);
 
 export let split : int -> string -> List string =

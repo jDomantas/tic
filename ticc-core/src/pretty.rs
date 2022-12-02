@@ -134,6 +134,7 @@ impl Format<'_> {
                     ir::Intrinsic::StringConcat => "%stringConcat",
                     ir::Intrinsic::StringCharAt => "%stringCharAt",
                     ir::Intrinsic::StringSubstring => "%stringSubstring",
+                    ir::Intrinsic::StringFromChar => "%stringFromChar",
                     ir::Intrinsic::IntToString => "%intToString",
                 });
                 self.builder.add_sticky_token("(", Sticky::Both);

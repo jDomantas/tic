@@ -308,6 +308,8 @@ impl<'a, 'b> Generator<'a, 'b> {
             self.string_char_at_intrinsic()
         } else if sym == self.intrinsics.string_substring {
             self.string_substring_intrinsic()
+        } else if sym == self.intrinsics.string_from_char {
+            self.string_from_char_intrinsic()
         } else if sym == self.intrinsics.int_to_string {
             self.int_to_string_intrinsic()
         } else {
@@ -758,6 +760,20 @@ impl<'a, 'b> Generator<'a, 'b> {
                         ]),
                     )),
                 )),
+            )),
+        )
+    }
+
+    fn string_from_char_intrinsic(&mut self) -> cir::Expr {
+        // \(a : int) -> %stringFromChar(a)
+        let a = self.gen_fake_name("a");
+        cir::Expr::Lambda(
+            Vec::from([cir::LambdaParam { name: a, ty: cir::Ty::Int }]),
+            Box::new(cir::Expr::Intrinsic(
+                cir::Intrinsic::StringFromChar,
+                Vec::from([
+                    cir::Expr::Name(a),
+                ]),
             )),
         )
     }
