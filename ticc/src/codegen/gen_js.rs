@@ -208,6 +208,11 @@ impl Generator<'_> {
                         self.emit_expr(&b[2], Prec::Min);
                         self.output.push_str(")");
                     }
+                    cir::Intrinsic::IntToString => {
+                        self.output.push_str("('' + ");
+                        self.emit_expr(&b[0], Prec::Atom);
+                        self.output.push(')');
+                    }
                 }
             }
             ir::Expr::Op(a, op, b) => {

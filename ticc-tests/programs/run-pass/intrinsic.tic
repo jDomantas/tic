@@ -16,3 +16,6 @@ export let e : int = i.stringCharAt 4 "0123456";
 -- EXPECT: e = 52
 export let f : string = i.stringSubstring 3 5 "abcdefghijk";
 -- EXPECT: f = "defgh"
+
+export let g : string = i.intToString 314159;
+-- EXPECT: g = "314159"

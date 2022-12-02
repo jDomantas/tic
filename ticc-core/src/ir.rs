@@ -69,6 +69,7 @@ pub enum Intrinsic {
     StringConcat,
     StringCharAt,
     StringSubstring,
+    IntToString,
 }
 
 #[derive(Debug, Hash, Clone)]
