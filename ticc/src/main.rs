@@ -1,7 +1,7 @@
 use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap};
 use codespan_reporting as cr;
 use structopt::StructOpt;
-use ticc::{CompleteUnit, Diagnostic, CompilationUnit, Severity, ModuleResolver};
+use ticc::{CompleteUnit, Diagnostic, CompilationUnit, Severity, ModuleResolver, InterpretError};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -26,6 +26,9 @@ struct Opt {
     /// Interpret and output exported values
     #[structopt(long)]
     eval: bool,
+    /// Run main function with input file
+    #[structopt(long)]
+    run: Option<PathBuf>,
     /// Enable optimizations
     #[structopt(long)]
     optimize: bool,
@@ -110,6 +113,37 @@ fn main() {
         let result = match res {
             Ok(output) => output,
             Err(trap) => format!("error: {}", trap.message),
+        };
+        let output_file = opt.output.unwrap_or_else(|| "-".into());
+        if output_file == Path::new("-") {
+            println!("{}", result);
+        } else {
+            std::fs::write(&output_file, result.as_bytes()).unwrap_or_else(|e| {
+                eprintln!("error: cannot write {}", path.display());
+                eprintln!("    {}", e);
+                std::process::exit(1);
+            });
+        }
+    } else if let Some(input) = opt.run {
+        let input = if input == Path::new("-") {
+            std::io::read_to_string(std::io::stdin()).unwrap_or_else(|e| {
+                eprintln!("error: cannot read stdin");
+                eprintln!("    {}", e);
+                std::process::exit(1);
+            })
+        } else {
+            std::fs::read_to_string(&input).unwrap_or_else(|e| {
+                eprintln!("error: cannot read {}", input.display());
+                eprintln!("    {}", e);
+                std::process::exit(1);
+            })
+        };
+        let res = run_with_stack(opt.stack, move || compilation.interpret_main(&input));
+        let result = match res {
+            Ok(output) => output,
+            Err(InterpretError::Trap(trap)) => format!("error: {}", trap.message),
+            Err(InterpretError::NoMain) => format!("error: main function is not defined"),
+            Err(InterpretError::InvalidMain) => format!("error: main function must have type `string -> string`"),
         };
         let output_file = opt.output.unwrap_or_else(|| "-".into());
         if output_file == Path::new("-") {

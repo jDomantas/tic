@@ -82,6 +82,10 @@ impl CompilationUnit {
         interpreter::eval(self)
     }
 
+    pub fn interpret_main(&mut self, input: &str) -> Result<String, InterpretError> {
+        interpreter::eval_main(self, input)
+    }
+
     pub fn complete(mut self) -> CompleteUnit {
         self.compile_to_end();
         let exports = import::collect_exports(&self);
@@ -134,6 +138,12 @@ impl CompilationUnit {
     fn compiled_length(&self) -> usize {
         self.items.last().map(|i| i.span.end().source_pos()).unwrap_or(0)
     }
+}
+
+pub enum InterpretError {
+    Trap(Trap),
+    NoMain,
+    InvalidMain,
 }
 
 #[derive(Clone)]
