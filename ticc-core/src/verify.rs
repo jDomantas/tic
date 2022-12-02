@@ -194,6 +194,10 @@ impl Validator {
                         self.assert_params_fit([ir::Ty::Int, ir::Ty::Int, ir::Ty::String], xs);
                         ir::Ty::String
                     }
+                    ir::Intrinsic::StringFromChar => {
+                        self.assert_params_fit([ir::Ty::Int], xs);
+                        ir::Ty::String
+                    }
                 }
             }
             ir::Expr::If(c, t, e) => {

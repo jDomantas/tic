@@ -208,6 +208,9 @@ impl Generator<'_> {
                         self.emit_expr(&b[2], Prec::Min);
                         self.output.push_str(")");
                     }
+                    cir::Intrinsic::StringFromChar => {
+                        todo!()
+                    }
                 }
             }
             ir::Expr::Op(a, op, b) => {

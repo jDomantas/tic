@@ -185,6 +185,10 @@ fn eval_impl(env: &Rc<dyn EvalEnv>, expr: &ir::Expr) -> Result<Value, Trap> {
                     let s = s.get(start..).unwrap_or("").get(..len).unwrap_or("");
                     Value::String(s.into())
                 }
+                ir::Intrinsic::StringFromChar => {
+                    let ch = eval_impl(env, &xs[0])?.into_int() as u8 as char;
+                    Value::String(ch.to_string().into())
+                }
             })
         }
         ir::Expr::Op(a, op, b) => {

@@ -103,7 +103,14 @@ fn main() {
             });
         }
     } else if opt.eval {
-        let result = match compilation.interpret() {
+        let res = std::thread::Builder::new()
+            .stack_size(128 * 1024 * 1024)
+            .spawn(move || compilation.interpret())
+            .unwrap()
+            .join()
+            .unwrap();
+
+        let result = match res {
             Ok(output) => output,
             Err(trap) => format!("error: {}", trap.message),
         };

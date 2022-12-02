@@ -3,3 +3,4 @@ export let stringLength : string -> int = ?intrinsic;
 export let stringConcat : string -> string -> string = ?intrinsic;
 export let stringCharAt : int -> string -> int = ?intrinsic;
 export let stringSubstring : int -> int -> string -> string = ?intrinsic;
+export let stringFromChar : int -> string = ?intrinsic;

@@ -1,5 +1,5 @@
 import i from "std/intrinsics";
-import (List, Nil, Cons) from "std/list";
+import list(List, Nil, Cons) from "std/list";
 
 export let length : string -> int =
     \s -> i.stringLength s;
@@ -12,6 +12,9 @@ export let charAt : int -> string -> int =
 
 export let substring : int -> int -> string -> string =
     \start -> \len -> \s -> i.stringSubstring start len s;
+
+export let fromChar : int -> string =
+    \c -> i.stringFromChar c;
 
 type SplitState = SplitState int int (List string);
 
@@ -31,8 +34,7 @@ export let split : int -> string -> List string =
         match final with
         | SplitState start cur res ->
             let item = substring start (cur - start) s;
-            let res = Cons item res;
-            res
+            list.reverse (Cons item res)
         end;
 
 export let lines : string -> List string =
@@ -58,8 +60,8 @@ export let lines : string -> List string =
         match final with
         | SplitState start cur res ->
             if start == cur then
-                res
+                list.reverse res
             else
                 let item = extractLine start (cur - start);
-                Cons item res
+                list.reverse (Cons item res)
         end;
