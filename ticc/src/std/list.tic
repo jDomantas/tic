@@ -59,3 +59,63 @@ export let reverse : List a -> List a =
             | Cons x xs -> xs (Cons x acc)
             end;
         go list Nil;
+
+export let max : List int -> Option int =
+    \fold list ->
+        match list with
+        | Nil -> None
+        | Cons x res ->
+            match res with
+            | None -> Some x
+            | Some y ->
+                if x > y then
+                    Some x
+                else
+                    Some y
+            end
+        end;
+
+export let min : List int -> Option int =
+    \fold list ->
+        match list with
+        | Nil -> None
+        | Cons x res ->
+            match res with
+            | None -> Some x
+            | Some y ->
+                if x < y then
+                    Some x
+                else
+                    Some y
+            end
+        end;
+
+export let maxBy : (a -> a -> bool) -> List a -> Option a =
+    \less -> \fold list ->
+        match list with
+        | Nil -> None
+        | Cons x res ->
+            match res with
+            | None -> Some x
+            | Some y ->
+                if less x y then
+                    Some y
+                else
+                    Some x
+            end
+        end;
+
+export let minBy : (a -> a -> bool) -> List a -> Option a =
+    \less -> \fold list ->
+        match list with
+        | Nil -> None
+        | Cons x res ->
+            match res with
+            | None -> Some x
+            | Some y ->
+                if less x y then
+                    Some x
+                else
+                    Some y
+            end
+        end;

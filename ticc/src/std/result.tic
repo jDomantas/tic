@@ -1,1 +1,59 @@
+import (Option, Some, None) from "std/option";
+
 export type Result t e = export Ok t | Err e;
+
+export let map : (a -> b) -> Result a e -> Result b e =
+    \f -> \r ->
+        match r with
+        | Ok x -> Ok (f x)
+        | Err e -> Err e
+        end;
+
+export let mapErr : (a -> b) -> Result t a -> Result t b =
+    \f -> \r ->
+        match r with
+        | Ok x -> Ok x
+        | Err e -> Err (f e)
+        end;
+
+export let andThen : (a -> Result b e) -> Result a e -> Result b e =
+    \f -> \r ->
+        match r with
+        | Ok x -> f x
+        | Err e -> Err e
+        end;
+
+export let flatten : Result (Result a e) e -> Result a e =
+    \r ->
+        match r with
+        | Ok x -> x
+        | Err e -> Err e
+        end;
+
+export let unwrapOr : a -> Result a e -> a =
+    \default -> \r ->
+        match r with
+        | Err _ -> default
+        | Ok x -> x
+        end;
+
+export let ok : Result a e -> Option a =
+    \r ->
+        match r with
+        | Ok x -> Some x
+        | Err _ -> None
+        end;
+
+export let err : Result a e -> Option e =
+    \r ->
+        match r with
+        | Ok _ -> None
+        | Err e -> Some e
+        end;
+
+export let okOr : Option a -> e -> Result a e =
+    \opt -> \e ->
+        match opt with
+        | Some x -> Ok x
+        | None -> Err e
+        end;

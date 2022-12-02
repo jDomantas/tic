@@ -1,1 +1,29 @@
 export type Option a = export None | Some a;
+
+export let map : (a -> b) -> Option a -> Option b =
+    \f -> \opt ->
+        match opt with
+        | Some x -> Some (f x)
+        | None -> None
+        end;
+
+export let andThen : (a -> Option b) -> Option a -> Option b =
+    \f -> \opt ->
+        match opt with
+        | Some x -> f x
+        | None -> None
+        end;
+
+export let flatten : Option (Option a) -> Option a =
+    \opt ->
+        match opt with
+        | Some x -> x
+        | None -> None
+        end;
+
+export let unwrapOr : a -> Option a -> a =
+    \default -> \opt ->
+        match opt with
+        | None -> default
+        | Some x -> x
+        end;
