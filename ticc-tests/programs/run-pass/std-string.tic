@@ -1,4 +1,83 @@
 import str from "std/string";
+import (List) from "std/list";
 
-export let a : string = str.fromChar 99;
--- EXPECT: a = "c"
+export let testFromChar : string = str.fromChar 99;
+-- EXPECT: testFromChar = "c"
+
+export let testLength : int = str.length "1234567";
+-- EXPECT: testLength = 7
+
+export let testConcat : string = str.concat "abc" "def";
+-- EXPECT: testConcat = "abcdef"
+
+export let testCharAt : int = str.charAt 5 "abcdefghi";
+-- EXPECT: testCharAt = 102
+
+export let testCharAtOutOfBounds : int = str.charAt 123 "123";
+-- EXPECT: testCharAtOutOfBounds = 0
+
+export let testSubstring : string = str.substring 3 5 "abcdefghijklmno";
+-- EXPECT: testSubstring = "defgh"
+
+export let testSubstringOutOfBounds1 : string = str.substring 3 5 "abcde";
+-- EXPECT: testSubstringOutOfBounds1 = "de"
+
+export let testSubstringOutOfBounds2 : string = str.substring 13 5 "abcde";
+-- EXPECT: testSubstringOutOfBounds2 = ""
+
+let comma : int = str.charAt 0 ",";
+
+export let testSplit1 : List string = str.split comma "a,b,c";
+-- EXPECT: testSplit1 = Cons "a" (Cons "b" (Cons "c" Nil))
+
+export let testSplit2 : List string = str.split comma ",b,,c";
+-- EXPECT: testSplit2 = Cons "" (Cons "b" (Cons "" (Cons "c" Nil)))
+
+export let testSplit3 : List string = str.split comma "a,b,";
+-- EXPECT: testSplit3 = Cons "a" (Cons "b" (Cons "" Nil))
+
+let nl : string = str.fromChar 10;
+let cr : string = str.fromChar 13;
+let crnl : string = str.concat cr nl;
+let append : string -> string -> string = \s -> \acc -> str.concat acc s;
+
+export let testLines1 : List string =
+    ""
+    |> append "foo"
+    |> append nl
+    |> append "bar"
+    |> append nl
+    |> str.lines;
+-- EXPECT: testLines1 = Cons "foo" (Cons "bar" Nil)
+
+export let testLines2 : List string =
+    ""
+    |> append "baz"
+    |> append crnl
+    |> append "quux"
+    |> append crnl
+    |> str.lines;
+-- EXPECT: testLines2 = Cons "baz" (Cons "quux" Nil)
+
+export let testLines3 : List string =
+    ""
+    |> append "foo"
+    |> append nl
+    |> append "bar"
+    |> str.lines;
+-- EXPECT: testLines3 = Cons "foo" (Cons "bar" Nil)
+
+export let testLines4 : List string =
+    ""
+    |> append "baz"
+    |> append crnl
+    |> append "quux"
+    |> str.lines;
+-- EXPECT: testLines4 = Cons "baz" (Cons "quux" Nil)
+
+export let testLines5 : List string =
+    ""
+    |> append "baz"
+    |> append cr
+    |> str.lines;
+-- EXPECT: testLines5 = Cons "baz\r" Nil

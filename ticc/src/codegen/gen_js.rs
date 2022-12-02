@@ -12,7 +12,7 @@ pub(crate) fn generate_js(program: cir::Program) -> String {
         debug: &program.names,
     };
     generator.output.push_str("function $stringCharAt(i, s) { return i < 0 || i >= s.length ? 0 : s.charCodeAt(i); }\n");
-    generator.output.push_str("function $stringSubstring(i, l, s) { return i < 0 || i + l > s.length ? '' : s.substr(i, l); }\n");
+    generator.output.push_str("function $stringSubstring(i, l, s) { return i >= s.length ? '' : i + l > s.length ? s.substr(i) : s.substr(i, l); }\n");
     for def in ir.stmts {
         generator.emit_stmt(def);
     }

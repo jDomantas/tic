@@ -297,7 +297,7 @@ fn run_program(mut compilation: CompilationUnit, runner: Runner) -> Vec<String> 
                 if (typeof value === 'number' || typeof value === 'boolean') {{
                     return '' + value;
                 }} else if (typeof value === 'string') {{
-                    return '\"' + value + '\"';
+                    return '\"' + value.replaceAll('\\r', '\\\\r').replaceAll('\\n', '\\\\n') + '\"';
                 }} else if (typeof value === 'object') {{
                     let res = value[0];
                     for (let i = 1; i < value.length; i++) {{
