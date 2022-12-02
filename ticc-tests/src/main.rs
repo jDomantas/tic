@@ -23,24 +23,22 @@ fn main() {
 
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("programs");
-    let prefix = dir.clone();
 
     if run_node {
         ticc_tests::verify_node_is_present();
     }
 
-    let tests = ticc_tests::get_tests(dir);
+    let tests = ticc_tests::get_tests(&dir);
 
     for test in tests {
-        if test.options.optimize && !optimize {
+        if test.optimize && !optimize {
             continue;
         }
         if matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !run_node {
             continue;
         }
-        let path = test.path.strip_prefix(&prefix).unwrap_or(&test.path);
         let outcome = test.run();
-        let source = &test.source[&test.main].source;
+        let source = &test.modules.modules[&test.modules.main].source;
         match outcome {
             ticc_tests::TestOutcome::Success => {
                 println!("test {} ... ok", test.key);
@@ -49,12 +47,12 @@ fn main() {
                 println!("test {} ... FAILED", test.key);
                 if !comp.extra_errors.is_empty() {
                     println!("compiler reported {} extra errors", comp.extra_errors.len());
-                    print_diagnostics(&path.display().to_string(), source, comp.extra_errors.iter().cloned()).unwrap();
+                    print_diagnostics(&test.modules.main, source, comp.extra_errors.iter().cloned()).unwrap();
                     println!();
                 }
                 if !comp.missing_errors.is_empty() {
                     println!("compiler missed {} errors", comp.missing_errors.len());
-                    print_diagnostics(&path.display().to_string(), source, comp.missing_errors.iter().cloned()).unwrap();
+                    print_diagnostics(&test.modules.main, source, comp.missing_errors.iter().cloned()).unwrap();
                     println!();
                 }
                 if !comp.wrong_messages.is_empty() {
@@ -65,7 +63,7 @@ fn main() {
                             actual.message += &format!(" (checked for: {:?})", expected.message);
                             actual
                         });
-                    print_diagnostics(&path.display().to_string(), source, errors).unwrap();
+                    print_diagnostics(&test.modules.main, source, errors).unwrap();
                     println!();
                 }
             }
