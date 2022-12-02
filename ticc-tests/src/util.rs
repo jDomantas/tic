@@ -1,4 +1,4 @@
-use std::{path::Path, fs::{DirEntry, FileType}};
+use std::{path::Path, fs::{DirEntry, FileType, ReadDir}};
 
 pub(crate) fn read_file(path: &Path) -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| {
@@ -17,10 +17,27 @@ pub(crate) fn filename(path: &Path) -> &str {
 }
 
 pub(crate) fn read_dir(path: &Path) -> Vec<(FileType, DirEntry)> {
-    let mut entries = Vec::new();
     let iter = std::fs::read_dir(path).unwrap_or_else(|e| {
         panic!("failed to read {}: {}", path.display(), e);
     });
+    read_dir_inner(path, iter)
+}
+
+pub(crate) fn try_read_dir(path: &Path) -> Vec<(FileType, DirEntry)> {
+    match std::fs::read_dir(path) {
+        Ok(iter) => read_dir_inner(path, iter),
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                Vec::new()
+            } else {
+                panic!("failed to read {}: {}", path.display(), e);
+            }
+        }
+    }
+}
+
+fn read_dir_inner(path: &Path, iter: ReadDir) -> Vec<(FileType, DirEntry)> {
+    let mut entries = Vec::new();
     for entry in iter {
         match entry {
             Ok(entry) => {
@@ -34,4 +51,15 @@ pub(crate) fn read_dir(path: &Path) -> Vec<(FileType, DirEntry)> {
         }
     }
     entries
+}
+
+pub(crate) fn write_file(path: &Path, value: &[u8]) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(&parent).unwrap_or_else(|e| {
+            panic!("failed to create {}: {}", parent.display(), e);
+        });
+    }
+    std::fs::write(path, value).unwrap_or_else(|e| {
+        panic!("failed to write {}: {}", path.display(), e);
+    });
 }

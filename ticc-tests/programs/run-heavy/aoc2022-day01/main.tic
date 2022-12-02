@@ -1,0 +1,137 @@
+import ints from "std/int";
+import str from "std/string";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import list(List, Nil, Cons) from "std/list";
+
+type InputLine = Empty | Number int;
+
+let parseInputLine : string -> Option InputLine =
+    \line ->
+        if str.length line == 0 then
+            Some Empty
+        else
+            ints.parse line
+            |> result.ok
+            |> option.map Number;
+
+let parseInput : string -> Option (List InputLine) =
+    \input ->
+        input
+        |> str.lines
+        |> list.map parseInputLine
+        |> (\fold l -> match l with
+            | Nil -> Some Nil
+            | Cons x xs -> match xs with
+                | None -> None
+                | Some xs -> match x with
+                    | None -> None
+                    | Some x -> Some (Cons x xs)
+                    end
+                end
+            end);
+
+let groupLines : List InputLine -> List (List int) =
+    \fold lines ->
+        match lines with
+        | Nil -> Nil
+        | Cons line rest ->
+            match line with
+            | Empty -> Cons Nil rest
+            | Number x ->
+                match rest with
+                | Nil -> Cons (Cons x Nil) Nil
+                | Cons y ys -> Cons (Cons x y) ys
+                end
+            end
+        end;
+
+type SolutionAcc = Zero | One int | Two int int | Three int int int;
+
+let top3 : List int -> SolutionAcc =
+    \fold list ->
+        match list with
+        | Nil -> Zero
+        | Cons x xs ->
+            match xs with
+            | Zero -> One x
+            | One a ->
+                if x > a then
+                    Two x a
+                else
+                    Two a x
+            | Two a b ->
+                if x > a then
+                    Three x a b
+                else if x > b then
+                    Three a x b
+                else
+                    Three a b x
+            | Three a b c ->
+                if x > a then
+                    Three x a b
+                else if x > b then
+                    Three a x b
+                else if x > c then
+                    Three a b x
+                else
+                    xs
+            end
+        end;
+
+let solvePart1 : List InputLine -> Option int =
+    \input ->
+        input
+        |> groupLines
+        |> list.map list.sum
+        |> list.max;
+
+let solvePart2 : List InputLine -> Option int =
+    \input ->
+        let top = input
+        |> groupLines
+        |> list.map list.sum
+        |> top3;
+        match top with
+        | Three a b c -> Some (a + b + c)
+        | Two _ _ -> None
+        | One _ -> None
+        | Zero -> None
+        end;
+
+type Tuple a b = Tuple a b;
+
+let solve : string -> Option (Tuple int int) =
+    \input ->
+        match parseInput input with
+        | None -> None
+        | Some input ->
+            match solvePart1 input with
+            | None -> None
+            | Some part1 ->
+                match solvePart2 input with
+                | None -> None
+                | Some part2 -> Some (Tuple part1 part2)
+                end
+            end
+        end;
+
+let showResult : Option (Tuple int int) -> string =
+    \res ->
+        match res with
+        | None -> "failed to parse input"
+        | Some t ->
+            match t with
+            | Tuple part1 part2 ->
+                let nl = str.fromChar 10;
+                let part1 = str.concat "part 1: " (ints.toString part1);
+                let part2 = str.concat "part 2: " (ints.toString part2);
+                str.concat part1 (str.concat nl part2)
+            end
+        end;
+
+export let main : string -> string =
+    \input ->
+        input
+        |> solve
+        |> showResult;

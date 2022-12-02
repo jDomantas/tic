@@ -1,7 +1,7 @@
 use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap};
 use codespan_reporting as cr;
 use structopt::StructOpt;
-use ticc::{CompleteUnit, Diagnostic, CompilationUnit, Severity, ModuleResolver, InterpretError};
+use ticc::{CompleteUnit, Diagnostic, CompilationUnit, Severity, ModuleResolver};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -141,9 +141,7 @@ fn main() {
         let res = run_with_stack(opt.stack, move || compilation.interpret_main(&input));
         let result = match res {
             Ok(output) => output,
-            Err(InterpretError::Trap(trap)) => format!("error: {}", trap.message),
-            Err(InterpretError::NoMain) => format!("error: main function is not defined"),
-            Err(InterpretError::InvalidMain) => format!("error: main function must have type `string -> string`"),
+            Err(e) => format!("error: {e}"),
         };
         let output_file = opt.output.unwrap_or_else(|| "-".into());
         if output_file == Path::new("-") {

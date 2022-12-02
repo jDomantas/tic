@@ -28,7 +28,7 @@ fn main() {
         ticc_tests::verify_node_is_present();
     }
 
-    let tests = ticc_tests::get_tests(&dir);
+    let tests = ticc_tests::get_tests(&dir, true);
 
     for test in tests {
         if test.optimize && !optimize {

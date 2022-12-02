@@ -201,6 +201,16 @@ pub enum TestKind {
         runner: Runner,
         expected_output: Vec<String>,
     },
+    RunHeavy {
+        input: String,
+        output: HeavyOutput,
+    },
+}
+
+#[derive(Clone)]
+pub enum HeavyOutput {
+    Expected(String),
+    Missing(PathBuf),
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -218,11 +228,15 @@ impl std::fmt::Display for Runner {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(Clone)]
 enum TestDefKind {
     CompileFail,
     CompilePass,
     Run,
+    RunHeavy {
+        input: String,
+        output: HeavyOutput,
+    },
 }
 
 impl Test {
@@ -236,6 +250,7 @@ impl Test {
             match kind {
                 TestKind::Compile { .. } => {},
                 TestKind::Run { runner, .. } => tags.push(runner.to_string()),
+                TestKind::RunHeavy { .. } => {}
             };
             let suffix = if tags.len() > 0 {
                 format!(" ({})", tags.join(", "))
@@ -273,6 +288,12 @@ impl Test {
                     }
                 }
             }
+            TestDefKind::RunHeavy { input, output } => {
+                modules.extract_expected_errors(false);
+                modules.extract_expected_outputs(false);
+                add_test_case(false, TestKind::RunHeavy { input: input.clone(), output: output.clone() });
+                add_test_case(true, TestKind::RunHeavy { input, output });
+            }
         }
         tests
     }
@@ -300,7 +321,8 @@ impl Test {
         let mut wrong_messages = Vec::new();
         let expected_errors = match &self.kind {
             TestKind::Compile { expected_errors } => expected_errors.as_slice(),
-            TestKind::Run { .. } => &[],
+            TestKind::Run { .. } |
+            TestKind::RunHeavy { .. } => &[],
         };
         for expected in expected_errors {
             let mut has_match = false;
@@ -328,7 +350,7 @@ impl Test {
     }
 
     pub fn run(&self) -> TestOutcome {
-        let (compilation, compilation_outcome) = self.compile();
+        let (mut compilation, compilation_outcome) = self.compile();
         if !compilation_outcome.is_success() {
             return TestOutcome::BadCompilation(compilation_outcome);
         }
@@ -342,6 +364,25 @@ impl Test {
                     TestOutcome::Success
                 } else {
                     TestOutcome::BadRun(run_outcome)
+                }
+            }
+            TestKind::RunHeavy { input, output } => {
+                let res = run_with_stack(256, move || compilation.interpret_main(&input));
+                let actual_output = match res {
+                    Ok(r) => r,
+                    Err(e) => format!("error: {e}"),
+                };
+                match output {
+                    HeavyOutput::Expected(s) if s == actual_output => TestOutcome::Success,
+                    HeavyOutput::Expected(s) => TestOutcome::BadRun(RunOutcome {
+                        output: Vec::from([actual_output]),
+                        expected_output: Vec::from([s]),
+                    }),
+                    HeavyOutput::Missing(path) => {
+                        println!("creating output file {}", path.display());
+                        util::write_file(&path, actual_output.as_bytes());
+                        TestOutcome::Success
+                    }
                 }
             }
         }
@@ -365,6 +406,15 @@ impl ModuleResolver for BuiltinModuleResolver {
             _ => Err(ticc::ImportError::DoesNotExist),
         }
     }
+}
+
+fn run_with_stack<T: Send + 'static>(stack: usize, f: impl (FnOnce() -> T) + Send + 'static) -> T {
+    std::thread::Builder::new()
+        .stack_size(stack.saturating_mul(1024 * 1024))
+        .spawn(f)
+        .expect("failed to spawn worker thread")
+        .join()
+        .unwrap()
 }
 
 fn run_program(mut compilation: CompilationUnit, runner: Runner) -> Vec<String> {
@@ -471,16 +521,83 @@ fn get_tests_in_dir(root: &Path, dir: &str, kind: TestDefKind) -> Vec<Test> {
             .unwrap_or(&entry_path)
             .to_string_lossy()
             .into_owned();
-        tests.extend(Test::from_modules(key, modules, kind));
+        tests.extend(Test::from_modules(key, modules, kind.clone()));
     }
     tests
 }
 
-pub fn get_tests(root_path: &Path) -> Vec<Test> {
+fn get_heavy_test_cases(root: &Path, modules: ModuleSet, dir: &Path, allow_creating_outputs: bool) -> Vec<Test> {
+    let mut input_dir = dir.to_owned();
+    input_dir.push("input");
+    let mut output_dir = dir.to_owned();
+    output_dir.push("output");
+
+    let mut tests = Vec::new();
+    let mut used_outputs = Vec::new();
+    for (ty, entry) in util::read_dir(&input_dir) {
+        let path = entry.path();
+        if !ty.is_file() {
+            panic!("unrecognized input file: {}", path.display());
+        }
+        let input = util::read_file(&path);
+        let mut output_path = output_dir.clone();
+        output_path.push(entry.file_name());
+        used_outputs.push(output_path.clone());
+        let output = match std::fs::read_to_string(&output_path) {
+            Ok(o) => HeavyOutput::Expected(o),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if allow_creating_outputs {
+                    HeavyOutput::Missing(output_path)
+                } else {
+                    panic!("output file {} is missing, run `cargo run -p ticc-tests` to create it", output_path.display());
+                }
+            }
+            Err(e) => panic!("failed to read {}: {}", output_path.display(), e),
+        };
+        let key = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .into_owned();
+        tests.extend(Test::from_modules(key, modules.clone(), TestDefKind::RunHeavy { input, output }));
+    }
+
+    for (_, entry) in util::try_read_dir(&output_dir) {
+        if !used_outputs.contains(&entry.path()) {
+            panic!("unrecognized output: {}", entry.path().display());
+        }
+    }
+
+    tests
+}
+
+fn get_heavy_tests(root: &Path, allow_creating_outputs: bool) -> Vec<Test> {
+    let dir = {
+        let mut path = root.to_owned();
+        path.push("run-heavy");
+        path
+    };
+    let mut tests = Vec::new();
+    for (ty, entry) in util::read_dir(&dir) {
+        let entry_path = entry.path();
+        let modules = if ty.is_file() {
+            panic!("heavy tests must be directories: {}", entry_path.display());
+        } else if ty.is_dir() {
+            ModuleSet::from_dir(&entry_path, true)
+        } else {
+            panic!("unrecognized test: {}", entry_path.display());
+        };
+        tests.extend(get_heavy_test_cases(root, modules, &entry_path, allow_creating_outputs));
+    }
+    tests
+}
+
+pub fn get_tests(root_path: &Path, allow_creating_outputs: bool) -> Vec<Test> {
     let mut tests = Vec::new();
     tests.extend(get_tests_in_dir(root_path, "compile-pass", TestDefKind::CompilePass));
     tests.extend(get_tests_in_dir(root_path, "compile-fail", TestDefKind::CompileFail));
     tests.extend(get_tests_in_dir(root_path, "run-pass", TestDefKind::Run));
+    tests.extend(get_heavy_tests(root_path, allow_creating_outputs));
     tests
 }
 
@@ -520,7 +637,7 @@ fn compiler_tests() {
 
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("programs");
-    let tests = get_tests(&dir);
+    let tests = get_tests(&dir, false);
 
     for test in tests {
         let outcome = test.run();

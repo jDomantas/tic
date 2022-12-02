@@ -146,6 +146,16 @@ pub enum InterpretError {
     InvalidMain,
 }
 
+impl fmt::Display for InterpretError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InterpretError::Trap(trap) => write!(f, "{}", trap.message),
+            InterpretError::NoMain => f.write_str("main function is not defined"),
+            InterpretError::InvalidMain => f.write_str("main function must have type `string -> string`"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct CompleteUnit {
     props: Arc<CompleteUnitProps>,
