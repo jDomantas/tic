@@ -179,23 +179,6 @@ struct CompleteUnitProps {
     types: HashMap<ir::Symbol, ir::Def>,
 }
 
-trait ToCompletedUnit {
-    fn to_unit(&mut self) -> &CompilationUnit;
-}
-
-impl ToCompletedUnit for CompilationUnit {
-    fn to_unit(&mut self) -> &CompilationUnit {
-        self.compile_to_end();
-        self
-    }
-}
-
-impl ToCompletedUnit for CompleteUnit {
-    fn to_unit(&mut self) -> &CompilationUnit {
-        &self.props.unit
-    }
-}
-
 pub trait ModuleResolver {
     fn lookup(self: Arc<Self>, name: &str) -> Result<CompleteUnit, ImportError>;
 }
