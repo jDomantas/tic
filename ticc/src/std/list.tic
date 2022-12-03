@@ -1,3 +1,4 @@
+import i from "std/intrinsics";
 import option(Option, Some, None) from "std/option";
 import (Result, Ok, Err) from "std/result";
 
@@ -149,4 +150,36 @@ export let allOk : List (Result a e) -> Result (List a) e =
                 | Ok xs -> Ok (Cons x xs)
                 end
             end
+        end;
+
+export let skip : int -> List a -> List a =
+    \x -> \list ->
+        let step = \l ->
+            match l with
+            | Nil -> Nil
+            | Cons _ xs -> xs
+            end;
+        i.iterate x step list;
+
+type TakeState a = TakeState (List a) (List a);
+
+export let take : int -> List a -> List a =
+    \x -> \list ->
+        let step = \state ->
+            match state with
+            | TakeState a b ->
+                match b with
+                | Nil -> TakeState a b
+                | Cons x xs -> TakeState (Cons x a) xs
+                end
+            end;
+        match i.iterate x step (TakeState Nil list) with
+        | TakeState a _ -> reverse a
+        end;
+
+export let length : List a -> int =
+    \fold list ->
+        match list with
+        | Nil -> 0
+        | Cons _ xs -> 1 + xs
         end;

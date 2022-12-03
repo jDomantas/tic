@@ -51,8 +51,8 @@ export let err : Result a e -> Option e =
         | Err e -> Some e
         end;
 
-export let okOr : Option a -> e -> Result a e =
-    \opt -> \e ->
+export let okOr : e -> Option a -> Result a e =
+    \e -> \opt ->
         match opt with
         | Some x -> Ok x
         | None -> Err e
@@ -63,4 +63,11 @@ export let apply : Result a e -> Result (a -> b) e -> Result b e =
         match f with
         | Err e -> Err e
         | Ok f -> map f x
+        end;
+
+export let join : Result a a -> a =
+    \x ->
+        match x with
+        | Ok x -> x
+        | Err x -> x
         end;

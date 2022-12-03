@@ -1,0 +1,172 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import str from "std/string";
+import util from "../shared/aoc-utils.tic";
+
+type Rucksack = Rucksack (List int) (List int);
+
+type HalfState = HalfState int int;
+
+let half : int -> Option int =
+    \x ->
+        let step = \state ->
+            match state with
+            | HalfState a b ->
+                if a < b then
+                    HalfState (a + 1) b
+                else
+                    HalfState a (b + 1)
+            end;
+        match ints.iterate x step (HalfState 0 0) with
+        | HalfState a b ->
+            if a == b then
+                Some a
+            else
+                None
+        end;
+
+let splitHalf : List int -> Result Rucksack string =
+    \items ->
+        match half (list.length items) with
+        | Some x ->
+            let first = list.take x items;
+            let second = list.skip x items;
+            Ok (Rucksack first second)
+        | None -> Err "bad rucksack length"
+        end;
+
+let parseItem : int -> Result int string =
+    \ch ->
+        if ch < 65 then
+            Err "bad item"
+        else if ch < 65 + 26 then
+            Ok (ch - 65 + 26 + 1)
+        else if ch < 97 then
+            Err "bad item"
+        else if ch < 97 + 26 then
+            Ok (ch - 97 + 1)
+        else
+            Err "bad item";
+
+let chars : string -> List int =
+    \s ->
+        s
+        |> str.foldChars Nil (\acc -> \c -> Cons c acc)
+        |> list.reverse;
+
+let parseLine : string -> Result (List int) string =
+    \line ->
+        line
+        |> chars
+        |> list.map parseItem
+        |> list.allOk;
+
+let parseInput : string -> Result (List (List int)) string =
+    \input ->
+        input
+        |> str.lines
+        |> list.map parseLine
+        |> list.allOk;
+
+let contains : int -> List int -> bool =
+    \x -> \fold list ->
+        match list with
+        | Nil -> false
+        | Cons y ys ->
+            if ys then
+                true
+            else
+                x == y
+        end;
+
+let common : List int -> List int -> Option int =
+    \a -> \fold b ->
+        match b with
+        | Nil -> None
+        | Cons x xs ->
+            match xs with
+            | Some ans -> Some ans
+            | None ->
+                if contains x a then
+                    Some x
+                else
+                    None
+            end
+        end;
+
+let part1 : List (List int) -> string =
+    \rucksacks ->
+        rucksacks
+        |> list.map splitHalf
+        |> list.allOk
+        |> result.map (list.map (\r ->
+            match r with
+            | Rucksack a b ->
+                common a b
+                |> result.okOr "bad rucksack"
+            end))
+        |> result.andThen list.allOk
+        |> result.map list.sum
+        |> result.map ints.toString
+        |> result.join;
+
+type Three a = Three a a a;
+
+type SplitState a =
+    | SplitDone (List (Three a))
+    | SplitOne a (List (Three a))
+    | SplitTwo a a (List (Three a));
+
+let splitThrees : List a -> Result (List (Three a)) string =
+    \list ->
+        let splitter = \fold list ->
+            match list with
+            | Nil -> SplitDone Nil
+            | Cons x state ->
+                match state with
+                | SplitDone res -> SplitOne x res
+                | SplitOne a res -> SplitTwo x a res
+                | SplitTwo a b res -> SplitDone (Cons (Three x a b) res)
+                end
+            end;
+        match splitter list with
+        | SplitDone res -> Ok res
+        | SplitOne _ _ -> Err "can't group"
+        | SplitTwo _ _ _ -> Err "can't group"
+        end;
+
+let commonThree : Three (List int) -> Option int =
+    \three ->
+        match three with
+        | Three a b c ->
+            let find = \fold list ->
+                match list with
+                | Nil -> None
+                | Cons x xs ->
+                    match xs with
+                    | Some ans -> Some ans
+                    | None ->
+                        if contains x a then
+                            if contains x b then
+                                Some x
+                            else
+                                None
+                        else
+                            None
+                    end
+                end;
+            find c
+        end;
+
+let part2 : List (List int) -> string =
+    \rucksacks ->
+        rucksacks
+        |> splitThrees
+        |> result.andThen (\x -> x |> list.map (\x -> x |> commonThree |> result.okOr "no badge") |> list.allOk)
+        |> result.map list.sum
+        |> result.map ints.toString
+        |> result.join;
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;
