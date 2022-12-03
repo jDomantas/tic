@@ -150,6 +150,7 @@ impl Unifier {
 
     fn occurs(&self, var: TyIdx, ty: TyIdx) -> bool {
         debug_assert_eq!(var, self.final_idx(var));
+        let ty = self.final_idx(ty);
         if var == ty {
             true
         } else if let Some(ty) = self.normalize(ty) {
