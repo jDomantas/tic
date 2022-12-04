@@ -33,3 +33,17 @@ export let parse : string -> Result int ParseErr =
             | Parsing _ acc -> Ok acc
             | Error -> Err ParseErr
             end;
+
+export let min : int -> int -> int =
+    \a -> \b ->
+        if a < b then
+            a
+        else
+            b;
+
+export let max : int -> int -> int =
+    \a -> \b ->
+        if a > b then
+            a
+        else
+            b;

@@ -1,46 +1,25 @@
 import ints from "std/int";
-import list(List, Nil, Cons) from "std/list";
+import list(List) from "std/list";
 import str from "std/string";
-import result(Result, Ok, Err) from "std/result";
+import result(Result) from "std/result";
 import util from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
 
 type Assignment = Assignment int int;
 
 type Line = Line Assignment Assignment;
 
-let char : string -> int =
-    \s -> str.charAt 0 s;
-
-let parseTuple : (string -> Result a string) -> (a -> a -> b) -> string -> string -> Result b string =
-    \item -> \ctor -> \sep -> \input ->
-        let parts = str.split (char sep) input;
-        match parts with
-        | Nil -> Err "bad tuple"
-        | Cons x xs ->
-            match xs with
-            | Nil -> Err "bad tuple"
-            | Cons y ys ->
-                match ys with
-                | Cons _ _ -> Err "bad tuple"
-                | Nil ->
-                    Ok ctor
-                    |> result.apply (item x)
-                    |> result.apply (item y)
-                end
-            end
-        end;
-
-let parseAssignment : string -> Result Assignment string =
-    \a ->
-        let parseInt = \x ->
-            x
-            |> ints.parse
-            |> result.mapErr (\_ -> "bad assignment");
-        parseTuple parseInt Assignment "-" a;
-
 let parseLine : string -> Result Line string =
     \line ->
-        parseTuple parseAssignment Line "," line;
+        parse.ok (\a -> \b -> \c -> \d -> Line (Assignment a b) (Assignment c d))
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal "-")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal "-")
+        |> parse.apply parse.integer
+        |> parse.run line;
 
 let parseInput : string -> Result (List Line) string =
     \input ->

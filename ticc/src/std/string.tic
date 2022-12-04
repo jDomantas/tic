@@ -78,3 +78,24 @@ export let foldChars : a -> (a -> int -> a) -> string -> a =
         match i.iterate (length s) step (FoldState 0 init) with
         | FoldState _ res -> res
         end;
+
+type CompareState = Comparing int | Unequal;
+
+export let equal : string -> string -> bool =
+    \a -> \b ->
+        if length a != length b then
+            false
+        else
+            let step = \state ->
+                match state with
+                | Comparing idx ->
+                    if charAt idx a == charAt idx b then
+                        Comparing (idx + 1)
+                    else
+                        Unequal
+                | Unequal -> Unequal
+                end;
+            match i.iterate (length a) step (Comparing 0) with
+            | Comparing _ -> true
+            | Unequal -> false
+            end;

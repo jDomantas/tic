@@ -1,0 +1,141 @@
+import ints from "std/int";
+import str from "std/string";
+import (Result, Ok, Err) from "std/result";
+
+type ParseResult a = ParseOk a string | ParseErr string;
+
+export type Parse a = Parse (string -> ParseResult a);
+
+let runParse : Parse a -> string -> ParseResult a =
+    \parse ->
+        match parse with
+        | Parse go -> go
+        end;
+
+export let run : string -> Parse a -> Result a string =
+    \input -> \parse ->
+        match runParse parse input with
+        | ParseOk res rest ->
+            if str.length rest == 0 then
+                Ok res
+            else
+                Err "unexpected extra input"
+        | ParseErr err -> Err err
+        end;
+
+export let apply : Parse a -> Parse (a -> b) -> Parse b =
+    \arg -> \f ->
+        let go = \input ->
+            match runParse f input with
+            | ParseOk f rest ->
+                match runParse arg rest with
+                | ParseOk res rest -> ParseOk (f res) rest
+                | ParseErr err -> ParseErr err
+                end
+            | ParseErr err -> ParseErr err
+            end;
+        Parse go;
+
+export let ignore : Parse a -> Parse b -> Parse b =
+    \check -> \res ->
+        let go = \input ->
+            match runParse res input with
+            | ParseOk res rest ->
+                match runParse check rest with
+                | ParseOk _ rest -> ParseOk res rest
+                | ParseErr err -> ParseErr err
+                end
+            | ParseErr err -> ParseErr err
+            end;
+        Parse go;
+
+export let andThen : (a -> Result b string) -> Parse a -> Parse b =
+    \f -> \arg ->
+        let go = \input ->
+            match runParse arg input with
+            | ParseOk arg rest ->
+                match f arg with
+                | Ok res -> ParseOk res rest
+                | Err err -> ParseErr err
+                end
+            | ParseErr err -> ParseErr err
+            end;
+        Parse go;
+
+export let map : (a -> b) -> Parse a -> Parse b =
+    \f -> \parse ->
+        let go = \input ->
+            match runParse parse input with
+            | ParseOk res rest -> ParseOk (f res) rest
+            | ParseErr err -> ParseErr err
+            end;
+        Parse go;
+
+export let or : Parse a -> Parse a -> Parse a =
+    \alt -> \parse ->
+        let go = \input ->
+            match runParse parse input with
+            | ParseOk res rest -> ParseOk res rest
+            | ParseErr _ ->
+                match runParse alt input with
+                | ParseOk res rest -> ParseOk res rest
+                | ParseErr err -> ParseErr err
+                end
+            end;
+        Parse go;
+
+export let ok : a -> Parse a =
+    \value ->
+        let go = \input -> ParseOk value input;
+        Parse go;
+
+type ParseIntState = Empty | Parsing int int | Done int int | Error string;
+
+let parseInt : string -> ParseIntState =
+    \input ->
+        let step = \state -> \ch ->
+            match state with
+            | Empty ->
+                if ch < 48 then
+                    Error "missing integer"
+                else if ch >= 58 then
+                    Error "missing integer"
+                else
+                    Parsing (ch - 48) 1
+            | Parsing acc idx ->
+                if ch < 48 then
+                    Done acc idx
+                else if ch >= 58 then
+                    Done acc idx
+                else
+                    Parsing (acc * 10 + (ch - 48)) (idx + 1)
+            | Done res idx -> Done res idx
+            | Error err -> Error err
+            end;
+        str.foldChars Empty step input;
+
+export let integer : Parse int =
+    let go = \input ->
+        match parseInt input with
+        | Empty -> ParseErr "missing integer"
+        | Parsing res _ -> ParseOk res ""
+        | Done res idx ->
+            let rest = str.length input - idx;
+            let rest = str.substring idx rest input;
+            ParseOk res rest
+        | Error err -> ParseErr err
+        end;
+    Parse go;
+
+export let literal : string -> Parse string =
+    \lit ->
+        let go = \input ->
+            if str.length input < str.length lit then
+                ParseErr (str.concat "missing " lit)
+            else if str.equal (str.substring 0 (str.length lit) input) lit then
+                let rest = str.length input - str.length lit;
+                let rest = str.substring (str.length lit) rest input;
+                ParseOk lit rest
+            else
+                ParseErr (str.concat "missing " lit);
+        Parse go;

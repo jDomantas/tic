@@ -4,6 +4,7 @@ import result(Result, Ok, Err) from "std/result";
 import list(List) from "std/list";
 import str from "std/string";
 import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
 
 type RPS = Rock | Paper | Scissors;
 
@@ -102,40 +103,22 @@ let part2Points : Round -> int =
             points o action
         end;
 
-let char : string -> int = \s -> str.charAt 0 s;
-
-let parseOpponent : int -> Result RPS string =
-    \x ->
-        if x == 65 then
-            Ok Rock
-        else if x == 66 then
-            Ok Paper
-        else if x == 67 then
-            Ok Scissors
-        else
-            Err "invalid RPS";
-
-let parseAction : int -> Result Action string =
-    \x ->
-        if x == 88 then
-            Ok X
-        else if x == 89 then
-            Ok Y
-        else if x == 90 then
-            Ok Z
-        else
-            Err "invalid action";
-
 let parseLine : string -> Result Round string =
+    let fromLit : string -> a -> Parse a = \lit -> \val -> parse.ok val |> parse.ignore (parse.literal lit);
+    let opponent =
+        fromLit "A" Rock
+        |> parse.or (fromLit "B" Paper)
+        |> parse.or (fromLit "C" Scissors);
+    let action =
+        fromLit "X" X
+        |> parse.or (fromLit "Y" Y)
+        |> parse.or (fromLit "Z" Z);
     \line ->
-        if str.length line != 3 then
-            Err "bad line"
-        else if str.charAt 1 line != char " " then
-            Err "bad line"
-        else
-            Ok Round
-            |> result.apply (parseOpponent (str.charAt 0 line))
-            |> result.apply (parseAction (str.charAt 2 line));
+        parse.ok Round
+        |> parse.apply opponent
+        |> parse.ignore (parse.literal " ")
+        |> parse.apply action
+        |> parse.run line;
 
 let parseInput : string -> Result (List Round) string =
     \input ->
