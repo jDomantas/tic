@@ -1,0 +1,105 @@
+import ints from "std/int";
+import list(List, Nil, Cons) from "std/list";
+import str from "std/string";
+import result(Result, Ok, Err) from "std/result";
+import util from "../shared/aoc-utils.tic";
+
+type Assignment = Assignment int int;
+
+type Line = Line Assignment Assignment;
+
+let char : string -> int =
+    \s -> str.charAt 0 s;
+
+let parseTuple : (string -> Result a string) -> (a -> a -> b) -> string -> string -> Result b string =
+    \item -> \ctor -> \sep -> \input ->
+        let parts = str.split (char sep) input;
+        match parts with
+        | Nil -> Err "bad tuple"
+        | Cons x xs ->
+            match xs with
+            | Nil -> Err "bad tuple"
+            | Cons y ys ->
+                match ys with
+                | Cons _ _ -> Err "bad tuple"
+                | Nil ->
+                    Ok ctor
+                    |> result.apply (item x)
+                    |> result.apply (item y)
+                end
+            end
+        end;
+
+let parseAssignment : string -> Result Assignment string =
+    \a ->
+        let parseInt = \x ->
+            x
+            |> ints.parse
+            |> result.mapErr (\_ -> "bad assignment");
+        parseTuple parseInt Assignment "-" a;
+
+let parseLine : string -> Result Line string =
+    \line ->
+        parseTuple parseAssignment Line "," line;
+
+let parseInput : string -> Result (List Line) string =
+    \input ->
+        input
+        |> str.lines
+        |> list.map parseLine
+        |> list.allOk;
+
+let and : bool -> bool -> bool =
+    \a -> \b -> if a then b else false;
+
+let covers : Line -> bool =
+    \line ->
+        match line with
+        | Line a b ->
+            match a with
+            | Assignment a1 a2 ->
+                match b with
+                | Assignment b1 b2 ->
+                    if and (a1 <= b1) (a2 >= b2) then
+                        true
+                    else if and (b1 <= a1) (b2 >= a2) then
+                        true
+                    else
+                        false
+                end
+            end
+        end;
+
+let overlaps : Line -> bool =
+    \line ->
+        match line with
+        | Line a b ->
+            match a with
+            | Assignment a1 a2 ->
+                match b with
+                | Assignment b1 b2 ->
+                    if a2 < b1 then
+                        false
+                    else if b2 < a1 then
+                        false
+                    else
+                        true
+                end
+            end
+        end;
+
+let part1 : List Line -> string =
+    \lines ->
+        lines
+        |> list.filter covers
+        |> list.length
+        |> ints.toString;
+
+let part2 : List Line -> string =
+    \lines ->
+        lines
+        |> list.filter overlaps
+        |> list.length
+        |> ints.toString;
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;
