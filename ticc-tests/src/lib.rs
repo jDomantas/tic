@@ -80,7 +80,7 @@ impl ModuleSet {
                     panic!("dir {} has unexpected dir {}", path.display(), entry.file_name().to_string_lossy());
                 }
             } else if kind.is_file() {
-                let source = util::read_file(&entry.path());
+                let source = util::read_text_file(&entry.path());
                 let name = util::filename(&entry.path()).to_owned();
                 modules.insert(name, ModuleSource {
                     path: entry.path(),
@@ -106,7 +106,7 @@ impl ModuleSet {
     }
 
     fn from_file(path: &Path) -> ModuleSet {
-        let source = util::read_file(path);
+        let source = util::read_text_file(path);
         let name = util::filename(path).to_owned();
         let mut modules = HashMap::new();
         modules.insert(name.clone(), ModuleSource {
@@ -544,12 +544,12 @@ fn get_heavy_test_cases(root: &Path, modules: ModuleSet, dir: &Path, allow_creat
         if !ty.is_file() {
             panic!("unrecognized input file: {}", path.display());
         }
-        let input = util::read_file(&path);
+        let input = util::read_text_file(&path);
         let mut output_path = output_dir.clone();
         output_path.push(entry.file_name());
         used_outputs.push(output_path.clone());
         let output = match std::fs::read_to_string(&output_path) {
-            Ok(o) => HeavyOutput::Expected(o),
+            Ok(o) => HeavyOutput::Expected(o.replace("\r\n", "\n")),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 if allow_creating_outputs {
                     HeavyOutput::Missing(output_path)

@@ -1,9 +1,10 @@
 use std::{path::Path, fs::{DirEntry, FileType, ReadDir}};
 
-pub(crate) fn read_file(path: &Path) -> String {
-    std::fs::read_to_string(path).unwrap_or_else(|e| {
+pub(crate) fn read_text_file(path: &Path) -> String {
+    let contents = std::fs::read_to_string(path).unwrap_or_else(|e| {
         panic!("failed to read {}: {}", path.display(), e);
-    })
+    });
+    contents.replace("\r\n", "\n")
 }
 
 pub(crate) fn filename(path: &Path) -> &str {
