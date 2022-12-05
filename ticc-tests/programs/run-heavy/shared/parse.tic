@@ -139,3 +139,13 @@ export let literal : string -> Parse string =
             else
                 ParseErr (str.concat "missing " lit);
         Parse go;
+
+export let char : Parse int =
+    let go = \input ->
+        if str.length input == 0 then
+            ParseErr "missing char"
+        else
+            let ch = str.charAt 0 input;
+            let rest = str.substring 1 (str.length input - 1) input;
+            ParseOk ch rest;
+    Parse go;

@@ -99,3 +99,11 @@ export let equal : string -> string -> bool =
             | Comparing _ -> true
             | Unequal -> false
             end;
+
+export let startsWith : string -> string -> bool =
+    \prefix -> \s ->
+        if length s < length prefix then
+            false
+        else
+            let p = substring 0 (length prefix) s;
+            equal p prefix;

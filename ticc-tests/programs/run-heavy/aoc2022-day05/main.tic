@@ -1,0 +1,256 @@
+import ints from "std/int";
+import str from "std/string";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import parse(Parse) from "../shared/parse.tic";
+import util from "../shared/aoc-utils.tic";
+
+let parseEmpty : Parse (Option a) =
+    parse.ok None
+    |> parse.ignore (parse.literal "   ");
+
+let parseItem : string -> Result (Option int) string =
+    \input ->
+        parse.ok Some
+        |> parse.ignore (parse.literal "[")
+        |> parse.apply parse.char
+        |> parse.ignore (parse.literal "]")
+        |> parse.or parseEmpty
+        |> parse.run input;
+
+
+type ParseLayerState = ParseLayerProgress int int (List (Option int)) | ParseLayerErr string;
+
+let parseLayer : string -> Result (List (Option int)) string =
+    \line ->
+        let step = \state ->
+            match state with
+            | ParseLayerErr err -> ParseLayerErr err
+            | ParseLayerProgress start idx acc ->
+                if start + 3 == idx then
+                    let item = str.substring start 3 line;
+                    match parseItem item with
+                    | Ok item -> ParseLayerProgress (idx + 1) (idx + 1) (Cons item acc)
+                    | Err err -> ParseLayerErr err
+                    end
+                else
+                    ParseLayerProgress start (idx + 1) acc
+            end;
+        match ints.iterate (str.length line) step (ParseLayerProgress 0 1 Nil) with
+        | ParseLayerProgress start idx res ->
+            if start == idx then
+                Ok (list.reverse res)
+            else
+                Err (str.concat "bad stack line: " (ints.toString start))
+        | ParseLayerErr err ->
+            Err (str.concat "bad stack line: " err)
+        end;
+
+type Command = Command int int int;
+
+let dec : int -> Result int string =
+    \x ->
+        if x == 0 then
+            Err "command index is 0"
+        else
+            Ok (x - 1);
+
+let parseCommand : string -> Result Command string =
+    \line ->
+        parse.ok Command
+        |> parse.ignore (parse.literal "move ")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal " from ")
+        |> parse.apply (parse.integer |> parse.andThen dec)
+        |> parse.ignore (parse.literal " to ")
+        |> parse.apply (parse.integer |> parse.andThen dec)
+        |> parse.run line;
+
+type ParseState =
+    | ParsingLayers (List (List (Option int)))
+    | ParsedLayers (List (List int))
+    | ParsingCommands (List (List int)) (List Command)
+    | ParsingErr string;
+
+type Input = Input (List (List int)) (List Command);
+
+type AddLayerState =
+    | AddLayerOk (List (List int)) (List (List int))
+    | AddLayerErr string;
+
+let cons : Option a -> List a -> List a =
+    \item -> \list ->
+        match item with
+        | Some x -> Cons x list
+        | None -> list
+        end;
+
+let addLayer : List (Option int) -> List (List int) -> Result (List (List int)) string =
+    \layer -> \stacks ->
+        let go = \fold l ->
+            match l with
+            | Nil -> AddLayerOk Nil (list.reverse stacks)
+            | Cons item state ->
+                match state with
+                | AddLayerOk acc stacks ->
+                    match stacks with
+                    | Nil -> AddLayerErr "bad layer length"
+                    | Cons x xs ->
+                        let acc = Cons (cons item x) acc;
+                        AddLayerOk acc xs
+                    end
+                | AddLayerErr err -> AddLayerErr err
+                end
+            end;
+        match go layer with
+        | AddLayerOk res left ->
+            match left with
+            | Nil -> Ok res
+            | Cons _ _ -> Err "bad layer length"
+            end
+        | AddLayerErr err -> Err err
+        end;
+
+let stackLayers : List (List (Option int)) -> Result (List (List int)) string =
+    \layers ->
+        match layers with
+        | Nil -> Err "no layers"
+        | Cons x _ ->
+            let stacks = ints.iterate (list.length x) (Cons Nil) Nil;
+            let go = \fold l ->
+                match l with
+                | Nil -> Ok stacks
+                | Cons layer stacks ->
+                    stacks
+                    |> result.andThen (addLayer layer)
+                end;
+            go layers
+            |> result.map (list.map list.reverse)
+        end;
+
+let parseInput : string -> Result Input string =
+    \input ->
+        let foldLines = \fold lines ->
+            match lines with
+            | Nil -> ParsingLayers Nil
+            | Cons line state ->
+                match state with
+                | ParsingLayers layers ->
+                    if str.startsWith " 1" line then
+                        match stackLayers layers with
+                        | Ok stacks -> ParsedLayers stacks
+                        | Err err -> ParsingErr (str.concat "bad stacks: " err)
+                        end
+                    else
+                        match parseLayer line with
+                        | Ok layer -> ParsingLayers (Cons layer layers)
+                        | Err err -> ParsingErr (str.concat "bad layer: " err)
+                        end
+                | ParsedLayers stacks ->
+                    if str.length line == 0 then
+                        ParsingCommands stacks Nil
+                    else
+                        ParsingErr "missing separator line"
+                | ParsingCommands stacks commands ->
+                    match parseCommand line with
+                    | Ok command -> ParsingCommands stacks (Cons command commands)
+                    | Err err -> ParsingErr (str.concat "bad command: " err)
+                    end
+                | ParsingErr err -> ParsingErr err
+                end
+            end;
+        match foldLines (str.lines input |> list.reverse) with
+        | ParsingLayers _ -> Err "missing commands"
+        | ParsedLayers _ -> Err "missing commands"
+        | ParsingCommands stacks commands -> Ok (Input stacks (list.reverse commands))
+        | ParsingErr err -> Err err
+        end;
+
+let join : List string -> string =
+    \fold list ->
+        match list with
+        | Nil -> ""
+        | Cons x xs -> str.concat x xs
+        end;
+
+let nth : int -> List a -> Option a =
+    \idx -> \l ->
+        let tail = \lst ->
+            match lst with
+            | Nil -> Nil
+            | Cons _ xs -> xs
+            end;
+        list.head (ints.iterate idx tail l);
+
+let modifyNth : int -> (a -> a) -> List a -> Option (List a) =
+    \idx -> \f -> \l ->
+        let modifyHead = \lst ->
+            match lst with
+            | Nil -> None
+            | Cons x xs -> Some (Cons (f x) xs)
+            end;
+        let modifyNext = \modify -> \lst ->
+            match lst with
+            | Nil -> None
+            | Cons x xs ->
+                match modify xs with
+                | None -> None
+                | Some res -> Some (Cons x res)
+                end
+            end;
+        ints.iterate idx modifyNext modifyHead l;
+
+let append : List a -> List a -> List a =
+    \a -> \b -> list.foldr Cons b a;
+
+let applyCommand : Command -> bool -> List (List int) -> Result (List (List int)) string =
+    \command -> \reverse -> \stacks ->
+        match command with
+        | Command count src dst ->
+            match nth src stacks with
+            | None -> Err "command source out of range"
+            | Some srcStack ->
+                if list.length srcStack < count then
+                    Err "not enough crates in stack"
+                else
+                    let taken = list.take count srcStack;
+                    let left = list.skip count srcStack;
+                    let addToDst = \dstStack ->
+                        if reverse then
+                            append (list.reverse taken) dstStack
+                        else
+                            append taken dstStack;
+                    match modifyNth dst addToDst stacks with
+                    | None -> Err (str.concat "command destination out of range: " (ints.toString dst))
+                    | Some stacks ->
+                        match modifyNth src (\_ -> left) stacks with
+                        | None -> Err "unreachable: src stack out of range on second check"
+                        | Some stacks -> Ok stacks
+                        end
+                    end
+            end
+        end;
+
+let stackTops : List (List int) -> Result string string =
+    \stacks ->
+        stacks
+        |> list.map list.head
+        |> list.allSome
+        |> option.map (list.map str.fromChar)
+        |> option.map join
+        |> result.okOr "not all stacks have crates";
+
+let solve : bool -> List (List int) -> List Command -> string =
+    \reverse -> \stacks -> \commands ->
+        list.foldl (Ok stacks) (\res -> \command -> result.andThen (applyCommand command reverse) res) commands
+        |> result.andThen stackTops
+        |> result.join;
+
+let withInput : (List (List int) -> List Command -> a) -> Input -> a =
+    \f -> \input ->
+        match input with
+        | Input stacks commands -> f stacks commands
+        end;
+
+export let main : string -> string = util.makeSolution parseInput (withInput (solve true)) (withInput (solve false));
