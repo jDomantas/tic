@@ -592,7 +592,9 @@ impl<'a, 'b> Generator<'a, 'b> {
                 cir::Ty::Fn(vec![a], Box::new(b))
             }
             ir::Type::Error => panic!("error type in codegen"),
-            ir::Type::Infer => panic!("infer type in codegen"),
+            // convert all uninfered type variables into int,
+            // as an arbitrary instantiation should be legal
+            ir::Type::Infer => cir::Ty::Int,
             ir::Type::Folded(ty, to) => {
                 match &**ty {
                     ir::Type::Named(n, args) => {

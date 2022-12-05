@@ -1,0 +1,4 @@
+export let repro : int =
+    let _id = \x -> x;
+    0;
+-- EXPECT: repro = 0
