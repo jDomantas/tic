@@ -107,3 +107,9 @@ export let startsWith : string -> string -> bool =
         else
             let p = substring 0 (length prefix) s;
             equal p prefix;
+
+export let chars : string -> List int =
+    \s ->
+        s
+        |> foldChars Nil (\a -> \b -> Cons b a)
+        |> list.reverse;

@@ -1,0 +1,64 @@
+import ints from "std/int";
+import str from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import (Result, Ok, Err) from "std/result";
+import util from "../shared/aoc-utils.tic";
+
+let parseInput : string -> Result (List int) a =
+    \line -> Ok (str.chars line);
+
+let contains : int -> List int -> bool =
+    \x -> \fold l ->
+        match l with
+        | Nil -> false
+        | Cons y ys ->
+            if x == y then
+                true
+            else
+                ys
+        end;
+
+type DistinctState = HasDuplicates | Checking (List int);
+
+let allDistinct : List int -> bool =
+    \l ->
+        let go = \fold l ->
+            match l with
+            | Nil -> Checking Nil
+            | Cons item state ->
+                match state with
+                | HasDuplicates -> HasDuplicates
+                | Checking prev ->
+                    if contains item prev then
+                        HasDuplicates
+                    else
+                        Checking (Cons item prev)
+                end
+            end;
+        match go l with
+        | HasDuplicates -> false
+        | Checking _ -> true
+        end;
+
+type SearchState = Looking int (List int) | Found int;
+
+let findDistinct : int -> List int -> string =
+    \count -> \chars ->
+        let step = \state -> \item ->
+            match state with
+            | Found idx -> Found idx
+            | Looking idx prev ->
+                let prev = list.take count (Cons item prev);
+                if list.length prev < count then
+                    Looking (idx + 1) prev
+                else if allDistinct prev then
+                    Found idx
+                else
+                    Looking (idx + 1) prev
+            end;
+        match list.foldl (Looking 0 Nil) step chars with
+        | Found idx -> ints.toString (idx + 1)
+        | Looking _ _ -> "no index found"
+        end;
+
+export let main : string -> string = util.makeSolution parseInput (findDistinct 4) (findDistinct 14);
