@@ -1,0 +1,353 @@
+import ints from "std/int";
+import str from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import parse(Parse) from "../shared/parse.tic";
+import util from "../shared/aoc-utils.tic";
+
+type Command =
+    | CdRoot
+    | CdParent
+    | Cd string
+    | Ls
+    | SubdirEntry string
+    | FileEntry int string;
+
+let parseCommand : string -> Result Command string =
+    let lit : string -> a -> Parse a =
+        \s -> \val -> parse.map (\_ -> val) (parse.literal s);
+    let cdRoot = lit "$ cd /" CdRoot;
+    let cdParent = lit "$ cd .." CdParent;
+    let cd = parse.ok Cd
+        |> parse.ignore (parse.literal "$ cd ")
+        |> parse.apply parse.word;
+    let ls = lit "$ ls" Ls;
+    let dir = parse.ok SubdirEntry
+        |> parse.ignore (parse.literal "dir ")
+        |> parse.apply parse.word;
+    let file = parse.ok FileEntry
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal " ")
+        |> parse.apply parse.word;
+    \line ->
+        cdRoot
+        |> parse.or cdParent
+        |> parse.or cd
+        |> parse.or ls
+        |> parse.or dir
+        |> parse.or file
+        |> parse.run line;
+
+type FileForest =
+    | Empty
+    | Dir string rec rec
+    | File string int rec;
+
+type Path = Here | There string rec;
+
+type Edit =
+    | Noop
+    | EditDir string (FileForest -> Result FileForest string);
+
+let projectChild : FileForest -> Edit -> Result FileForest string =
+    \fold forest -> \edit ->
+        match edit with
+        | Noop ->
+            match forest with
+            | Empty -> Ok Empty
+            | Dir dir child rest ->
+                Ok (Dir dir)
+                |> result.apply (child Noop)
+                |> result.apply (rest Noop)
+            | File file size rest ->
+                Ok (File file size)
+                |> result.apply (rest Noop)
+            end
+        | EditDir name doEdit ->
+            match forest with
+            | Empty -> Err (str.concat "no directory " name)
+            | Dir dir child rest ->
+                if str.equal dir name then
+                    child Noop
+                    |> result.andThen doEdit
+                    |> result.andThen (\f ->
+                        rest Noop
+                        |> result.map (\r -> Dir dir f r))
+                else
+                    child Noop
+                    |> result.andThen (\f ->
+                        rest edit
+                        |> result.map (\r -> Dir dir f r))
+            | File file size rest ->
+                rest edit
+                |> result.map (\r -> File file size r)
+            end
+        end;
+
+let projectPath : Path -> (FileForest -> Result FileForest string) -> FileForest -> Result FileForest string =
+    \fold path -> \edit -> \forest ->
+        match path with
+        | Here -> edit forest
+        | There child next -> projectChild forest (EditDir child (next edit))
+        end;
+
+let insertDir : Path -> string -> FileForest -> Result FileForest string =
+    \path -> \name -> \forest ->
+        projectPath path (\f -> Dir name Empty f |> Ok) forest;
+
+let insertFile : Path -> string -> int -> FileForest -> Result FileForest string =
+    \path -> \name -> \size -> \forest ->
+        projectPath path (\f -> File name size f |> Ok) forest;
+
+type CdResult = CdLast | CdCont Path;
+
+let cdParent : Path -> Result Path string =
+    \path ->
+        let go = \fold path ->
+            match path with
+            | Here -> CdLast
+            | There child rest ->
+                match rest with
+                | CdLast -> CdCont Here
+                | CdCont path -> CdCont (There child path)
+                end
+            end;
+        match go path with
+        | CdCont path -> Ok path
+        | CdLast -> Err "cd .. in /"
+        end;
+
+let cdChild : string -> Path -> Path =
+    \child -> \fold path ->
+        match path with
+        | Here -> There child Here
+        | There x xs -> There x xs
+        end;
+
+type ParseState = Uninit | ParseState FileForest Path | ParseErr string;
+
+let buildTree : List Command -> Result FileForest string =
+    \commands ->
+        let step = \acc -> \command ->
+            match acc with
+            | Uninit ->
+                match command with
+                | CdRoot -> ParseState Empty Here
+                | CdParent -> ParseErr "first command is not cd /"
+                | Cd _ -> ParseErr "first command is not cd /"
+                | Ls -> ParseErr "first command is not cd /"
+                | SubdirEntry _ -> ParseErr "first command is not cd /"
+                | FileEntry _ _ -> ParseErr "first command is not cd /"
+                end
+            | ParseState forest path ->
+                match command with
+                | CdRoot -> ParseErr "cd / not as first command"
+                | CdParent ->
+                    match cdParent path with
+                    | Ok path -> ParseState forest path
+                    | Err err -> ParseErr err
+                    end
+                | Cd child -> ParseState forest (cdChild child path)
+                | Ls -> ParseState forest path -- not validating that entries come after ls
+                | SubdirEntry name ->
+                    match insertDir path name forest with
+                    | Ok forest -> ParseState forest path
+                    | Err err -> ParseErr err
+                    end
+                | FileEntry size name ->
+                    match insertFile path name size forest with
+                    | Ok forest -> ParseState forest path
+                    | Err err -> ParseErr err
+                    end
+                end
+            | ParseErr err -> ParseErr err
+            end;
+        match list.foldl Uninit step commands with
+        | Uninit -> Ok Empty
+        | ParseState forest _ -> Ok forest
+        | ParseErr err -> Err err
+        end;
+
+let parseInput : string -> Result FileForest string =
+    \input ->
+        input
+        |> str.lines
+        |> list.map parseCommand
+        |> list.allOk
+        |> result.andThen buildTree;
+
+type DisplayState = DisplayState int string;
+
+let append : string -> string -> string =
+    \a -> \b -> str.concat b a;
+
+let nl : string = str.fromChar 10;
+
+let join : List string -> string =
+    \fold list ->
+        match list with
+        | Nil -> ""
+        | Cons x xs -> str.concat x (str.concat nl xs)
+        end;
+
+let indent : string -> string =
+    \s ->
+        s
+        |> str.lines
+        |> list.map (str.concat "  ")
+        |> join;
+
+let display : FileForest -> DisplayState =
+    \fold forest ->
+        match forest with
+        | Empty -> DisplayState 0 ""
+        | File name size rest ->
+            match rest with
+            | DisplayState restSize desc ->
+                let desc =
+                    "- "
+                    |> append name
+                    |> append " (file, size="
+                    |> append (ints.toString size)
+                    |> append ")"
+                    |> append nl
+                    |> append desc;
+                DisplayState (restSize + size) desc
+            end
+        | Dir name child rest ->
+            match child with
+            | DisplayState childSize childDesc ->
+                match rest with
+                | DisplayState restSize restDesc ->
+                    let dirDesc =
+                        "- "
+                        |> append name
+                        |> append " (dir, size="
+                        |> append (ints.toString childSize)
+                        |> append ")"
+                        |> append nl;
+                    let desc =
+                        dirDesc
+                        |> append (indent childDesc)
+                        |> append restDesc;
+                    DisplayState (childSize + restSize) desc
+                end
+            end
+        end;
+
+let _printForest : FileForest -> string =
+    \forest ->
+        match display forest with
+        | DisplayState size desc ->
+            let dirDesc =
+                "- / (dir, size="
+                |> append (ints.toString size)
+                |> append ")"
+                |> append nl;
+            let desc =
+                dirDesc
+                |> append (indent desc);
+            str.concat nl desc
+        end;
+
+type StatState = StatState int int;
+
+let sizes : FileForest -> StatState =
+    \fold forest ->
+        match forest with
+        | Empty -> StatState 0 0
+        | File _ size rest ->
+            match rest with
+            | StatState restSize res -> StatState (size + restSize) res
+            end
+        | Dir _ child rest ->
+            match child with
+            | StatState childSize childRes ->
+                match rest with
+                | StatState restSize restRes ->
+                    if childSize <= 100000 then
+                        StatState (childSize + restSize) (restRes + childRes + childSize)
+                    else
+                        StatState (childSize + restSize) (restRes + childRes)
+                end
+            end
+        end;
+
+let part1 : FileForest -> string =
+    \tree ->
+        match sizes tree with
+        | StatState _ res -> ints.toString res
+        end;
+
+type RemoveState = RemoveState int (Option int);
+
+let pickBest : Option int -> Option int -> Option int =
+    \a -> \b ->
+        match a with
+        | Some a ->
+            match b with
+            | Some b ->
+                if a < b then
+                    Some a
+                else
+                    Some b
+            | None -> Some a
+            end
+        | None -> b
+        end;
+
+let findToRemove : int -> FileForest -> Option int =
+    \threshold -> \forest ->
+        let go = \fold forest ->
+            match forest with
+            | Empty -> RemoveState 0 None
+            | File _ size rest ->
+                match rest with
+                | RemoveState restSize best -> RemoveState (size + restSize) best
+                end
+            | Dir _ child rest ->
+                match child with
+                | RemoveState childSize childBest ->
+                    match rest with
+                    | RemoveState restSize restBest ->
+                        let size = childSize + restSize;
+                        let best = pickBest childBest restBest;
+                        let best = if childSize >= threshold then
+                            pickBest best (Some childSize)
+                        else
+                            best;
+                        RemoveState size best
+                    end
+                end
+            end;
+        match go forest with
+        | RemoveState size best ->
+            match best with
+            | Some best ->
+                if size >= threshold then
+                    Some (ints.min size best)
+                else
+                    Some best
+            | None ->
+                if size >= threshold then
+                    Some size
+                else
+                    None
+            end
+        end;
+
+let part2 : FileForest -> string =
+    \tree ->
+        let totalSize =
+            match sizes tree with
+            | StatState size _ -> size
+            end;
+        let freeSpace = 70000000 - totalSize;
+        let needed = 30000000 - freeSpace;
+        match findToRemove needed tree with
+        | Some size -> ints.toString size
+        | None -> "cannot find anything to delete"
+        end;
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;

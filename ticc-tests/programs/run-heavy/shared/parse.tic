@@ -89,41 +89,41 @@ export let ok : a -> Parse a =
         let go = \input -> ParseOk value input;
         Parse go;
 
-type ParseIntState = Empty | Parsing int int | Done int int | Error string;
+type ParseIntState = IntEmpty | IntParsing int int | IntDone int int | IntError string;
 
 let parseInt : string -> ParseIntState =
     \input ->
         let step = \state -> \ch ->
             match state with
-            | Empty ->
+            | IntEmpty ->
                 if ch < 48 then
-                    Error "missing integer"
+                    IntError "missing integer"
                 else if ch >= 58 then
-                    Error "missing integer"
+                    IntError "missing integer"
                 else
-                    Parsing (ch - 48) 1
-            | Parsing acc idx ->
+                    IntParsing (ch - 48) 1
+            | IntParsing acc idx ->
                 if ch < 48 then
-                    Done acc idx
+                    IntDone acc idx
                 else if ch >= 58 then
-                    Done acc idx
+                    IntDone acc idx
                 else
-                    Parsing (acc * 10 + (ch - 48)) (idx + 1)
-            | Done res idx -> Done res idx
-            | Error err -> Error err
+                    IntParsing (acc * 10 + (ch - 48)) (idx + 1)
+            | IntDone res idx -> IntDone res idx
+            | IntError err -> IntError err
             end;
-        str.foldChars Empty step input;
+        str.foldChars IntEmpty step input;
 
 export let integer : Parse int =
     let go = \input ->
         match parseInt input with
-        | Empty -> ParseErr "missing integer"
-        | Parsing res _ -> ParseOk res ""
-        | Done res idx ->
+        | IntEmpty -> ParseErr "missing integer"
+        | IntParsing res _ -> ParseOk res ""
+        | IntDone res idx ->
             let rest = str.length input - idx;
             let rest = str.substring idx rest input;
             ParseOk res rest
-        | Error err -> ParseErr err
+        | IntError err -> ParseErr err
         end;
     Parse go;
 
@@ -148,4 +148,34 @@ export let char : Parse int =
             let ch = str.charAt 0 input;
             let rest = str.substring 1 (str.length input - 1) input;
             ParseOk ch rest;
+    Parse go;
+
+type ParseWordState = WordParsing int | WordDone int;
+
+let parseWord : string -> ParseWordState =
+    \input ->
+        let step = \state -> \ch ->
+            match state with
+            | WordParsing idx ->
+                if ch == 32 then
+                    WordDone idx
+                else
+                    WordParsing (idx + 1)
+            | WordDone idx -> WordDone idx
+            end;
+        str.foldChars (WordParsing 0) step input;
+
+export let word : Parse string =
+    let go = \input ->
+        let idx = match parseWord input with
+        | WordParsing idx -> idx
+        | WordDone idx -> idx
+        end;
+        if idx == 0 then
+            ParseErr "missing word"
+        else
+            let word = str.substring 0 idx input;
+            let rest = str.length input - idx;
+            let rest = str.substring idx rest input;
+            ParseOk word rest;
     Parse go;
