@@ -1,0 +1,160 @@
+import ints from "std/int";
+import str from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import util from "../shared/aoc-utils.tic";
+
+let parseDigit : int -> Result int string =
+    \digit ->
+        if digit < 48 then
+            Err "invalid digit"
+        else if digit < 58 then
+            Ok (digit - 48)
+        else
+            Err "invalid digit";
+
+let parseLine : string -> Result (List int) string =
+    \line ->
+        line
+        |> str.foldChars Nil (\xs -> \c -> Cons c xs)
+        |> list.reverse
+        |> list.map parseDigit
+        |> list.allOk;
+
+let parseInput : string -> Result (List (List int)) string =
+    \input ->
+        input
+        |> str.lines
+        |> list.map parseLine
+        |> list.allOk;
+
+let zip : (a -> b -> c) -> List a -> List b -> List c =
+    \f -> \fold as -> \bs ->
+        match as with
+        | Nil ->
+            Nil
+        | Cons a as ->
+            match bs with
+            | Nil -> Nil
+            | Cons b bs -> Cons (f a b) (as bs)
+            end
+        end;
+
+let flipVertical : List (List a) -> List (List a) =
+    \lines ->
+        list.map list.reverse lines;
+
+let flipDiagonal : List (List a) -> List (List a) =
+    \lines ->
+        match lines with
+        | Nil -> Nil
+        | Cons first _ ->
+            let empty = list.repeat (list.length first) Nil;
+            let go = \fold lines ->
+                match lines with
+                | Nil -> empty
+                | Cons x xs -> zip Cons x xs
+                end;
+            go lines
+        end;
+
+type Tree = Tree int bool;
+
+let toTree : int -> Tree =
+    \size -> Tree size false;
+
+type FoldState = FoldState int (List Tree);
+
+let markVisibleInLine : List Tree -> List Tree =
+    \line ->
+        let step = \state -> \tree ->
+            match state with
+            | FoldState threshold acc ->
+                match tree with
+                | Tree size visible ->
+                    if size >= threshold then
+                        FoldState (size + 1) (Cons (Tree size true) acc)
+                    else
+                        FoldState threshold (Cons (Tree size visible) acc)
+                end
+            end;
+        match list.foldl (FoldState 0 Nil) step line with
+        | FoldState _ acc -> list.reverse acc
+        end;
+
+let markVisible : List (List Tree) -> List (List Tree) =
+    \board ->
+        list.map markVisibleInLine board;
+
+let isVisible : Tree -> bool =
+    \tree ->
+        match tree with
+        | Tree _ visible -> visible
+        end;
+
+let part1 : List (List int) -> string =
+    \board ->
+        board
+        |> list.map (list.map toTree)
+        |> markVisible
+        |> flipVertical
+        |> markVisible
+        |> flipDiagonal
+        |> markVisible
+        |> flipVertical
+        |> markVisible
+        |> flipVertical
+        |> flipDiagonal
+        |> flipVertical
+        |> list.map (list.filter isVisible)
+        |> list.map list.length
+        |> list.sum
+        |> ints.toString;
+
+type VisState = VisState (List int) (List int);
+
+let takeUntil : (a -> bool) -> List a -> List a =
+    \f -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs ->
+            if f x then
+                Cons x Nil
+            else
+                Cons x xs
+        end;
+
+let seqVis : List int -> List int =
+    \line ->
+        let step = \state -> \item ->
+            match state with
+            | VisState prev acc ->
+                let score =
+                    prev
+                    |> takeUntil (\x -> x >= item)
+                    |> list.length;
+                VisState (Cons item prev) (Cons score acc)
+            end;
+        match list.foldl (VisState Nil Nil) step line with
+        | VisState _ acc -> list.reverse acc
+        end;
+
+let lineVis : List int -> List int =
+    \line ->
+        let a = seqVis line;
+        let b = list.reverse (seqVis (list.reverse line));
+        zip (\a -> \b -> a * b) a b;
+
+let part2 : List (List int) -> string =
+    \board ->
+        let score1 = list.map lineVis board;
+        let score2 = flipDiagonal (list.map lineVis (flipDiagonal board));
+        let scores = zip (zip (\a -> \b -> a * b)) score1 score2;
+        scores
+        |> list.filterMap list.max
+        |> list.max
+        |> option.map ints.toString
+        |> option.unwrapOr "no trees";
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;
