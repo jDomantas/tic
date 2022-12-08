@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, io::Write};
 use codespan_reporting as cr;
 
 type Error = Box<dyn std::error::Error>;
@@ -7,6 +7,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 fn main() {
     let mut run_node = true;
     let mut optimize = true;
+    let mut filters = Vec::new();
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--no-node" => run_node = false,
@@ -15,8 +16,11 @@ fn main() {
                 run_node = false;
                 optimize = false;
             }
+            flag if flag.starts_with("-") => {
+                panic!("unrecognized flag: {:?}", arg);
+            }
             _ => {
-                panic!("unrecognized argument: {:?}", arg);
+                filters.push(arg);
             }
         }
     }
@@ -34,17 +38,26 @@ fn main() {
         if test.optimize && !optimize {
             continue;
         }
+        if filters.len() > 0 {
+            if filters.iter().all(|f| !test.key.contains(f.as_str())) {
+                continue;
+            }
+        }
         if matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !run_node {
             continue;
         }
+        print!("test {}", test.key);
+        std::io::stdout().flush().expect("failed stdout write");
+        let start = std::time::Instant::now();
         let outcome = test.run();
+        let duration = start.elapsed();
         let source = &test.modules.modules[&test.modules.main].source;
         match outcome {
             ticc_tests::TestOutcome::Success => {
-                println!("test {} ... ok", test.key);
+                println!(" ... ok ({:.2}s)", duration.as_secs_f64());
             }
             ticc_tests::TestOutcome::BadCompilation(comp) => {
-                println!("test {} ... FAILED", test.key);
+                println!(" ... FAILED ({:.2}s)", duration.as_secs_f64());
                 if !comp.extra_errors.is_empty() {
                     println!("compiler reported {} extra errors", comp.extra_errors.len());
                     print_diagnostics(&test.modules.main, source, comp.extra_errors.iter().cloned()).unwrap();
@@ -68,7 +81,7 @@ fn main() {
                 }
             }
             ticc_tests::TestOutcome::BadRun(run) => {
-                println!("test {} ... FAILED", test.key);
+                println!(" ... FAILED ({:.2}s)", duration.as_secs_f64());
                 println!("expected output:");
                 for line in &run.expected_output {
                     println!("    {}", line);
