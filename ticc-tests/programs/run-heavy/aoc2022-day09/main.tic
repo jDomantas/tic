@@ -1,0 +1,248 @@
+import ints from "std/int";
+import str from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import option(Option, Some, None) from "std/option";
+import (Result) from "std/result";
+import parse from "../shared/parse.tic";
+import util from "../shared/aoc-utils.tic";
+
+type Dir = Left | Right | Up | Down;
+type Step = Step Dir int;
+
+let parseStep : string -> Result Step string =
+    let lit = \v -> \l -> parse.map (\_ -> v) (parse.literal l);
+    let dir =
+        lit Left "L"
+        |> parse.or (lit Right "R")
+        |> parse.or (lit Up "U")
+        |> parse.or (lit Down "D");
+    \s ->
+        parse.ok Step
+        |> parse.apply dir
+        |> parse.ignore (parse.literal " ")
+        |> parse.apply parse.integer
+        |> parse.run s;
+
+let parseInput : string -> Result (List Step) string =
+    \input ->
+        input
+        |> str.lines
+        |> list.map parseStep
+        |> list.allOk;
+
+type Point = Point int int;
+
+let move : Dir -> Point -> Point =
+    \dir -> \pt ->
+        match pt with
+        | Point x y ->
+            match dir with
+            | Left -> Point (x - 1) y
+            | Right -> Point (x + 1) y
+            | Up -> Point x (y - 1)
+            | Down -> Point x (y + 1)
+            end
+        end;
+
+let touching : Point -> Point -> bool =
+    let ints = \a -> \b ->
+        if a <= b + 1 then
+            b <= a + 1
+        else
+            false;
+    \a -> \b ->
+        match a with
+        | Point xa ya ->
+            match b with
+            | Point xb yb ->
+                if ints xa xb then
+                    ints ya yb
+                else
+                    false
+            end
+        end;
+
+let approach : Point -> Point -> Point =
+    let ints = \t -> \x ->
+        if x < t then
+            x + 1
+        else if x > t then
+            x - 1
+        else
+            x;
+    \target -> \pt ->
+        if touching target pt then
+            pt
+        else
+            match target with
+            | Point tx ty ->
+                match pt with
+                | Point x y ->
+                    Point (ints tx x) (ints ty y)
+                end
+            end;
+
+type State = State Point (List Point) (List Point);
+
+let last : List a -> Option a =
+    \fold list ->
+        match list with
+        | Nil -> None
+        | Cons x xs ->
+            match xs with
+            | Some x -> Some x
+            | None -> Some x
+            end
+        end;
+
+type PullState = PullState Point (List Point);
+
+let pull : Point -> List Point -> List Point =
+    \head -> \knots ->
+        let step = \state -> \pt ->
+            match state with
+            | PullState prev acc ->
+                let pt = approach prev pt;
+                PullState pt (Cons pt acc)
+            end;
+        match list.foldl (PullState head Nil) step knots with
+        | PullState _ res -> list.reverse res
+        end;
+
+let visited : int -> List Step -> List Point =
+    \knots -> \steps ->
+        let stepOne = \state -> \dir ->
+            match state with
+            | State head knots acc ->
+                let head = move dir head;
+                let tail = pull head knots;
+                let tailPos = last tail |> option.unwrapOr head;
+                State head tail (Cons tailPos acc)
+            end;
+        let stepMany = \state -> \step ->
+            match step with
+            | Step dir count -> ints.iterate count (\state -> stepOne state dir) state
+            end;
+        let start = Point 1000000000 1000000000;
+        let knots = list.repeat knots start;
+        match list.foldl (State start knots (Cons start Nil)) stepMany steps with
+        | State _ _ res -> res
+        end;
+
+let contains : Point -> List Point -> bool =
+    let eq = \a -> \b ->
+        match a with
+        | Point xa ya ->
+            match b with
+            | Point xb yb ->
+                if xa == xb then
+                    ya == yb
+                else
+                    false
+            end
+        end;
+    \pt -> \fold list ->
+        match list with
+        | Nil -> false
+        | Cons x xs ->
+            if xs then
+                true
+            else
+                eq pt x
+        end;
+
+let less : Point -> Point -> bool =
+    \a -> \b ->
+        match a with
+        | Point xa ya ->
+            match b with
+            | Point xb yb ->
+                if xa != xb then
+                    xa < xb
+                else
+                    ya < yb
+            end
+        end;
+
+type Tree a = Empty | Node rec a rec;
+
+let insert : (a -> a -> bool) -> a -> Tree a -> Tree a =
+    \less -> \item -> \tree ->
+        let go = \fold tree -> \self ->
+            match tree with
+            | Empty -> Node Empty item Empty
+            | Node left value right ->
+                match self with
+                | Empty -> ?bug
+                | Node sl _ sr ->
+                    if less item value then
+                        Node (left sl) value sr
+                    else if less value item then
+                        Node sl value (right sr)
+                    else
+                        self
+                end
+            end;
+        go tree tree;
+
+-- let insert : (a -> a -> bool) -> a -> Tree a -> Tree a =
+--     \less -> \item -> \tree ->
+--         Node Empty item tree;
+
+-- let toList : Tree a -> List a =
+--     let go = \fold tree -> \acc ->
+--         match tree with
+--         | Empty -> acc
+--         | Node l x r -> l (Cons x (r acc))
+--         end;
+--     \tree ->
+--         go tree Nil;
+
+let length : Tree a -> int =
+    \fold tree ->
+        match tree with
+        | Empty -> 0
+        | Node a _ b -> a + b + 1
+        end;
+
+let height : Tree a -> int =
+    \fold tree ->
+        match tree with
+        | Empty -> 0
+        | Node a _ b ->
+            1 + ints.max a b
+        end;
+
+let unique : List Point -> int =
+    -- \fold items ->
+    --     match items with
+    --     | Nil -> Nil
+    --     | Cons x xs ->
+    --         if contains x xs then
+    --             xs
+    --         else
+    --             Cons x xs
+    --     end;
+    \items ->
+        items
+        |> list.foldl Empty (\t -> \i -> insert less i t)
+        |> length;
+        -- |> toList;
+
+let part1 : List Step -> string =
+    \steps ->
+        steps
+        |> visited 1
+        |> unique
+        -- |> list.length
+        |> ints.toString;
+
+let part2 : List Step -> string =
+    \steps ->
+        steps
+        |> visited 9
+        |> unique
+        -- |> list.length
+        |> ints.toString;
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;
