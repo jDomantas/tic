@@ -1,0 +1,138 @@
+import intrinsics from "std/intrinsics";
+import ints from "std/int";
+import str from "std/string";
+import (Result) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import parse from "../shared/parse.tic";
+import util from "../shared/aoc-utils.tic";
+
+let offset : int = 1000000000000;
+
+type Command =
+    | Add int
+    | Sub int
+    | Noop;
+
+let parseCommand : string -> Result Command string =
+    let noop = parse.map (\_ -> Noop) (parse.literal "noop");
+    let add =
+        parse.ok Add
+        |> parse.ignore (parse.literal "addx ")
+        |> parse.apply parse.integer;
+    let sub =
+        parse.ok Sub
+        |> parse.ignore (parse.literal "addx -")
+        |> parse.apply parse.integer;
+    \line ->
+        noop
+        |> parse.or add
+        |> parse.or sub
+        |> parse.run line;
+
+let parseInput : string -> Result (List Command) string =
+    \input ->
+        input
+        |> str.lines
+        |> list.map parseCommand
+        |> list.allOk;
+
+let insertNoops : List Command -> List Command =
+    \fold commands ->
+        match commands with
+        | Nil -> Nil
+        | Cons x xs ->
+            match x with
+            | Add _ -> Cons Noop (Cons x xs)
+            | Sub _ -> Cons Noop (Cons x xs)
+            | Noop -> Cons x xs
+            end
+        end;
+
+type EmulatorState = EmulatorState int (List int);
+
+let values : List Command -> List int =
+    \commands ->
+        let step = \state -> \command ->
+            match state with
+            | EmulatorState x res ->
+                let res = Cons x res;
+                let x =
+                    match command with
+                    | Add d -> x + d
+                    | Sub d -> x - d
+                    | Noop -> x
+                    end;
+                EmulatorState x res
+            end;
+        let commands = insertNoops commands;
+        match list.foldl (EmulatorState (offset + 1) Nil) step commands with
+        | EmulatorState _ res -> list.reverse res
+        end;
+
+type MeasureState = MeasureState int int int;
+
+let part1 : (List Command) -> string =
+    \input ->
+        let step = \state -> \x ->
+            match state with
+            | MeasureState cycle countdown res ->
+                let res =
+                    if countdown == 0 then
+                        if x < offset then
+                            res - cycle * (offset - x)
+                        else
+                            res + cycle * (x - offset)
+                    else
+                        res;
+                let countdown =
+                    if countdown == 0 then
+                        39
+                    else
+                        countdown - 1;
+                MeasureState (cycle + 1) countdown res
+            end;
+        match list.foldl (MeasureState 1 19 0) step (values input) with
+        | MeasureState _ _ res -> ints.toString res
+        end;
+
+type Screen = Screen int (List bool) (List (List bool));
+
+let showLine : List bool -> string =
+    \fold line ->
+        match line with
+        | Nil -> ""
+        | Cons x xs ->
+            let pixel = if x then "#" else ".";
+            str.concat pixel xs
+        end;
+
+let showScreen : List (List bool) -> string =
+    \fold lines ->
+        match lines with
+        | Nil -> ""
+        | Cons x xs -> str.concat (str.fromChar 10) (str.concat (showLine x) xs)
+        end;
+
+let part2 : List Command -> string =
+    \input ->
+        let step = \screen -> \x ->
+            match screen with
+            | Screen rayX line lines ->
+                let hit =
+                    if rayX + offset < x - 1 then
+                        false
+                    else
+                        rayX + offset <= x + 1;
+                let line = Cons hit line;
+                if rayX == 39 then
+                    Screen 0 Nil (Cons (list.reverse line) lines)
+                else
+                    Screen (rayX + 1) line lines
+            end;
+        match list.foldl (Screen 0 Nil Nil) step (values input) with
+        | Screen _ cur rest ->
+            let lines = list.reverse (Cons (list.reverse cur) rest);
+            showScreen lines
+        end;
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;
