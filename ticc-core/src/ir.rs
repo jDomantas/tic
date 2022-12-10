@@ -71,6 +71,7 @@ pub enum Intrinsic {
     StringSubstring,
     StringFromChar,
     IntToString,
+    Debug,
 }
 
 #[derive(Debug, Hash, Clone)]

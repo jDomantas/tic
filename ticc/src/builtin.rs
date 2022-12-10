@@ -66,6 +66,7 @@ fn get_intrinsic_symbols() -> IntrinsicSymbols {
     let mut string_substring = None;
     let mut string_from_char = None;
     let mut int_to_string = None;
+    let mut debug = None;
     for item in &module.props.unit.items {
         for def in &item.defs {
             if def.vis != Visibility::Export {
@@ -80,6 +81,7 @@ fn get_intrinsic_symbols() -> IntrinsicSymbols {
                 "stringSubstring" => string_substring = Some(def.symbol),
                 "stringFromChar" => string_from_char = Some(def.symbol),
                 "intToString" => int_to_string = Some(def.symbol),
+                "debug" => debug = Some(def.symbol),
                 _ => panic!("unknown intrinsic: {}", name),
             }
         }
@@ -92,6 +94,7 @@ fn get_intrinsic_symbols() -> IntrinsicSymbols {
         string_substring: string_substring.expect("no string_substring intrinsic"),
         string_from_char: string_from_char.expect("no string_from_char intrinsic"),
         int_to_string: int_to_string.expect("no int_to_string intrinsic"),
+        debug: debug.expect("no debug intrinsic"),
     }
 }
 
@@ -104,4 +107,5 @@ pub(crate) struct IntrinsicSymbols {
     pub(crate) string_substring: ir::Symbol,
     pub(crate) string_from_char: ir::Symbol,
     pub(crate) int_to_string: ir::Symbol,
+    pub(crate) debug: ir::Symbol,
 }

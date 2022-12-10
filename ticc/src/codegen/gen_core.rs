@@ -312,6 +312,8 @@ impl<'a, 'b> Generator<'a, 'b> {
             self.string_from_char_intrinsic()
         } else if sym == self.intrinsics.int_to_string {
             self.int_to_string_intrinsic()
+        } else if sym == self.intrinsics.debug {
+            self.debug_intrinsic()
         } else {
             let mut value = self.gen_expr(item.expr().unwrap());
             for &var in vars.iter().rev() {
@@ -790,6 +792,29 @@ impl<'a, 'b> Generator<'a, 'b> {
                 Vec::from([
                     cir::Expr::Name(a),
                 ]),
+            )),
+        )
+    }
+
+    fn debug_intrinsic(&mut self) -> cir::Expr {
+        // Pi a -> \(s : string) -> \(v : a) -> %debug(s, v)
+        let a = self.program.ty.next();
+        let s = self.gen_fake_name("s");
+        let v = self.gen_fake_name("v");
+        cir::Expr::Pi(
+            a,
+            Box::new(cir::Expr::Lambda(
+                Vec::from([cir::LambdaParam { name: s, ty: cir::Ty::String }]),
+                Box::new(cir::Expr::Lambda(
+                    Vec::from([cir::LambdaParam { name: v, ty: cir::Ty::Var(a) }]),
+                    Box::new(cir::Expr::Intrinsic(
+                        cir::Intrinsic::Debug,
+                        Vec::from([
+                            cir::Expr::Name(s),
+                            cir::Expr::Name(v),
+                        ]),
+                    )),
+                )),
             )),
         )
     }

@@ -136,6 +136,7 @@ impl Format<'_> {
                     ir::Intrinsic::StringSubstring => "%stringSubstring",
                     ir::Intrinsic::StringFromChar => "%stringFromChar",
                     ir::Intrinsic::IntToString => "%intToString",
+                    ir::Intrinsic::Debug => "%debug",
                 });
                 self.builder.add_sticky_token("(", Sticky::Both);
                 match args.as_slice() {

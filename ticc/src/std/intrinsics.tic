@@ -5,3 +5,4 @@ export let stringCharAt : int -> string -> int = ?intrinsic;
 export let stringSubstring : int -> int -> string -> string = ?intrinsic;
 export let stringFromChar : int -> string = ?intrinsic;
 export let intToString : int -> string = ?intrinsic;
+export let debug : string -> a -> a = ?intrinsic;

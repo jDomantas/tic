@@ -202,6 +202,15 @@ impl Validator {
                         self.assert_params_fit([ir::Ty::Int], xs);
                         ir::Ty::String
                     }
+                    ir::Intrinsic::Debug => {
+                        if xs.len() != 2 {
+                            panic!("expected 2 params, got {}", xs.len());
+                        }
+                        let arg0 = self.check_expr(&xs[0]);
+                        assert_fits(&arg0, &ir::Ty::String);
+                        let arg1 = self.check_expr(&xs[1]);
+                        arg1
+                    }
                 }
             }
             ir::Expr::If(c, t, e) => {

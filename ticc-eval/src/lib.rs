@@ -194,6 +194,12 @@ fn eval_impl(env: &Rc<dyn EvalEnv>, expr: &ir::Expr) -> Result<Value, Trap> {
                     let i = eval_impl(env, &xs[0])?.into_int();
                     Value::String(i.to_string().into())
                 }
+                ir::Intrinsic::Debug => {
+                    let s = eval_impl(env, &xs[0])?.into_string();
+                    let val = eval_impl(env, &xs[1])?;
+                    println!("debug: {} = {:?}", s, val);
+                    val
+                }
             })
         }
         ir::Expr::Op(a, op, b) => {
