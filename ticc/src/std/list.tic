@@ -208,3 +208,63 @@ export let filterMap : (a -> Option b) -> List a -> List b =
             | None -> xs
             end
         end;
+
+export let concat : List a -> List a -> List a =
+    let helper = \b -> \fold a ->
+        match a with
+        | Nil -> b
+        | Cons x xs -> Cons x xs
+        end;
+    \a -> \b -> helper b a;
+
+
+type Tuple a b = Tuple a b;
+
+export let sortBy : (a -> a -> bool) -> List a -> List a =
+    let merge : (a -> a -> bool) -> List b -> List a -> List a -> List a =
+        \less -> \fold counter -> \a -> \b ->
+            match counter with
+            | Nil -> Nil
+            | Cons _ recurse ->
+                match a with
+                | Nil -> b
+                | Cons x xs ->
+                    match b with
+                    | Nil -> a
+                    | Cons y ys ->
+                        if less x y then
+                            Cons x (recurse xs b)
+                        else
+                            Cons y (recurse a ys)
+                    end
+                end
+            end;
+
+    let merge : (a -> a -> bool) -> List a -> List a -> List a =
+        \less -> \a -> \b ->
+            merge less (concat a b) a b;
+    let split : List a -> Tuple (List a) (List a) =
+        \fold list ->
+            match list with
+            | Nil -> Tuple Nil Nil
+            | Cons x xs ->
+                match xs with
+                | Tuple xs ys -> Tuple (Cons x ys) xs
+                end
+            end;
+    let sort : (a -> a -> bool) -> List b -> List a -> List a =
+        \less -> \fold counter -> \list ->
+            match counter with
+            | Nil -> Nil
+            | Cons _ recurse ->
+                if length list <= 1 then
+                    list
+                else
+                    match split list with
+                    | Tuple as bs ->
+                        let as = recurse as;
+                        let bs = recurse bs;
+                        merge less as bs
+                    end
+            end;
+    \less -> \list -> sort less list list;

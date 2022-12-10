@@ -129,28 +129,6 @@ let visited : int -> List Step -> List Point =
         | State _ _ res -> res
         end;
 
-let contains : Point -> List Point -> bool =
-    let eq = \a -> \b ->
-        match a with
-        | Point xa ya ->
-            match b with
-            | Point xb yb ->
-                if xa == xb then
-                    ya == yb
-                else
-                    false
-            end
-        end;
-    \pt -> \fold list ->
-        match list with
-        | Nil -> false
-        | Cons x xs ->
-            if xs then
-                true
-            else
-                eq pt x
-        end;
-
 let less : Point -> Point -> bool =
     \a -> \b ->
         match a with
@@ -164,69 +142,29 @@ let less : Point -> Point -> bool =
             end
         end;
 
-type Tree a = Empty | Node rec a rec;
-
-let insert : (a -> a -> bool) -> a -> Tree a -> Tree a =
-    \less -> \item -> \tree ->
-        let go = \fold tree -> \self ->
-            match tree with
-            | Empty -> Node Empty item Empty
-            | Node left value right ->
-                match self with
-                | Empty -> ?bug
-                | Node sl _ sr ->
-                    if less item value then
-                        Node (left sl) value sr
-                    else if less value item then
-                        Node sl value (right sr)
-                    else
-                        self
-                end
-            end;
-        go tree tree;
-
--- let insert : (a -> a -> bool) -> a -> Tree a -> Tree a =
---     \less -> \item -> \tree ->
---         Node Empty item tree;
-
--- let toList : Tree a -> List a =
---     let go = \fold tree -> \acc ->
---         match tree with
---         | Empty -> acc
---         | Node l x r -> l (Cons x (r acc))
---         end;
---     \tree ->
---         go tree Nil;
-
-let length : Tree a -> int =
-    \fold tree ->
-        match tree with
-        | Empty -> 0
-        | Node a _ b -> a + b + 1
-        end;
-
-let height : Tree a -> int =
-    \fold tree ->
-        match tree with
-        | Empty -> 0
-        | Node a _ b ->
-            1 + ints.max a b
+let uniqueBy : (a -> a -> bool) -> List a -> List a =
+    \less -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons x xs
+            | Cons y _ ->
+                if less x y then
+                    Cons x xs
+                else if less y x then
+                    Cons x xs
+                else
+                    xs
+            end
         end;
 
 let unique : List Point -> int =
-    -- \fold items ->
-    --     match items with
-    --     | Nil -> Nil
-    --     | Cons x xs ->
-    --         if contains x xs then
-    --             xs
-    --         else
-    --             Cons x xs
-    --     end;
     \items ->
         items
-        |> list.foldl Empty (\t -> \i -> insert less i t)
-        |> length;
+        |> list.sortBy less
+        |> uniqueBy less
+        |> list.length;
         -- |> toList;
 
 let part1 : List Step -> string =
@@ -234,7 +172,6 @@ let part1 : List Step -> string =
         steps
         |> visited 1
         |> unique
-        -- |> list.length
         |> ints.toString;
 
 let part2 : List Step -> string =
@@ -242,7 +179,6 @@ let part2 : List Step -> string =
         steps
         |> visited 9
         |> unique
-        -- |> list.length
         |> ints.toString;
 
 export let main : string -> string = util.makeSolution parseInput part1 part2;
