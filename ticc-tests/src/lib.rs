@@ -653,13 +653,11 @@ pub fn verify_node_is_present() {
     }
 }
 
-#[test]
-fn compiler_tests() {
-    verify_node_is_present();
-
+#[cfg(test)]
+fn run_tests(dir_name: &str, def_kind: TestDefKind) {
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("programs");
-    let tests = get_tests(&dir, false);
+    let tests = get_tests_in_dir(&dir, dir_name, def_kind);
 
     for test in tests {
         let outcome = test.run();
@@ -670,6 +668,22 @@ fn compiler_tests() {
             }
         }
     }
+}
+
+#[test]
+fn compile_pass_tests() {
+    run_tests("compile-pass", TestDefKind::CompilePass);
+}
+
+#[test]
+fn compile_fail_tests() {
+    run_tests("compile-fail", TestDefKind::CompileFail);
+}
+
+#[test]
+fn run_pass_tests() {
+    verify_node_is_present();
+    run_tests("run-pass", TestDefKind::Run);
 }
 
 struct FileSetModuleResolver {

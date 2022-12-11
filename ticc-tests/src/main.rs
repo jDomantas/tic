@@ -5,16 +5,20 @@ type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 fn main() {
-    let mut run_node = true;
-    let mut optimize = true;
+    let mut node = true;
+    let mut no_node = true;
+    let mut optimized = true;
+    let mut unoptimized = true;
     let mut filters = Vec::new();
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
-            "--no-node" => run_node = false,
-            "--no-opt" => optimize = false,
+            "--no-node" => node = false,
+            "--only-node" => no_node = false,
+            "--no-opt" => optimized = false,
+            "--only-opt" => unoptimized = false,
             "--fast" => {
-                run_node = false;
-                optimize = false;
+                node = false;
+                unoptimized = false;
             }
             flag if flag.starts_with("-") => {
                 panic!("unrecognized flag: {:?}", arg);
@@ -28,14 +32,17 @@ fn main() {
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("programs");
 
-    if run_node {
+    if node {
         ticc_tests::verify_node_is_present();
     }
 
     let tests = ticc_tests::get_tests(&dir, true);
 
     for test in tests {
-        if test.optimize && !optimize {
+        if test.optimize && !optimized {
+            continue;
+        }
+        if !test.optimize && !unoptimized {
             continue;
         }
         if filters.len() > 0 {
@@ -43,7 +50,10 @@ fn main() {
                 continue;
             }
         }
-        if matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !run_node {
+        if matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !node {
+            continue;
+        }
+        if !matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !no_node {
             continue;
         }
         print!("test {}", test.key);
