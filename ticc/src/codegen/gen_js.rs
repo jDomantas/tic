@@ -13,6 +13,8 @@ pub(crate) fn generate_js(program: cir::Program) -> String {
     };
     generator.output.push_str("function $stringCharAt(i, s) { return i < 0 || i >= s.length ? 0 : s.charCodeAt(i); }\n");
     generator.output.push_str("function $stringSubstring(i, l, s) { return i >= s.length ? '' : i + l > s.length ? s.substr(i) : s.substr(i, l); }\n");
+    generator.output.push_str("function $divide(a, b) { return b === 0 ? 0 : (a / b) | 0; }\n");
+    generator.output.push_str("function $modulo(a, b) { return b === 0 ? a : a % b; }\n");
     for def in ir.stmts {
         generator.emit_stmt(def);
     }
@@ -221,20 +223,38 @@ impl Generator<'_> {
                 }
             }
             ir::Expr::Op(a, op, b) => {
-                self.emit_expr(a, expr_prec);
-                self.output.push_str(match op {
-                    cir::Op::Add => " + ",
-                    cir::Op::Subtract => " - ",
-                    cir::Op::Multiply => " * ",
-                    cir::Op::Divide | cir::Op::Modulo => todo!(),
-                    cir::Op::Less => " < ",
-                    cir::Op::LessEq => " <= ",
-                    cir::Op::Greater => " > ",
-                    cir::Op::GreaterEq => " >= ",
-                    cir::Op::Equal => " == ",
-                    cir::Op::NotEqual => " != ",
-                });
-                self.emit_expr(b, expr_prec.next());
+                match op {
+                    cir::Op::Divide => {
+                        self.output.push_str("$divide(");
+                        self.emit_expr(a, Prec::Min);
+                        self.output.push_str(", ");
+                        self.emit_expr(b, Prec::Min);
+                        self.output.push_str(")");
+                    }
+                    cir::Op::Modulo => {
+                        self.output.push_str("$modulo(");
+                        self.emit_expr(a, Prec::Min);
+                        self.output.push_str(", ");
+                        self.emit_expr(b, Prec::Min);
+                        self.output.push_str(")");
+                    }
+                    _ => {
+                        self.emit_expr(a, expr_prec);
+                        self.output.push_str(match op {
+                            cir::Op::Add => " + ",
+                            cir::Op::Subtract => " - ",
+                            cir::Op::Multiply => " * ",
+                            cir::Op::Divide | cir::Op::Modulo => unreachable!(),
+                            cir::Op::Less => " < ",
+                            cir::Op::LessEq => " <= ",
+                            cir::Op::Greater => " > ",
+                            cir::Op::GreaterEq => " >= ",
+                            cir::Op::Equal => " == ",
+                            cir::Op::NotEqual => " != ",
+                        });
+                        self.emit_expr(b, expr_prec.next());
+                    }
+                }
             }
             ir::Expr::Construct(ctor, a) => {
                 self.output.push_str("['");
@@ -344,9 +364,9 @@ fn expr_prec(expr: &ir::Expr) -> Prec {
         ir::Expr::Intrinsic(_, _) => Prec::Call,
         ir::Expr::Op(_, ir::Op::Add, _) |
         ir::Expr::Op(_, ir::Op::Subtract, _) => Prec::Sum,
-        ir::Expr::Op(_, ir::Op::Multiply, _) |
+        ir::Expr::Op(_, ir::Op::Multiply, _) => Prec::Product,
         ir::Expr::Op(_, ir::Op::Divide, _) |
-        ir::Expr::Op(_, ir::Op::Modulo, _) => Prec::Product,
+        ir::Expr::Op(_, ir::Op::Modulo, _) => Prec::Atom,
         ir::Expr::Op(_, ir::Op::Less, _) |
         ir::Expr::Op(_, ir::Op::LessEq, _) |
         ir::Expr::Op(_, ir::Op::Greater, _) |
