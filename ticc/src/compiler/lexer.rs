@@ -49,6 +49,10 @@ pub(crate) enum TokenKind {
     Minus,
     #[token("*")]
     Star,
+    #[token("/")]
+    Slash,
+    #[token("%")]
+    Percent,
     #[token("<")]
     Less,
     #[token("<=")]

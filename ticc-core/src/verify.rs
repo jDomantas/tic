@@ -222,7 +222,9 @@ impl Validator {
                 match o {
                     ir::Op::Add |
                     ir::Op::Subtract |
-                    ir::Op::Multiply => ir::Ty::Int,
+                    ir::Op::Multiply |
+                    ir::Op::Divide |
+                    ir::Op::Modulo => ir::Ty::Int,
                     ir::Op::Less |
                     ir::Op::LessEq |
                     ir::Op::Greater |

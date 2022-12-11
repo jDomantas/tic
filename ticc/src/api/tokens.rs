@@ -118,6 +118,8 @@ fn convert_token(token: Syntax, def_kind: Option<&ir::DefKind>) -> Option<TokenK
         Syntax::Plus |
         Syntax::Minus |
         Syntax::Star |
+        Syntax::Slash |
+        Syntax::Percent |
         Syntax::Less |
         Syntax::LessEq |
         Syntax::Greater |

@@ -429,7 +429,9 @@ impl<'a> TypeChecker<'a> {
                 match expr.op().map(|o| o.token().kind()) {
                     Some(TokenKind::Plus) |
                     Some(TokenKind::Minus) |
-                    Some(TokenKind::Star) => {
+                    Some(TokenKind::Star) |
+                    Some(TokenKind::Slash) |
+                    Some(TokenKind::Percent) => {
                         let i = self.allocate(Ty::Int);
                         self.check_operands(expr, i);
                         self.unify(expected, i, span);

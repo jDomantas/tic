@@ -148,7 +148,9 @@ fn binding_power(op: TokenKind) -> Option<(u32, u32)> {
     match op {
         TokenKind::Plus |
         TokenKind::Minus => Some((7, 8)),
-        TokenKind::Star => Some((9, 10)),
+        TokenKind::Star |
+        TokenKind::Slash |
+        TokenKind::Percent => Some((9, 10)),
         TokenKind::Less |
         TokenKind::LessEq |
         TokenKind::Greater |

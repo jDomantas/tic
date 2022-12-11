@@ -55,6 +55,8 @@ pub enum Op {
     Add,
     Subtract,
     Multiply,
+    Divide,
+    Modulo,
     Less,
     LessEq,
     Greater,

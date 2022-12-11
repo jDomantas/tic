@@ -167,6 +167,8 @@ impl Format<'_> {
                     ir::Op::Add => "+",
                     ir::Op::Subtract => "-",
                     ir::Op::Multiply => "*",
+                    ir::Op::Divide => "/",
+                    ir::Op::Modulo => "*",
                     ir::Op::Less => "<",
                     ir::Op::LessEq => "<=",
                     ir::Op::Greater => ">",
@@ -363,7 +365,9 @@ fn expr_prec(e: &ir::Expr) -> Prec {
         ir::Expr::Construct(_, _, _) => Prec::Atom,
         ir::Expr::Op(_, ir::Op::Add, _) |
         ir::Expr::Op(_, ir::Op::Subtract, _) => Prec::Add,
-        ir::Expr::Op(_, ir::Op::Multiply, _) => Prec::Add,
+        ir::Expr::Op(_, ir::Op::Multiply, _) |
+        ir::Expr::Op(_, ir::Op::Divide, _) |
+        ir::Expr::Op(_, ir::Op::Modulo, _) => Prec::Multiply,
         ir::Expr::Op(_, ir::Op::Less, _) |
         ir::Expr::Op(_, ir::Op::LessEq, _) |
         ir::Expr::Op(_, ir::Op::Greater, _) |

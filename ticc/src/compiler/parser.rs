@@ -343,6 +343,8 @@ fn classify_token(token: LexerToken) -> TokenOrTrivia {
         LexerToken::Plus => TokenOrTrivia::Token(TokenKind::Plus),
         LexerToken::Minus => TokenOrTrivia::Token(TokenKind::Minus),
         LexerToken::Star => TokenOrTrivia::Token(TokenKind::Star),
+        LexerToken::Slash => TokenOrTrivia::Token(TokenKind::Slash),
+        LexerToken::Percent => TokenOrTrivia::Token(TokenKind::Percent),
         LexerToken::Less => TokenOrTrivia::Token(TokenKind::Less),
         LexerToken::LessEq => TokenOrTrivia::Token(TokenKind::LessEq),
         LexerToken::Greater => TokenOrTrivia::Token(TokenKind::Greater),
@@ -458,6 +460,7 @@ impl ParseHint {
             ParseHint::Type => match token {
                 TokenKind::Int |
                 TokenKind::Bool |
+                TokenKind::StringTy |
                 TokenKind::Rec |
                 TokenKind::LeftParen |
                 TokenKind::Ident => true,
@@ -473,13 +476,16 @@ impl ParseHint {
                 TokenKind::Backslash |
                 TokenKind::Ident |
                 TokenKind::Hole |
-                TokenKind::Number => true,
+                TokenKind::Number |
+                TokenKind::String => true,
                 _ => false,
             },
             ParseHint::Operator => match token {
                 TokenKind::Plus |
                 TokenKind::Minus |
                 TokenKind::Star |
+                TokenKind::Slash |
+                TokenKind::Percent |
                 TokenKind::Less |
                 TokenKind::LessEq |
                 TokenKind::Greater |

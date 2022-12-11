@@ -203,6 +203,8 @@ fn eval_impl(env: &Rc<dyn EvalEnv>, expr: &ir::Expr) -> Result<Value, Trap> {
                 ir::Op::Add => Value::Int(a.wrapping_add(b)),
                 ir::Op::Subtract => Value::Int(a.wrapping_sub(b)),
                 ir::Op::Multiply => Value::Int(a.wrapping_mul(b)),
+                ir::Op::Divide => Value::Int(a.checked_div(b).unwrap_or(0)),
+                ir::Op::Modulo => Value::Int(a.checked_rem(b).unwrap_or(a)),
                 ir::Op::Less => Value::Bool(a < b),
                 ir::Op::LessEq => Value::Bool(a <= b),
                 ir::Op::Greater => Value::Bool(a > b),

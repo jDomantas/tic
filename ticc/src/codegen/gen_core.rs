@@ -378,6 +378,8 @@ impl<'a, 'b> Generator<'a, 'b> {
                     TokenKind::Plus => cir::Op::Add,
                     TokenKind::Minus => cir::Op::Subtract,
                     TokenKind::Star => cir::Op::Multiply,
+                    TokenKind::Slash => cir::Op::Divide,
+                    TokenKind::Percent => cir::Op::Modulo,
                     TokenKind::Less => cir::Op::Less,
                     TokenKind::LessEq => cir::Op::LessEq,
                     TokenKind::Greater => cir::Op::Greater,

@@ -226,6 +226,7 @@ impl Generator<'_> {
                     cir::Op::Add => " + ",
                     cir::Op::Subtract => " - ",
                     cir::Op::Multiply => " * ",
+                    cir::Op::Divide | cir::Op::Modulo => todo!(),
                     cir::Op::Less => " < ",
                     cir::Op::LessEq => " <= ",
                     cir::Op::Greater => " > ",
@@ -343,7 +344,9 @@ fn expr_prec(expr: &ir::Expr) -> Prec {
         ir::Expr::Intrinsic(_, _) => Prec::Call,
         ir::Expr::Op(_, ir::Op::Add, _) |
         ir::Expr::Op(_, ir::Op::Subtract, _) => Prec::Sum,
-        ir::Expr::Op(_, ir::Op::Multiply, _) => Prec::Product,
+        ir::Expr::Op(_, ir::Op::Multiply, _) |
+        ir::Expr::Op(_, ir::Op::Divide, _) |
+        ir::Expr::Op(_, ir::Op::Modulo, _) => Prec::Product,
         ir::Expr::Op(_, ir::Op::Less, _) |
         ir::Expr::Op(_, ir::Op::LessEq, _) |
         ir::Expr::Op(_, ir::Op::Greater, _) |
