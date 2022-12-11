@@ -1,0 +1,322 @@
+import ints from "std/int";
+import str from "std/string";
+import list(List, Cons, Nil) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import parse from "../shared/parse.tic";
+import util from "../shared/aoc-utils.tic";
+
+let groupLines : List string -> List (List string) =
+    \fold lines ->
+        match lines with
+        | Nil -> Nil
+        | Cons x xs ->
+            if str.length x > 0 then
+                match xs with
+                | Nil -> Cons (Cons x Nil) Nil
+                | Cons y ys -> Cons (Cons x y) ys
+                end
+            else
+                Cons Nil xs
+        end;
+
+type Operand = Old | Number int;
+
+type Op = Mul Operand Operand | Add Operand Operand;
+
+type Targeting = Targeting int int int;
+
+type Monkey = Monkey int int (List int) Op Targeting;
+
+let parseNumberList : string -> Result (List int) string =
+    \line ->
+        line
+        |> str.split (str.charAt 0 ",")
+        |> list.map (\x -> str.substring 1 (str.length x - 1) x)
+        |> list.map ints.parse
+        |> list.allOk
+        |> result.mapErr (\_ -> "bad int");
+
+let parseMonkey : List string -> Result Monkey string =
+    let header =
+        parse.ok (\x -> x)
+        |> parse.ignore (parse.literal "Monkey ")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ":");
+    let startingItems =
+        parse.ok (\x -> x)
+        |> parse.ignore (parse.literal "  Starting items:")
+        |> parse.apply parse.remainder
+        |> parse.andThen parseNumberList;
+    let operand =
+        parse.map (\_ -> Old) (parse.literal "old")
+        |> parse.or (parse.map Number parse.integer);
+    let op =
+        parse.map (\_ -> Mul) (parse.literal " * ")
+        |> parse.or (parse.map (\_ -> Add) (parse.literal " + "));
+    let operation =
+        parse.ok (\a -> \op -> \b -> op a b)
+        |> parse.ignore (parse.literal "  Operation: new = ")
+        |> parse.apply operand
+        |> parse.apply op
+        |> parse.apply operand;
+    let test =
+        parse.ok (\x -> x)
+        |> parse.ignore (parse.literal "  Test: divisible by ")
+        |> parse.apply parse.integer;
+    let ifRes = \cond ->
+        parse.ok (\x -> x)
+        |> parse.ignore (parse.literal "    If ")
+        |> parse.ignore (parse.literal cond)
+        |> parse.ignore (parse.literal ": throw to monkey ")
+        |> parse.apply parse.integer;
+    \lines ->
+        match lines with
+        | Nil -> Err "missing lines"
+        | Cons l1 xs ->
+            match xs with
+            | Nil -> Err "missing lines"
+            | Cons l2 xs ->
+                match xs with
+                | Nil -> Err "missing lines"
+                | Cons l3 xs ->
+                    match xs with
+                    | Nil -> Err "missing lines"
+                    | Cons l4 xs ->
+                        match xs with
+                        | Nil -> Err "missing lines"
+                        | Cons l5 xs ->
+                            match xs with
+                            | Nil -> Err "missing lines"
+                            | Cons l6 xs ->
+                                match xs with
+                                | Nil ->
+                                    let makeError =
+                                        \e -> \err ->
+                                            str.concat e (str.concat ": " err);
+                                    let header : Result int string =
+                                        parse.run l1 header
+                                        |> result.mapErr (makeError "bad header");
+                                    let startingItems : Result (List int) string =
+                                        parse.run l2 startingItems
+                                        |> result.mapErr (makeError "bad starting items");
+                                    let operation =
+                                        parse.run l3 operation
+                                        |> result.mapErr (makeError "bad operation");
+                                    let test =
+                                        parse.run l4 test
+                                        |> result.mapErr (makeError "bad test");
+                                    let ifTrue =
+                                        parse.run l5 (ifRes "true")
+                                        |> result.mapErr (makeError "bad branch");
+                                    let ifFalse =
+                                        parse.run l6 (ifRes "false")
+                                        |> result.mapErr (makeError "bad branch");
+                                    Ok (\h -> \i -> \op -> \div -> \t -> \f -> Monkey 0 h i op (Targeting div t f))
+                                    |> result.apply header
+                                    |> result.apply startingItems
+                                    |> result.apply operation
+                                    |> result.apply test
+                                    |> result.apply ifTrue
+                                    |> result.apply ifFalse
+                                | Cons _ _ -> Err "too many lines"
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end;
+
+let parseInput : string -> Result (List Monkey) string =
+    \input ->
+        input
+        |> str.lines
+        |> groupLines
+        |> list.map parseMonkey
+        |> list.allOk;
+
+let evalOperation : int -> Op -> int =
+    let evalOperand =
+        \x -> \o ->
+            match o with
+            | Old -> x
+            | Number x -> x
+            end;
+    \x -> \op ->
+        match op with
+        | Add a b -> evalOperand x a + evalOperand x b
+        | Mul a b -> evalOperand x a * evalOperand x b
+        end;
+
+type Queues a = QueuesNil | QueuesCons int (List a) rec;
+
+let and : bool -> bool -> bool =
+    \a -> \b -> if a then b else false;
+
+let push : int -> a -> Queues a -> Queues a =
+    \id -> \val -> \queues ->
+        let go = \fold queues -> \do ->
+            match queues with
+            | QueuesNil ->
+                if do then
+                    QueuesCons id (Cons val Nil) QueuesNil
+                else
+                    QueuesNil
+            | QueuesCons curId curQueue rest ->
+                let rest = rest (and do (curId != id));
+                if and (curId == id) do then
+                    QueuesCons curId (Cons val curQueue) rest
+                else
+                    QueuesCons curId curQueue rest
+            end;
+        go queues true;
+
+type Tuple a b = Tuple a b;
+
+let popAll : int -> Queues a -> Tuple (Queues a) (List a) =
+    \id -> \fold queues ->
+        match queues with
+        | QueuesNil -> Tuple QueuesNil Nil
+        | QueuesCons curId items xs ->
+            match xs with
+            | Tuple rest res ->
+                if id == curId then
+                    Tuple rest (list.reverse items)
+                else
+                    Tuple (QueuesCons curId items rest) res
+            end
+        end;
+
+type SimState = SimState (List Monkey) (Queues int);
+
+let pickTarget : int -> Targeting -> int =
+    \x -> \targetting ->
+        match targetting with
+        | Targeting div ifTrue ifFalse ->
+            if x % div == 0 then
+                ifTrue
+            else
+                ifFalse
+        end;
+
+let append : string -> string -> string =
+    \a -> \b -> str.concat b a;
+
+let showMonkey : Monkey -> string =
+    \monkey ->
+        match monkey with
+        | Monkey checks id queue _ _ ->
+            let go = \fold list ->
+                match list with
+                | Nil -> ""
+                | Cons x xs -> str.concat (ints.toString x) (str.concat ", " xs)
+                end;
+            "monkey #"
+            |> append (ints.toString id)
+            |> append " ("
+            |> append (ints.toString checks)
+            |> append " checks): "
+            |> append (go queue)
+        end;
+
+let _showState : List Monkey -> string =
+    \fold list ->
+        match list with
+        | Nil -> ""
+        | Cons x xs ->
+            str.fromChar 10
+            |> append (showMonkey x)
+            |> append xs
+        end;
+
+let simulateRound : int -> int -> List Monkey -> List Monkey =
+    \div -> \mod -> \monkeys ->
+        let step = \state -> \monkey ->
+            match state with
+            | SimState acc queues ->
+                match monkey with
+                | Monkey checks id queue op targetting ->
+                    match popAll id queues with
+                    | Tuple queues q ->
+                        let queue = list.concat queue q;
+                        let checks = checks + list.length queue;
+                        let go = \fold queue ->
+                            match queue with
+                            | Nil -> queues
+                            | Cons x xs ->
+                                let x = evalOperation (x % mod) op / div % mod;
+                                let target = pickTarget x targetting;
+                                push target x xs
+                            end;
+                        let queues = go (list.reverse queue);
+                        let monkey = Monkey checks id Nil op targetting;
+                        let acc = Cons monkey acc;
+                        SimState acc queues
+                    end
+                end
+            end;
+        match list.foldl (SimState Nil QueuesNil) step monkeys with
+        | SimState monkeys queues ->
+            let go = \fold monkeys ->
+                match monkeys with
+                | Nil -> Tuple queues Nil
+                | Cons m rest ->
+                    match rest with
+                    | Tuple queues rest ->
+                        match m with
+                        | Monkey checks id queue op targetting ->
+                            let r = popAll id queues;
+                            match r with
+                            | Tuple queues extra ->
+                                let queue = list.concat queue extra;
+                                let monkey = Monkey checks id queue op targetting;
+                                Tuple queues (Cons monkey rest)
+                            end
+                        end
+                    end
+                end;
+            match go monkeys with
+            | Tuple _ monkeys -> list.reverse monkeys
+            end
+        end;
+
+let modulo : List Monkey -> int =
+    \fold list ->
+        match list with
+        | Nil -> 1
+        | Cons x xs ->
+            match x with
+            | Monkey _ _ _ _ t ->
+                match t with
+                | Targeting mod _ _ -> mod * xs
+                end
+            end
+        end;
+
+let part1 : List Monkey -> string =
+    \monkeys ->
+        monkeys
+        |> ints.iterate 20 (simulateRound 3 (modulo monkeys))
+        |> list.map (\m ->
+            match m with
+            | Monkey checks _ _ _ _ -> checks
+            end)
+        |> list.sortBy (\a -> \b -> b < a)
+        |> list.take 2
+        |> list.foldl 1 (\a -> \b -> a * b)
+        |> ints.toString;
+
+let part2 : List Monkey -> string =
+    \monkeys ->
+        monkeys
+        |> ints.iterate 10000 (simulateRound 1 (modulo monkeys))
+        |> list.map (\m ->
+            match m with
+            | Monkey checks _ _ _ _ -> checks
+            end)
+        |> list.sortBy (\a -> \b -> b < a)
+        |> list.take 2
+        |> list.foldl 1 (\a -> \b -> a * b)
+        |> ints.toString;
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;
