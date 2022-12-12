@@ -1,0 +1,256 @@
+import ints from "std/int";
+import str from "std/string";
+import option(Option, Some, None) from "std/option";
+import list(List, Cons, Nil) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import util from "../shared/aoc-utils.tic";
+
+type Point = Point int int;
+
+type Grid = Grid Point Point (List (List int));
+
+let parseCell : int -> Result int string =
+    let S : int = str.charAt 0 "S";
+    let E : int = str.charAt 0 "E";
+    \ch ->
+        if ch == S then
+            Ok 0
+        else if ch == E then
+            Ok 25
+        else if ch < 97 then
+            Err "bad cell"
+        else if ch >= 97 + 26 then
+            Err "bad cell"
+        else
+            Ok (ch - 97);
+
+type RangeState = RangeState int (List int);
+
+let range : int -> int -> List int =
+    \start -> \stop ->
+        let step = \state ->
+            match state with
+            | RangeState i acc -> RangeState (i - 1) (Cons i acc)
+            end;
+        let steps = stop - start;
+        match ints.iterate steps step (RangeState (stop - 1) Nil) with
+        | RangeState _ res -> res
+        end;
+
+let zip : (a -> b -> c) -> List a -> List b -> List c =
+    \f -> \fold as -> \bs ->
+        match as with
+        | Nil ->
+            Nil
+        | Cons a as ->
+            match bs with
+            | Nil -> Nil
+            | Cons b bs -> Cons (f a b) (as bs)
+            end
+        end;
+
+let findChar : int -> string -> Option int =
+    \ch -> \line ->
+        line
+        |> str.chars
+        |> zip (\idx -> \c -> if c == ch then Some idx else None) (range 0 (str.length line))
+        |> list.filterMap (\x -> x)
+        |> list.head;
+
+let findPoint : string -> string -> Result Point string =
+    \ch -> \input ->
+        let char = str.charAt 0 ch;
+        let lines = str.lines input;
+        lines
+        |> zip (\idx -> \line -> findChar char line |> option.map (Point idx)) (range 0 (list.length lines))
+        |> list.filterMap (\x -> x)
+        |> list.head
+        |> result.okOr (str.concat "missing " ch);
+
+let parseInput : string -> Result Grid string =
+    \input ->
+        let cells =
+            input
+            |> str.lines
+            |> list.map (\line ->
+                line
+                |> str.chars
+                |> list.map parseCell
+                |> list.allOk)
+            |> list.allOk;
+        let start = findPoint "S" input;
+        let goal = findPoint "E" input;
+        Ok Grid
+        |> result.apply start
+        |> result.apply goal
+        |> result.apply cells;
+
+type Queue a = Queue (List a) (List a);
+
+type Pop a = Empty | Popped a (Queue a);
+
+let pop : Queue a -> Pop a =
+    \queue ->
+        match queue with
+        | Queue first rest ->
+            match first with
+            | Cons x xs -> Popped x (Queue xs rest)
+            | Nil ->
+                match list.reverse rest with
+                | Nil -> Empty
+                | Cons x xs -> Popped x (Queue xs Nil)
+                end
+            end
+        end;
+
+let push : a -> Queue a -> Queue a =
+    \item -> \queue ->
+        match queue with
+        | Queue a b -> Queue a (Cons item b)
+        end;
+
+let empty : Queue a = Queue Nil Nil;
+
+let nth : int -> List a -> Option a =
+    \idx -> \l ->
+        if idx >= list.length l then
+            None
+        else
+            let tail = \lst ->
+                match lst with
+                | Nil -> Nil
+                | Cons _ xs -> xs
+                end;
+            list.head (ints.iterate idx tail l);
+
+let modifyNth : int -> (a -> a) -> List a -> List a =
+    \idx -> \f -> \l ->
+        let modifyHead = \lst ->
+            match lst with
+            | Nil -> Nil
+            | Cons x xs -> Cons (f x) xs
+            end;
+        let modifyNext = \modify -> \lst ->
+            match lst with
+            | Nil -> Nil
+            | Cons x xs -> Cons x (modify xs)
+            end;
+        ints.iterate idx modifyNext modifyHead l;
+
+let getPoint : Point -> List (List a) -> Option a =
+    \pt -> \grid ->
+        match pt with
+        | Point row col ->
+            grid
+            |> nth row
+            |> option.andThen (nth col)
+        end;
+
+let setPoint : Point -> a -> List (List a) -> List (List a) =
+    \pt -> \value -> \grid ->
+        match pt with
+        | Point row col -> modifyNth row (modifyNth col (\_ -> value)) grid
+        end;
+
+type PointDistance = PointDistance Point int int;
+
+type BfsState = BfsState (Queue PointDistance) (List (List (Option int)));
+
+let bfs : Grid -> List (List (Option int)) =
+    \grid ->
+        match grid with
+        | Grid _ goal cells ->
+            let queue = push (PointDistance goal 0 0) empty;
+            let distances = list.map (list.map (\_ -> None)) cells;
+            let state = BfsState queue distances;
+            let maxSteps = (cells |> list.map list.length |> list.sum) * 4 + 1;
+            let step = \state ->
+                match state with
+                | BfsState queue distances ->
+                    match pop queue with
+                    | Empty -> BfsState empty distances
+                    | Popped next queue ->
+                        match next with
+                        | PointDistance point distance limit ->
+                            match getPoint point cells with
+                            | None -> BfsState queue distances
+                            | Some height ->
+                                if height < limit then
+                                    BfsState queue distances
+                                else
+                                    match getPoint point distances with
+                                    | None -> BfsState queue distances
+                                    | Some d ->
+                                        match d with
+                                        | Some _ -> BfsState queue distances
+                                        | None ->
+                                            let distances = setPoint point (Some distance) distances;
+                                            let limit = if height == 0 then 0 else height - 1;
+                                            let queue =
+                                                match point with
+                                                | Point row col ->
+                                                    queue
+                                                    |> push (PointDistance (Point row (col - 1)) (distance + 1) limit)
+                                                    |> push (PointDistance (Point row (col + 1)) (distance + 1) limit)
+                                                    |> push (PointDistance (Point (row - 1) col) (distance + 1) limit)
+                                                    |> push (PointDistance (Point (row + 1) col) (distance + 1) limit)
+                                                end;
+                                            BfsState queue distances
+                                        end
+                                    end
+                            end
+                        end
+                    end
+                end;
+            match ints.iterate maxSteps step state with
+            | BfsState _ distances -> distances
+            end
+        end;
+
+type Input = Input Grid (List (List (Option int)));
+
+let makeInput : string -> Result Input string =
+    \input ->
+        input
+        |> parseInput
+        |> result.map (\grid -> Input grid (bfs grid));
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input grid distances ->
+            match grid with
+            | Grid start _ _ ->
+                match getPoint start distances with
+                | Some distance ->
+                    match distance with
+                    | Some distance -> ints.toString distance
+                    | None -> "no path"
+                    end
+                | None -> "start is out of bounds"
+                end
+            end
+        end;
+
+let pickFromLine : List int -> List (Option int) -> Option int =
+    \heights -> \distances ->
+        heights
+        |> zip (\d -> \h -> if h == 0 then d else None) distances
+        |> list.filterMap (\x -> x)
+        |> list.min;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input grid distances ->
+            match grid with
+            | Grid _ _ cells ->
+                zip pickFromLine cells distances
+                |> list.filterMap (\x -> x)
+                |> list.min
+                |> option.map ints.toString
+                |> option.unwrapOr "nothing is reachable"
+            end
+        end;
+
+export let main : string -> string = util.makeSolution makeInput part1 part2;
