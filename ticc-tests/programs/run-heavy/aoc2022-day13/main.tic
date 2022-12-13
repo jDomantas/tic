@@ -1,0 +1,359 @@
+import ints from "std/int";
+import str from "std/string";
+import list(List, Cons, Nil) from "std/list";
+import (Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import util from "../shared/aoc-utils.tic";
+
+type Values = Empty | Sublist rec rec | Number int rec;
+
+type TestCase = TestCase Values Values;
+
+type GroupState = Paired (List TestCase) | Unpaired Values (List TestCase);
+
+let groupTestCases : List Values -> Result (List TestCase) string =
+    \values ->
+        let step = \state -> \v ->
+            match state with
+            | Paired acc -> Unpaired v acc
+            | Unpaired v2 acc -> Paired (Cons (TestCase v2 v) acc)
+            end;
+        match list.foldl (Paired Nil) step values with
+        | Paired res -> Ok (list.reverse res)
+        | Unpaired _ _ -> Err "odd number of values in input"
+        end;
+
+type Token = TokOpen | TokClose | TokComma | TokNum int | TokErr string;
+
+type TokenizeState = Tokenizing (List Token) | TokenizingNumber int (List Token);
+
+let and : bool -> bool -> bool =
+    \a -> \b -> if a then b else false;
+
+let comma : int = str.charAt 0 ",";
+let open : int = str.charAt 0 "[";
+let close : int = str.charAt 0 "]";
+
+let tokenize : string -> List Token =
+    \line ->
+        let singleChar : int -> Token =
+            \ch ->
+                if ch == comma then
+                        TokComma
+                    else if ch == open then
+                        TokOpen
+                    else if ch == close then
+                        TokClose
+                    else
+                        TokErr "bad token";
+        let step = \state -> \ch ->
+            match state with
+            | Tokenizing tokens ->
+                if and (ch >= 48) (ch < 58) then
+                    TokenizingNumber (ch - 48) tokens
+                else
+                    Tokenizing (Cons (singleChar ch) tokens)
+            | TokenizingNumber acc tokens ->
+                if and (ch >= 48) (ch < 58) then
+                    TokenizingNumber (acc * 10 + (ch - 48)) tokens
+                else
+                    Tokenizing (Cons (singleChar ch) (Cons (TokNum acc) tokens))
+            end;
+        match str.foldChars (Tokenizing Nil) step line with
+        | Tokenizing acc -> list.reverse acc
+        | TokenizingNumber num acc -> list.reverse (Cons (TokNum num) acc)
+        end;
+
+type ParseState = ParseAfterValue (List Values) | ParseBeforeValue bool (List Values) | ParseDone Values | ParseErr string;
+
+let reverse : Values -> Values =
+    let reverse = \fold values -> \acc ->
+        match values with
+        | Empty -> acc
+        | Sublist x xs -> xs (Sublist (x Empty) acc)
+        | Number num xs -> xs (Number num acc)
+        end;
+    \values -> reverse values Empty;
+
+let parseValue : string -> Result Values string =
+    \line ->
+        let step = \state -> \token ->
+            match state with
+            | ParseErr err -> ParseErr err
+            | ParseDone _ -> ParseErr "unexpected extra input"
+            | ParseAfterValue stack ->
+                match token with
+                | TokOpen -> ParseErr "missing comma between values"
+                | TokComma -> ParseBeforeValue false stack
+                | TokClose ->
+                    match stack with
+                    | Nil -> ParseErr "unexpected ']' 1"
+                    | Cons x xs ->
+                        match xs with
+                        | Nil -> ParseDone x
+                        | Cons y ys ->
+                            let y = Sublist x y;
+                            ParseAfterValue (Cons y ys)
+                        end
+                    end
+                | TokNum _ -> ParseErr "missing comma between values"
+                | TokErr err -> ParseErr err
+                end
+            | ParseBeforeValue allowClose stack ->
+                match token with
+                | TokOpen -> ParseBeforeValue true (Cons Empty stack)
+                | TokComma -> ParseErr "unexpected ','"
+                | TokClose ->
+                    if allowClose then
+                        match stack with
+                        | Nil -> ParseErr "unexpected ']' 3"
+                        | Cons x xs ->
+                            match xs with
+                            | Nil -> ParseDone x
+                            | Cons y ys ->
+                                let y = Sublist x y;
+                                ParseAfterValue (Cons y ys)
+                            end
+                        end
+                    else
+                        ParseErr "unexpected ']' 2"
+                | TokNum num ->
+                    match stack with
+                    | Nil -> ParseErr "unexpected number"
+                    | Cons x xs ->
+                        let x = Number num x;
+                        ParseAfterValue (Cons x xs)
+                    end
+                | TokErr err -> ParseErr err
+                end
+            end;
+        match list.foldl (ParseBeforeValue false Nil) step (tokenize line) with
+        | ParseBeforeValue _ _ -> Err "unclosed list"
+        | ParseAfterValue _ -> Err "unclosed list"
+        | ParseDone value -> Ok (reverse value)
+        | ParseErr err -> Err err
+        end;
+
+let parseInput : string -> Result (List TestCase) string =
+    \input ->
+        input
+        |> str.lines
+        |> list.filter (\l -> str.length l > 0)
+        |> list.map parseValue
+        |> list.allOk
+        |> result.andThen groupTestCases;
+
+type Ordering = Less | Equal | Greater;
+
+let reverse : Ordering -> Ordering =
+    \o ->
+        match o with
+        | Less -> Greater
+        | Equal -> Equal
+        | Greater -> Less
+        end;
+
+let compareToNumber : int -> Values -> Ordering =
+    \num -> \values ->
+        let doCmp = \fold values -> \num ->
+            match values with
+            | Empty ->
+                match num with
+                | Some _ -> Greater
+                | None -> Equal
+                end
+            | Number x xs ->
+                match num with
+                | Some num ->
+                    if num < x then
+                        Less
+                    else if num > x then
+                        Greater
+                    else
+                        xs None
+                | None -> Less
+                end
+            | Sublist x xs ->
+                match num with
+                | Some num ->
+                    match x (Some num) with
+                    | Less -> Less
+                    | Greater -> Greater
+                    | Equal -> xs None
+                    end
+                | None -> Less
+                end
+            end;
+        doCmp values (Some num);
+
+type ComparingValues = ComparingValues Values (Values -> Ordering);
+
+let original : ComparingValues -> Values =
+    \cmp ->
+        match cmp with
+        | ComparingValues v _ -> v
+        end;
+
+let comparer : ComparingValues -> Values -> Ordering =
+    \cmp ->
+        match cmp with
+        | ComparingValues _ cmp -> cmp
+        end;
+
+let toComparing : Values -> ComparingValues =
+    \fold values ->
+        let orig =
+            match values with
+            | Empty -> Empty
+            | Sublist a b -> Sublist (original a) (original b)
+            | Number n b -> Number n (original b)
+            end;
+        let cmp = \b ->
+            match values with
+            | Empty ->
+                match b with
+                | Empty -> Equal
+                | Sublist _ _ -> Less
+                | Number _ _ -> Less
+                end
+            | Sublist ax as ->
+                match b with
+                | Empty -> Greater
+                | Sublist bx bs ->
+                    match comparer ax bx with
+                    | Less -> Less
+                    | Greater -> Greater
+                    | Equal -> comparer as bs
+                    end
+                | Number num bs ->
+                    match reverse (compareToNumber num (original ax)) with
+                    | Less -> Less
+                    | Greater -> Greater
+                    | Equal -> comparer as bs
+                    end
+                end
+            | Number num as ->
+                match b with
+                | Empty -> Greater
+                | Number bnum bs ->
+                    if num < bnum then
+                        Less
+                    else if num > bnum then
+                        Greater
+                    else
+                        comparer as bs
+                | Sublist bx bs ->
+                    match compareToNumber num bx with
+                    | Less -> Less
+                    | Greater -> Greater
+                    | Equal -> comparer as bs
+                    end
+                end
+            end;
+        ComparingValues orig cmp;
+
+let compare : Values -> Values -> Ordering =
+    \a -> \b ->
+        comparer (toComparing a) b;
+
+type RangeState = RangeState int (List int);
+
+let range : int -> int -> List int =
+    \start -> \stop ->
+        let step = \state ->
+            match state with
+            | RangeState i acc -> RangeState (i - 1) (Cons i acc)
+            end;
+        let steps = stop - start;
+        match ints.iterate steps step (RangeState (stop - 1) Nil) with
+        | RangeState _ res -> res
+        end;
+
+let zip : (a -> b -> c) -> List a -> List b -> List c =
+    \f -> \fold as -> \bs ->
+        match as with
+        | Nil ->
+            Nil
+        | Cons a as ->
+            match bs with
+            | Nil -> Nil
+            | Cons b bs -> Cons (f a b) (as bs)
+            end
+        end;
+
+let checkTestCase : int -> TestCase -> Option int =
+    \idx -> \tc ->
+        match tc with
+        | TestCase a b ->
+            match compare a b with
+            | Less -> Some idx
+            | Equal -> Some idx
+            | Greater -> None
+            end
+        end;
+
+let part1 : List TestCase -> string =
+    \tests ->
+        tests
+        |> zip checkTestCase (range 1 (list.length tests + 1))
+        |> list.filterMap (\x -> x)
+        |> list.sum
+        |> ints.toString;
+
+type Packet = Normal Values | Divider Values;
+
+let concatAll : List TestCase -> List Values -> List Values =
+    \fold tc -> \acc ->
+        match tc with
+        | Nil -> acc
+        | Cons tc xs ->
+            match tc with
+            | TestCase a b -> xs (Cons a (Cons b acc))
+            end
+        end;
+
+let getDivider : int -> Packet -> Option int =
+    \idx -> \packet ->
+        match packet with
+        | Normal _ -> None
+        | Divider _ -> Some idx
+        end;
+
+let product : List int -> int =
+    \fold list ->
+        match list with
+        | Nil -> 1
+        | Cons x xs -> x * xs
+        end;
+
+let part2 : List TestCase -> string =
+    \tests ->
+        let packets =
+            tests
+            |> (\x -> concatAll x Nil)
+            |> list.map Normal
+            |> Cons (Divider (Sublist (Number 2 Empty) Empty))
+            |> Cons (Divider (Sublist (Number 6 Empty) Empty));
+        packets
+        |> list.sortBy (\a -> \b ->
+            let a =
+                match a with
+                | Normal x -> x
+                | Divider x -> x
+                end;
+            let b =
+                match b with
+                | Normal x -> x
+                | Divider x -> x
+                end;
+            match compare a b with
+            | Less -> true
+            | Equal -> false
+            | Greater -> false
+            end)
+        |> zip getDivider (range 1 (list.length packets + 1))
+        |> list.filterMap (\x -> x)
+        |> product
+        |> ints.toString;
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;
