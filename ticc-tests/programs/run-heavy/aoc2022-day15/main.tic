@@ -1,0 +1,273 @@
+import ints from "std/int";
+import str from "std/string";
+import list(List, Cons, Nil) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import (Option, Some, None) from "std/option";
+import parse(Parse) from "../shared/parse.tic";
+import util from "../shared/aoc-utils.tic";
+
+let offset : int = 1000000000;
+
+type Point = Point int int;
+
+type Sensor = Sensor Point Point;
+
+type Input = Input int (List Sensor);
+
+let parseInput : string -> Result Input string =
+    let parseNumber : Parse int =
+        parse.ok (\x -> offset - x)
+        |> parse.ignore (parse.literal "-")
+        |> parse.apply parse.integer
+        |> parse.or (parse.map (\x -> offset + x) parse.integer);
+    let parseCheckLine : string -> Result int string =
+        \line ->
+            parse.ok (\x -> x)
+            |> parse.ignore (parse.literal "check at y=")
+            |> parse.apply parseNumber
+            |> parse.run line;
+    let parsePoint : Parse Point =
+        parse.ok Point
+        |> parse.ignore (parse.literal "x=")
+        |> parse.apply parseNumber
+        |> parse.ignore (parse.literal ", y=")
+        |> parse.apply parseNumber;
+    let parseSensor : string -> Result Sensor string =
+        \line ->
+            parse.ok Sensor
+            |> parse.ignore (parse.literal "Sensor at ")
+            |> parse.apply parsePoint
+            |> parse.ignore (parse.literal ": closest beacon is at ")
+            |> parse.apply parsePoint
+            |> parse.run line;
+    \input ->
+        match str.lines input with
+        | Nil -> Err "missing check line"
+        | Cons x xs ->
+            Ok Input
+            |> result.apply (parseCheckLine x)
+            |> result.apply (xs
+                |> list.map parseSensor
+                |> list.allOk)
+        end;
+
+let x : Point -> int =
+    \pt ->
+        match pt with
+        | Point x _ -> x
+        end;
+
+let y : Point -> int =
+    \pt ->
+        match pt with
+        | Point _ y -> y
+        end;
+
+let absDiff : int -> int -> int =
+    \a -> \b ->
+        if a > b then
+            a - b
+        else
+            b - a;
+
+type Range = Range int int;
+
+let checkedRange : int -> Sensor -> Option Range =
+    \line -> \sensor ->
+        match sensor with
+        | Sensor at beacon ->
+            let dist = absDiff (x at) (x beacon) + absDiff (y at) (y beacon);
+            let yDist = absDiff (y at) line;
+            if yDist > dist then
+                None
+            else
+                let d = dist - yDist;
+                let x0 = x at - d;
+                let x1 = x at + d + 1;
+                Some (Range x0 x1)
+        end;
+
+let addRange : Range -> List Range -> List Range =
+    \range -> \fold ranges ->
+        match ranges with
+        | Nil -> Cons range Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons x xs
+            | Cons y ys ->
+                match x with
+                | Range xa xb ->
+                    match y with
+                    | Range ya yb ->
+                        if xb < ya then
+                            Cons x (Cons y ys)
+                        else if yb < xa then
+                            Cons y (Cons x ys)
+                        else
+                            let a = ints.min xa ya;
+                            let b = ints.max xb yb;
+                            Cons (Range a b) ys
+                    end
+                end
+            end
+        end;
+
+let collapseRanges : List Range -> List Range =
+    \ranges ->
+        list.foldr addRange Nil ranges;
+
+let beaconInRow : int -> Sensor -> Option int =
+    \line -> \sensor ->
+        match sensor with
+        | Sensor _ pt ->
+            if line == y pt then
+                Some (x pt)
+            else
+                None
+        end;
+
+let distinct : List int -> List int =
+    let add : int -> List int -> List int =
+        \num -> \fold list ->
+            match list with
+            | Nil -> Cons num Nil
+            | Cons x xs ->
+                match xs with
+                | Nil -> Cons x xs
+                | Cons y ys ->
+                    if x < y then
+                        Cons x (Cons y ys)
+                    else if x > y then
+                        Cons y (Cons x ys)
+                    else
+                        Cons x ys
+                end
+            end;
+    list.foldr add Nil;
+
+let rangeLength : Range -> int =
+    \range ->
+        match range with
+        | Range s e -> e - s
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input y sensors ->
+            let obstructions =
+                sensors
+                |> list.filterMap (beaconInRow y)
+                |> distinct
+                |> list.length;
+            sensors
+            |> list.filterMap (checkedRange y)
+            |> collapseRanges
+            |> list.map rangeLength
+            |> list.sum
+            |> (\x -> x - obstructions)
+            |> ints.toString
+        end;
+
+type Square = Square Range Range;
+
+let transformedSquare : Sensor -> Square =
+    \sensor ->
+        match sensor with
+        | Sensor at beacon ->
+            let dist = absDiff (x at) (x beacon) + absDiff (y at) (y beacon);
+            let xx = offset + x at - y at;
+            let yy = offset + x at + y at;
+            let xr = Range (xx - dist) (xx + dist + 1);
+            let yr = Range (yy - dist) (yy + dist + 1);
+            Square xr yr
+        end;
+
+let flatMap : (a -> List b) -> List a -> List b =
+    \f -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs -> list.concat (f x) xs
+        end;
+
+let findGapAtRow : int -> List Square -> Option int =
+    \row -> \squares ->
+        let squareRange = \square ->
+            match square with
+            | Square xr yr ->
+                match yr with
+                | Range a b ->
+                    if a <= row then
+                        if row < b then
+                            Some xr
+                        else
+                            None
+                    else
+                        None
+                end
+            end;
+        let ranges =
+            squares
+            |> list.filterMap squareRange
+            |> collapseRanges;
+        match ranges with
+        | Nil -> None
+        | Cons x xs ->
+            match xs with
+            | Nil -> None
+            | Cons _ _ ->
+                match x with
+                | Range _ b -> Some b
+                end
+            end
+        end;
+
+let squareBounds : Square -> List int =
+    \s ->
+        match s with
+        | Square _ ys ->
+            match ys with
+            | Range a b -> Cons (a - b) (Cons b Nil)
+            end
+        end;
+
+let unrotate : Point -> Point =
+    \pt ->
+        match pt with
+        | Point x y ->  
+            let xx = (x + y) / 2 - offset;
+            let yy = (y - x) / 2;
+            Point xx yy
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input row sensors ->
+            let squares = list.map transformedSquare sensors;
+            let interestingRows = flatMap squareBounds squares;
+            let gap =
+                interestingRows
+                |> list.filterMap (\row ->
+                    match findGapAtRow row squares with
+                    | None -> None
+                    | Some x -> Some (Point x row)
+                    end)
+                |> list.map unrotate
+                |> list.filter (\pt -> x pt >= 0)
+                |> list.filter (\pt -> y pt >= 0)
+                |> list.filter (\pt -> x pt <= row * 2)
+                |> list.filter (\pt -> y pt <= row * 2)
+                |> list.head;
+            match gap with
+            | Some pt ->
+                let x = x pt - offset;
+                let y = y pt - offset;
+                let res = x * 4000000 + y;
+                ints.toString res
+            | None ->
+                "no gap found that would be surrounded"
+            end
+        end;
+
+export let main : string -> string = util.makeSolution parseInput part1 part2;
