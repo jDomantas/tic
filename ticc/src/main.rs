@@ -38,6 +38,9 @@ struct Opt {
     /// Interpreter stack limit in megabytes
     #[structopt(long = "stack")]
     stack: Option<usize>,
+    /// Prints out time taken to run the program
+    #[structopt(long)]
+    time: bool,
 }
 
 fn main() {
@@ -109,6 +112,7 @@ fn main() {
             });
         }
     } else if opt.eval {
+        let start = std::time::Instant::now();
         let res = run_with_stack(opt.stack, move || compilation.interpret());
         let result = match res {
             Ok(output) => output,
@@ -124,7 +128,9 @@ fn main() {
                 std::process::exit(1);
             });
         }
+        print_time(opt.time, start);
     } else if let Some(input) = opt.run {
+        let start = std::time::Instant::now();
         let input = if input == Path::new("-") {
             std::io::read_to_string(std::io::stdin()).unwrap_or_else(|e| {
                 eprintln!("error: cannot read stdin");
@@ -153,6 +159,13 @@ fn main() {
                 std::process::exit(1);
             });
         }
+        print_time(opt.time, start);
+    }
+}
+
+fn print_time(enabled: bool, start: std::time::Instant) {
+    if enabled {
+        eprintln!("time: {:.3}s", start.elapsed().as_secs_f64());
     }
 }
 
