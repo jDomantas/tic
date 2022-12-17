@@ -334,7 +334,7 @@ impl Validator {
                         *t
                     }
                     _ => {
-                        panic!("applying param to non-abstracted ty");
+                        panic!("applying type param to non-abstracted ty");
                     }
                 }
             }

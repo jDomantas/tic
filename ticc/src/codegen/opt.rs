@@ -5,6 +5,7 @@ mod merge_match;
 mod move_match;
 mod reduce_apply;
 mod reduce_pi;
+mod saturate;
 
 use std::hash::{Hash, Hasher};
 use ticc_core::ir;
@@ -39,6 +40,7 @@ fn optimize_iteration(
     program: &mut ir::Program,
 ) {
     let optimizations = &[
+        saturate::optimize,
         inline::optimize,
         move_match::optimize,
         inline_simple::optimize,
