@@ -296,7 +296,6 @@ impl Test {
             TestDefKind::RunHeavy { input, output } => {
                 modules.extract_expected_errors(false);
                 modules.extract_expected_outputs(false);
-                add_test_case(false, TestKind::RunHeavy { input: input.clone(), output: output.clone() });
                 add_test_case(true, TestKind::RunHeavy { input, output });
             }
         }
@@ -614,12 +613,19 @@ fn get_heavy_tests(root: &Path, allow_creating_outputs: bool) -> Vec<Test> {
     tests
 }
 
+fn compare_tests(a: &Test, b: &Test) -> std::cmp::Ordering {
+    let a_heavy = a.key.starts_with("run-heavy");
+    let b_heavy = b.key.starts_with("run-heavy");
+    (a_heavy, &a.key).cmp(&(b_heavy, &b.key))
+}
+
 pub fn get_tests(root_path: &Path, allow_creating_outputs: bool) -> Vec<Test> {
     let mut tests = Vec::new();
     tests.extend(get_tests_in_dir(root_path, "compile-pass", TestDefKind::CompilePass));
     tests.extend(get_tests_in_dir(root_path, "compile-fail", TestDefKind::CompileFail));
     tests.extend(get_tests_in_dir(root_path, "run-pass", TestDefKind::Run));
     tests.extend(get_heavy_tests(root_path, allow_creating_outputs));
+    tests.sort_by(compare_tests);
     tests
 }
 
