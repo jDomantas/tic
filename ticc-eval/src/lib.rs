@@ -133,9 +133,284 @@ fn add(env: Rc<dyn EvalEnv>, name: ir::Name, value: Value) -> Rc<dyn EvalEnv> {
     })
 }
 
+fn add_fn(env: Rc<dyn EvalEnv>, name: ir::Name, value: Rc<impl Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Rc<dyn EvalEnv> {
+    add(env, name, Value::Fn(value))
+}
+
 pub fn eval(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
     let env: Rc<dyn EvalEnv> = Rc::new(env);
     eval_impl(&env, expr)
+}
+
+fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value, Trap>> {
+    match expr {
+        ir::Expr::Bool(b) => {
+            let b = *b;
+            Box::new(move |_| Ok(Value::Bool(b)))
+        }
+        ir::Expr::Int(i) => {
+            let i = *i;
+            Box::new(move |_| Ok(Value::Int(i)))
+        }
+        ir::Expr::String(s) => {
+            let s = s.clone();
+            Box::new(move |_| Ok(Value::String(s.clone())))
+        }
+        ir::Expr::Name(n) => {
+            let n = *n;
+            Box::new(move |env| Ok(env.lookup(n)))
+        }
+        ir::Expr::Call(f, args) => {
+            let f = compile_expr(f);
+            let args = args.iter().map(|e| compile_expr(e)).collect::<Vec<_>>();
+            Box::new(move |env| {
+                let f = f(env)?.into_fn();
+                let mut arg_values = Vec::with_capacity(args.len());
+                for a in &args {
+                    arg_values.push(a(env)?);
+                }
+                f(&arg_values)
+            })
+        }
+        ir::Expr::If(c, t, e) => {
+            let c = compile_expr(c);
+            let t = compile_expr(t);
+            let e = compile_expr(e);
+            Box::new(move |env| {
+                if c(env)?.into_bool() {
+                    t(env)
+                } else {
+                    e(env)
+                }
+            })
+        }
+        ir::Expr::Op(a, op, b) => {
+            let a = compile_expr(a);
+            let b = compile_expr(b);
+            match op {
+                ir::Op::Add => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Int(a.wrapping_add(b)))
+                }),
+                ir::Op::Subtract => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Int(a.wrapping_sub(b)))
+                }),
+                ir::Op::Multiply => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Int(a.wrapping_mul(b)))
+                }),
+                ir::Op::Divide => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Int(a.checked_div(b).unwrap_or(0)))
+                }),
+                ir::Op::Modulo => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Int(a.checked_rem(b).unwrap_or(a)))
+                }),
+                ir::Op::Less => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Bool(a < b))
+                }),
+                ir::Op::LessEq => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Bool(a <= b))
+                }),
+                ir::Op::Greater => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Bool(a > b))
+                }),
+                ir::Op::GreaterEq => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Bool(a >= b))
+                }),
+                ir::Op::Equal => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Bool(a == b))
+                }),
+                ir::Op::NotEqual => Box::new(move |env| {
+                    let a = a(env)?.into_int();
+                    let b = b(env)?.into_int();
+                    Ok(Value::Bool(a != b))
+                }),
+            }
+        }
+        ir::Expr::Intrinsic(i, args) => {
+            match i {
+                ir::Intrinsic::StringLen => {
+                    let arg = compile_expr(&args[0]);
+                    Box::new(move |env| {
+                        let arg = arg(env)?.into_string();
+                        Ok(Value::Int(arg.len() as u64))
+                    })
+                }
+                ir::Intrinsic::StringConcat => {
+                    let s1 = compile_expr(&args[0]);
+                    let s2 = compile_expr(&args[2]);
+                    Box::new(move |env| {
+                        let s1 = s1(env)?.into_string();
+                        let s2 = s2(env)?.into_string();
+                        let mut res = String::with_capacity(s1.len() + s2.len());
+                        res.push_str(&s1);
+                        res.push_str(&s2);
+                        Ok(Value::String(res.into()))
+                    })
+                }
+                ir::Intrinsic::StringCharAt => {
+                    let idx = compile_expr(&args[0]);
+                    let s = compile_expr(&args[2]);
+                    Box::new(move |env| {
+                        let idx = idx(env)?.into_int() as usize;
+                        let s = s(env)?.into_string();
+                        let ch = s.as_bytes().get(idx).copied().unwrap_or(0);
+                        Ok(Value::Int(u64::from(ch)))
+                    })
+                }
+                ir::Intrinsic::StringSubstring => {
+                    let start = compile_expr(&args[0]);
+                    let len = compile_expr(&args[1]);
+                    let s = compile_expr(&args[2]);
+                    Box::new(move |env| {
+                        let start = start(env)?.into_int() as usize;
+                        let len = len(env)?.into_int() as usize;
+                        let s = s(env)?.into_string();
+                        let s = s.get(start..).unwrap_or("");
+                        let s = s.get(..len).unwrap_or(s);
+                        Ok(Value::String(s.into()))
+                    })
+                }
+                ir::Intrinsic::StringFromChar => {
+                    let ch = compile_expr(&args[0]);
+                    Box::new(move |env| {
+                        let ch = ch(env)?.into_int() as u8 as char;
+                        Ok(Value::String(ch.to_string().into()))
+                    })
+                }
+                ir::Intrinsic::IntToString => {
+                    let arg = compile_expr(&args[0]);
+                    Box::new(move |env| {
+                        let arg = arg(env)?.into_int();
+                        Ok(Value::String(arg.to_string().into()))
+                    })
+                }
+            }
+        }
+        ir::Expr::Lambda(params, body) => {
+            let params = Rc::new(params.clone());
+            let body = Rc::new(compile_expr(body));
+            Box::new(move |env| {
+                let env = env.clone();
+                let params = params.clone();
+                let body = body.clone();
+                Ok(Value::Fn(Rc::new(move |args| {
+                    assert_eq!(params.len(), args.len());
+                    let mut env = env.clone();
+                    for (p, a) in params.iter().zip(args) {
+                        env = add(env, p.name, a.clone());
+                    }
+                    body(&env)
+                })))
+            })
+        }
+        ir::Expr::Match(x, branches) => {
+            let x = compile_expr(x);
+            let branches = branches
+                .iter()
+                .cloned()
+                .map(|b| {
+                    let compiled = compile_expr(&b.value);
+                    (b, compiled)
+                })
+                .collect::<Vec<_>>();
+            Box::new(move |env| {
+                let (ctor, fields) = x(env)?.into_composite();
+                for (br, body) in &branches {
+                    if br.ctor == ctor {
+                        let mut env = env.clone();
+                        for (b, f) in br.bindings.iter().zip(fields.iter()) {
+                            env = add(env, *b, f.clone());
+                        }
+                        return body(&env);
+                    }
+                }
+                panic!("no branch matched")
+            })
+        }
+        ir::Expr::Construct(n, _, fields) => {
+            let n = *n;
+            let fields = fields.iter().map(|f| compile_expr(f)).collect::<Vec<_>>();
+            Box::new(move |env| {
+                let mut field_values = Vec::with_capacity(fields.len());
+                for f in &fields {
+                    field_values.push(f(env)?);
+                }
+                Ok(Value::Composite(n, field_values.into()))
+            })
+        }
+        ir::Expr::Let(n, v, r) => {
+            let n = *n;
+            let v = compile_expr(v);
+            let r = compile_expr(r);
+            Box::new(move |env| {
+                let v = v(env)?;
+                let env = add(env.clone(), n, v);
+                r(&env)
+            })
+        }
+        ir::Expr::LetRec(n, _, v, r) => {
+            let n = *n;
+            let v = strip_pis(v);
+            if let ir::Expr::Lambda(params, body) = v {
+                // let params = Rc::<[ir::LambdaParam]>::from(params);
+                // let body = Rc::new(*body);
+                // let f = make_rec_fn(env.clone(), *n, params, body);
+                // let env = add(env.clone(), *n, f);
+                // eval_impl(&env, e)
+
+                let params = Rc::new(params.clone());
+                let body = Rc::new(compile_expr(&body));
+                Box::new(move |env| {
+                    let env = env.clone();
+                    let params = params.clone();
+                    let body = body.clone();
+                    let f = Rc::new_cyclic(move |this| {
+                        let this = this.clone();
+                        move |args: &[Value]| -> Result<Value, Trap> {
+                            assert_eq!(params.len(), args.len());
+                            let mut env = env.clone();
+                            for (p, a) in params.iter().zip(args) {
+                                env = add(env, p.name, a.clone());
+                            }
+                            // env = add_fn(env, n, this.upgrade().unwrap());
+                            let _ = this;
+                            // body(&env)
+                            todo!()
+                        }
+                    });
+                    // Ok(Value::Fn(f))
+                    todo!()
+                })
+            } else {
+                panic!("can't eval non-lambda recursive defs");
+            }
+        }
+        ir::Expr::Pi(_, e) |
+        ir::Expr::PiApply(e, _) => compile_expr(e),
+        ir::Expr::Trap(msg, _) => {
+            let msg = msg.clone();
+            Box::new(move |_| Err(Trap { message: msg.clone() }))
+        }
+    }
 }
 
 fn eval_impl(env: &Rc<dyn EvalEnv>, expr: &ir::Expr) -> Result<Value, Trap> {
