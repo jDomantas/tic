@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fmt,
-    rc::Rc,
+    rc::{Rc, Weak},
 };
 use ticc_core::ir;
 
@@ -133,13 +133,11 @@ fn add(env: Rc<dyn EvalEnv>, name: ir::Name, value: Value) -> Rc<dyn EvalEnv> {
     })
 }
 
-fn add_fn(env: Rc<dyn EvalEnv>, name: ir::Name, value: Rc<impl Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Rc<dyn EvalEnv> {
-    add(env, name, Value::Fn(value))
-}
-
 pub fn eval(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
     let env: Rc<dyn EvalEnv> = Rc::new(env);
-    eval_impl(&env, expr)
+    // eval_impl(&env, expr)
+    let compiled = compile_expr(expr);
+    compiled(&env)
 }
 
 fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value, Trap>> {
@@ -256,7 +254,7 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
                 }
                 ir::Intrinsic::StringConcat => {
                     let s1 = compile_expr(&args[0]);
-                    let s2 = compile_expr(&args[2]);
+                    let s2 = compile_expr(&args[1]);
                     Box::new(move |env| {
                         let s1 = s1(env)?.into_string();
                         let s2 = s2(env)?.into_string();
@@ -268,7 +266,7 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
                 }
                 ir::Intrinsic::StringCharAt => {
                     let idx = compile_expr(&args[0]);
-                    let s = compile_expr(&args[2]);
+                    let s = compile_expr(&args[1]);
                     Box::new(move |env| {
                         let idx = idx(env)?.into_int() as usize;
                         let s = s(env)?.into_string();
@@ -371,34 +369,29 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
             let n = *n;
             let v = strip_pis(v);
             if let ir::Expr::Lambda(params, body) = v {
-                // let params = Rc::<[ir::LambdaParam]>::from(params);
-                // let body = Rc::new(*body);
-                // let f = make_rec_fn(env.clone(), *n, params, body);
-                // let env = add(env.clone(), *n, f);
-                // eval_impl(&env, e)
-
                 let params = Rc::new(params.clone());
                 let body = Rc::new(compile_expr(&body));
+                let r = compile_expr(r);
                 Box::new(move |env| {
+                    let original = env.clone();
                     let env = env.clone();
                     let params = params.clone();
                     let body = body.clone();
                     let f = Rc::new_cyclic(move |this| {
-                        let this = this.clone();
+                        let this: Weak<_> = this.clone();
+                        let this: Weak<dyn Fn(&[Value]) -> Result<Value, Trap>> = unsize(this);
                         move |args: &[Value]| -> Result<Value, Trap> {
                             assert_eq!(params.len(), args.len());
                             let mut env = env.clone();
                             for (p, a) in params.iter().zip(args) {
                                 env = add(env, p.name, a.clone());
                             }
-                            // env = add_fn(env, n, this.upgrade().unwrap());
-                            let _ = this;
-                            // body(&env)
-                            todo!()
+                            env = add(env, n, Value::Fn(this.upgrade().unwrap()));
+                            body(&env)
                         }
                     });
-                    // Ok(Value::Fn(f))
-                    todo!()
+                    let env = add(original, n, Value::Fn(f));
+                    r(&env)
                 })
             } else {
                 panic!("can't eval non-lambda recursive defs");
@@ -411,6 +404,10 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
             Box::new(move |_| Err(Trap { message: msg.clone() }))
         }
     }
+}
+
+fn unsize(f: Weak<impl Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Weak<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static> {
+    f
 }
 
 fn eval_impl(env: &Rc<dyn EvalEnv>, expr: &ir::Expr) -> Result<Value, Trap> {
@@ -553,15 +550,28 @@ fn make_rec_fn(
     params: Rc<[ir::LambdaParam]>,
     body: Rc<ir::Expr>,
 ) -> Value {
-    Value::Fn(Rc::new(move |args| {
-        let base_env = env.clone();
-        assert_eq!(params.len(), args.len());
-        let mut env = env.clone();
-        for (p, a) in params.iter().zip(args) {
-            env = add(env, p.name, a.clone());
+    // Value::Fn(Rc::new(move |args| {
+    //     let base_env = env.clone();
+    //     assert_eq!(params.len(), args.len());
+    //     let mut env = env.clone();
+    //     for (p, a) in params.iter().zip(args) {
+    //         env = add(env, p.name, a.clone());
+    //     }
+    //     env = add(env, name, make_rec_fn(base_env, name, params.clone(), body.clone()));
+    //     eval_impl(&env, &body)
+    // }))
+    Value::Fn(Rc::new_cyclic(move |this| {
+        let this: Weak<_> = this.clone();
+        let this: Weak<dyn Fn(&[Value]) -> Result<Value, Trap>> = unsize(this);
+        move |args: &[Value]| -> Result<Value, Trap> {
+            assert_eq!(params.len(), args.len());
+            let mut env = env.clone();
+            for (p, a) in params.iter().zip(args) {
+                env = add(env, p.name, a.clone());
+            }
+            env = add(env, name, Value::Fn(this.upgrade().unwrap()));
+            eval_impl(&env, &body)
         }
-        env = add(env, name, make_rec_fn(base_env, name, params.clone(), body.clone()));
-        eval_impl(&env, &body)
     }))
 }
 
