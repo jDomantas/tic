@@ -160,15 +160,50 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
         }
         ir::Expr::Call(f, args) => {
             let f = compile_expr(f);
-            let args = args.iter().map(|e| compile_expr(e)).collect::<Vec<_>>();
-            Box::new(move |env| {
-                let f = f(env)?.into_fn();
-                let mut arg_values = Vec::with_capacity(args.len());
-                for a in &args {
-                    arg_values.push(a(env)?);
+            match args.len() {
+                0 => Box::new(move |env| f(env)?.into_fn()(&[])),
+                1 => {
+                    let arg = compile_expr(&args[0]);
+                    Box::new(move |env| {
+                        let f = f(env)?.into_fn();
+                        let arg = arg(env)?;
+                        f(&[arg])
+                    })
                 }
-                f(&arg_values)
-            })
+                2 => {
+                    let arg1 = compile_expr(&args[0]);
+                    let arg2 = compile_expr(&args[1]);
+                    Box::new(move |env| {
+                        let f = f(env)?.into_fn();
+                        let arg1 = arg1(env)?;
+                        let arg2 = arg2(env)?;
+                        f(&[arg1, arg2])
+                    })
+                }
+                3 => {
+                    let arg1 = compile_expr(&args[0]);
+                    let arg2 = compile_expr(&args[1]);
+                    let arg3 = compile_expr(&args[2]);
+                    Box::new(move |env| {
+                        let f = f(env)?.into_fn();
+                        let arg1 = arg1(env)?;
+                        let arg2 = arg2(env)?;
+                        let arg3 = arg3(env)?;
+                        f(&[arg1, arg2, arg3])
+                    })
+                }
+                _ => {
+                    let args = args.iter().map(|e| compile_expr(e)).collect::<Vec<_>>();
+                    Box::new(move |env| {
+                        let f = f(env)?.into_fn();
+                        let mut arg_values = Vec::with_capacity(args.len());
+                        for a in &args {
+                            arg_values.push(a(env)?);
+                        }
+                        f(&arg_values)
+                    })
+                }
+            }
         }
         ir::Expr::If(c, t, e) => {
             let c = compile_expr(c);
