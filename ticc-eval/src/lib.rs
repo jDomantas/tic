@@ -140,44 +140,210 @@ pub fn eval(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
     compiled(&env)
 }
 
-fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value, Trap>> {
+trait Subvalue: 'static {
+    fn from_int(x: u64) -> Self;
+    fn from_bool(x: bool) -> Self;
+    fn from_string(x: Rc<str>) -> Self;
+    fn from_composite(tag: ir::Name, fields: Rc<[Value]>) -> Self;
+    fn from_fn(f: Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Self;
+    fn from_value(v: Value) -> Self;
+}
+
+impl Subvalue for bool {
+    fn from_int(_: u64) -> Self {
+        panic!("value is not a bool")
+    }
+
+    fn from_bool(x: bool) -> Self {
+        x
+    }
+
+    fn from_string(_: Rc<str>) -> Self {
+        panic!("value is not a bool")
+    }
+
+    fn from_composite(_: ir::Name, _: Rc<[Value]>) -> Self {
+        panic!("value is not a bool")
+    }
+
+    fn from_fn(_: Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Self {
+        panic!("value is not a bool")
+    }
+
+    fn from_value(v: Value) -> Self {
+        v.into_bool()
+    }
+}
+
+impl Subvalue for u64 {
+    fn from_int(x: u64) -> Self {
+        x
+    }
+
+    fn from_bool(_: bool) -> Self {
+        panic!("value is not an int")
+    }
+
+    fn from_string(_: Rc<str>) -> Self {
+        panic!("value is not an int")
+    }
+
+    fn from_composite(_: ir::Name, _: Rc<[Value]>) -> Self {
+        panic!("value is not an int")
+    }
+
+    fn from_fn(_: Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Self {
+        panic!("value is not an int")
+    }
+
+    fn from_value(v: Value) -> Self {
+        v.into_int()
+    }
+}
+
+impl Subvalue for Rc<str> {
+    fn from_int(_: u64) -> Self {
+        panic!("value is not a string")
+    }
+
+    fn from_bool(_: bool) -> Self {
+        panic!("value is not a string")
+    }
+
+    fn from_string(x: Rc<str>) -> Self {
+        x
+    }
+
+    fn from_composite(_: ir::Name, _: Rc<[Value]>) -> Self {
+        panic!("value is not a string")
+    }
+
+    fn from_fn(_: Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Self {
+        panic!("value is not a string")
+    }
+
+    fn from_value(v: Value) -> Self {
+        v.into_string()
+    }
+}
+
+impl Subvalue for (ir::Name, Rc<[Value]>) {
+    fn from_int(_: u64) -> Self {
+        panic!("value is not a composite")
+    }
+
+    fn from_bool(_: bool) -> Self {
+        panic!("value is not a composite")
+    }
+
+    fn from_string(_: Rc<str>) -> Self {
+        panic!("value is not a composite")
+    }
+
+    fn from_composite(tag: ir::Name, fields: Rc<[Value]>) -> Self {
+        (tag, fields)
+    }
+
+    fn from_fn(_: Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Self {
+        panic!("value is not a composite")
+    }
+
+    fn from_value(v: Value) -> Self {
+        v.into_composite()
+    }
+}
+
+impl Subvalue for Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static> {
+    fn from_int(_: u64) -> Self {
+        panic!("value is not a composite")
+    }
+
+    fn from_bool(_: bool) -> Self {
+        panic!("value is not a composite")
+    }
+
+    fn from_string(_: Rc<str>) -> Self {
+        panic!("value is not a composite")
+    }
+
+    fn from_composite(_: ir::Name, _: Rc<[Value]>) -> Self {
+        panic!("value is not a composite")
+    }
+
+    fn from_fn(f: Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Self {
+        f
+    }
+
+    fn from_value(v: Value) -> Self {
+        v.into_fn()
+    }
+}
+
+impl Subvalue for Value {
+    fn from_int(x: u64) -> Self {
+        Value::Int(x)
+    }
+
+    fn from_bool(x: bool) -> Self {
+        Value::Bool(x)
+    }
+
+    fn from_string(x: Rc<str>) -> Self {
+        Value::String(x)
+    }
+
+    fn from_composite(tag: ir::Name, fields: Rc<[Value]>) -> Self {
+        Value::Composite(tag, fields)
+    }
+
+    fn from_fn(f: Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Self {
+        Value::Fn(f)
+    }
+
+    fn from_value(v: Value) -> Self {
+        v
+    }
+}
+
+
+fn compile_expr<T: Subvalue>(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<T, Trap>> {
     match expr {
         ir::Expr::Bool(b) => {
             let b = *b;
-            Box::new(move |_| Ok(Value::Bool(b)))
+            Box::new(move |_| Ok(T::from_bool(b)))
         }
         ir::Expr::Int(i) => {
             let i = *i;
-            Box::new(move |_| Ok(Value::Int(i)))
+            Box::new(move |_| Ok(T::from_int(i)))
         }
         ir::Expr::String(s) => {
             let s = s.clone();
-            Box::new(move |_| Ok(Value::String(s.clone())))
+            Box::new(move |_| Ok(T::from_string(s.clone())))
         }
         ir::Expr::Name(n) => {
             let n = *n;
-            Box::new(move |env| Ok(env.lookup(n)))
+            Box::new(move |env| Ok(T::from_value(env.lookup(n))))
         }
         ir::Expr::Call(f, args) => {
-            let f = compile_expr(f);
+            let f = compile_expr::<Rc<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static>>(f);
             match args.len() {
-                0 => Box::new(move |env| f(env)?.into_fn()(&[])),
+                0 => Box::new(move |env| Ok(T::from_value(f(env)?(&[])?))),
                 1 => {
                     let arg = compile_expr(&args[0]);
                     Box::new(move |env| {
-                        let f = f(env)?.into_fn();
+                        let f = f(env)?;
                         let arg = arg(env)?;
-                        f(&[arg])
+                        Ok(T::from_value(f(&[arg])?))
                     })
                 }
                 2 => {
                     let arg1 = compile_expr(&args[0]);
                     let arg2 = compile_expr(&args[1]);
                     Box::new(move |env| {
-                        let f = f(env)?.into_fn();
+                        let f = f(env)?;
                         let arg1 = arg1(env)?;
                         let arg2 = arg2(env)?;
-                        f(&[arg1, arg2])
+                        Ok(T::from_value(f(&[arg1, arg2])?))
                     })
                 }
                 3 => {
@@ -185,22 +351,22 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
                     let arg2 = compile_expr(&args[1]);
                     let arg3 = compile_expr(&args[2]);
                     Box::new(move |env| {
-                        let f = f(env)?.into_fn();
+                        let f = f(env)?;
                         let arg1 = arg1(env)?;
                         let arg2 = arg2(env)?;
                         let arg3 = arg3(env)?;
-                        f(&[arg1, arg2, arg3])
+                        Ok(T::from_value(f(&[arg1, arg2, arg3])?))
                     })
                 }
                 _ => {
                     let args = args.iter().map(|e| compile_expr(e)).collect::<Vec<_>>();
                     Box::new(move |env| {
-                        let f = f(env)?.into_fn();
+                        let f = f(env)?;
                         let mut arg_values = Vec::with_capacity(args.len());
                         for a in &args {
                             arg_values.push(a(env)?);
                         }
-                        f(&arg_values)
+                        Ok(T::from_value(f(&arg_values)?))
                     })
                 }
             }
@@ -210,7 +376,7 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
             let t = compile_expr(t);
             let e = compile_expr(e);
             Box::new(move |env| {
-                if c(env)?.into_bool() {
+                if c(env)? {
                     t(env)
                 } else {
                     e(env)
@@ -218,122 +384,122 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
             })
         }
         ir::Expr::Op(a, op, b) => {
-            let a = compile_expr(a);
-            let b = compile_expr(b);
+            let a = compile_expr::<u64>(a);
+            let b = compile_expr::<u64>(b);
             match op {
                 ir::Op::Add => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.wrapping_add(b)))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_int(a.wrapping_add(b)))
                 }),
                 ir::Op::Subtract => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.wrapping_sub(b)))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_int(a.wrapping_sub(b)))
                 }),
                 ir::Op::Multiply => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.wrapping_mul(b)))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_int(a.wrapping_mul(b)))
                 }),
                 ir::Op::Divide => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.checked_div(b).unwrap_or(0)))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_int(a.checked_div(b).unwrap_or(0)))
                 }),
                 ir::Op::Modulo => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.checked_rem(b).unwrap_or(a)))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_int(a.checked_rem(b).unwrap_or(a)))
                 }),
                 ir::Op::Less => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a < b))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_bool(a < b))
                 }),
                 ir::Op::LessEq => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a <= b))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_bool(a <= b))
                 }),
                 ir::Op::Greater => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a > b))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_bool(a > b))
                 }),
                 ir::Op::GreaterEq => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a >= b))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_bool(a >= b))
                 }),
                 ir::Op::Equal => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a == b))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_bool(a == b))
                 }),
                 ir::Op::NotEqual => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a != b))
+                    let a = a(env)?;
+                    let b = b(env)?;
+                    Ok(T::from_bool(a != b))
                 }),
             }
         }
         ir::Expr::Intrinsic(i, args) => {
             match i {
                 ir::Intrinsic::StringLen => {
-                    let arg = compile_expr(&args[0]);
+                    let arg = compile_expr::<Rc<str>>(&args[0]);
                     Box::new(move |env| {
-                        let arg = arg(env)?.into_string();
-                        Ok(Value::Int(arg.len() as u64))
+                        let arg = arg(env)?;
+                        Ok(T::from_int(arg.len() as u64))
                     })
                 }
                 ir::Intrinsic::StringConcat => {
-                    let s1 = compile_expr(&args[0]);
-                    let s2 = compile_expr(&args[1]);
+                    let s1 = compile_expr::<Rc<str>>(&args[0]);
+                    let s2 = compile_expr::<Rc<str>>(&args[1]);
                     Box::new(move |env| {
-                        let s1 = s1(env)?.into_string();
-                        let s2 = s2(env)?.into_string();
+                        let s1 = s1(env)?;
+                        let s2 = s2(env)?;
                         let mut res = String::with_capacity(s1.len() + s2.len());
                         res.push_str(&s1);
                         res.push_str(&s2);
-                        Ok(Value::String(res.into()))
+                        Ok(T::from_string(res.into()))
                     })
                 }
                 ir::Intrinsic::StringCharAt => {
-                    let idx = compile_expr(&args[0]);
-                    let s = compile_expr(&args[1]);
+                    let idx = compile_expr::<u64>(&args[0]);
+                    let s = compile_expr::<Rc<str>>(&args[1]);
                     Box::new(move |env| {
-                        let idx = idx(env)?.into_int() as usize;
-                        let s = s(env)?.into_string();
+                        let idx = idx(env)? as usize;
+                        let s = s(env)?;
                         let ch = s.as_bytes().get(idx).copied().unwrap_or(0);
-                        Ok(Value::Int(u64::from(ch)))
+                        Ok(T::from_int(u64::from(ch)))
                     })
                 }
                 ir::Intrinsic::StringSubstring => {
-                    let start = compile_expr(&args[0]);
-                    let len = compile_expr(&args[1]);
-                    let s = compile_expr(&args[2]);
+                    let start = compile_expr::<u64>(&args[0]);
+                    let len = compile_expr::<u64>(&args[1]);
+                    let s = compile_expr::<Rc<str>>(&args[2]);
                     Box::new(move |env| {
-                        let start = start(env)?.into_int() as usize;
-                        let len = len(env)?.into_int() as usize;
-                        let s = s(env)?.into_string();
+                        let start = start(env)? as usize;
+                        let len = len(env)? as usize;
+                        let s = s(env)?;
                         let s = s.get(start..).unwrap_or("");
                         let s = s.get(..len).unwrap_or(s);
-                        Ok(Value::String(s.into()))
+                        Ok(T::from_string(s.into()))
                     })
                 }
                 ir::Intrinsic::StringFromChar => {
-                    let ch = compile_expr(&args[0]);
+                    let ch = compile_expr::<u64>(&args[0]);
                     Box::new(move |env| {
-                        let ch = ch(env)?.into_int() as u8 as char;
-                        Ok(Value::String(ch.to_string().into()))
+                        let ch = ch(env)? as u8 as char;
+                        Ok(T::from_string(ch.to_string().into()))
                     })
                 }
                 ir::Intrinsic::IntToString => {
-                    let arg = compile_expr(&args[0]);
+                    let arg = compile_expr::<u64>(&args[0]);
                     Box::new(move |env| {
-                        let arg = arg(env)?.into_int();
-                        Ok(Value::String(arg.to_string().into()))
+                        let arg = arg(env)?;
+                        Ok(T::from_string(arg.to_string().into()))
                     })
                 }
             }
@@ -345,7 +511,7 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
                 let env = env.clone();
                 let params = params.clone();
                 let body = body.clone();
-                Ok(Value::Fn(Rc::new(move |args| {
+                Ok(T::from_fn(Rc::new(move |args| {
                     assert_eq!(params.len(), args.len());
                     let mut env = env.clone();
                     for (p, a) in params.iter().zip(args) {
@@ -366,7 +532,7 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
                 })
                 .collect::<Vec<_>>();
             Box::new(move |env| {
-                let (ctor, fields) = x(env)?.into_composite();
+                let (ctor, fields) = x(env)?;
                 for (br, body) in &branches {
                     if br.ctor == ctor {
                         let mut env = env.clone();
@@ -387,7 +553,7 @@ fn compile_expr(expr: &ir::Expr) -> Box<dyn Fn(&Rc<dyn EvalEnv>) -> Result<Value
                 for f in &fields {
                     field_values.push(f(env)?);
                 }
-                Ok(Value::Composite(n, field_values.into()))
+                Ok(T::from_composite(n, field_values.into()))
             })
         }
         ir::Expr::Let(n, v, r) => {
