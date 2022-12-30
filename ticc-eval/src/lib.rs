@@ -14,14 +14,18 @@ pub enum Value {
     Fn(Function),
 }
 
-type Callable = dyn Fn(&mut CompactEnv, &[Value]) -> Result<Value, Trap>;
+struct TrapPanic {
+    trap: Trap,
+}
+
+type Callable = dyn Fn(&mut CompactEnv, &[Value]) -> Value;
 
 #[derive(Clone)]
 pub struct Function(Rc<Callable>);
 
 impl Function {
     pub fn call(&self, args: &[Value]) -> Result<Value, Trap> {
-        (self.0)(&mut CompactEnv::default(), args)
+        recover_trap(|| (self.0)(&mut CompactEnv::default(), args))
     }
 }
 
@@ -164,6 +168,18 @@ impl EnvResolver {
     }
 }
 
+fn recover_trap(f: impl FnOnce() -> Value) -> Result<Value, Trap> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(x) => Ok(x),
+        Err(err) => {
+            match err.downcast::<TrapPanic>() {
+                Ok(trap) => Err(trap.trap),
+                Err(other) => std::panic::resume_unwind(other),
+            }
+        }
+    }
+}
+
 pub fn eval(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
     let mut compact_env = CompactEnv::default();
     let mut resolver = EnvResolver::default();
@@ -173,38 +189,38 @@ pub fn eval(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
     }
     let compiled = compile_expr(expr, &mut resolver);
     assert_eq!(resolver.stack.len(), env.values.len());
-    let res = compiled(&mut compact_env);
+    let res = recover_trap(|| compiled(&mut compact_env));
     assert_eq!(compact_env.names.len(), env.values.len());
     res
 }
 
-fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut CompactEnv) -> Result<Value, Trap>> {
+fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut CompactEnv) -> Value> {
     match expr {
         ir::Expr::Bool(b) => {
             let b = *b;
-            Box::new(move |_| Ok(Value::Bool(b)))
+            Box::new(move |_| Value::Bool(b))
         }
         ir::Expr::Int(i) => {
             let i = *i;
-            Box::new(move |_| Ok(Value::Int(i)))
+            Box::new(move |_| Value::Int(i))
         }
         ir::Expr::String(s) => {
             let s = s.clone();
-            Box::new(move |_| Ok(Value::String(s.clone())))
+            Box::new(move |_| Value::String(s.clone()))
         }
         ir::Expr::Name(n) => {
             let lookup = env.lookup(*n);
-            Box::new(move |env| Ok(env.lookup(lookup)))
+            Box::new(move |env| env.lookup(lookup))
         }
         ir::Expr::Call(f, args) => {
             let f = compile_expr(f, env);
             match args.len() {
-                0 => Box::new(move |env| f(env)?.into_fn()(env, &[])),
+                0 => Box::new(move |env| f(env).into_fn()(env, &[])),
                 1 => {
                     let arg = compile_expr(&args[0], env);
                     Box::new(move |env| {
-                        let f = f(env)?.into_fn();
-                        let arg = arg(env)?;
+                        let f = f(env).into_fn();
+                        let arg = arg(env);
                         f(env, &[arg])
                     })
                 }
@@ -212,9 +228,9 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     let arg1 = compile_expr(&args[0], env);
                     let arg2 = compile_expr(&args[1], env);
                     Box::new(move |env| {
-                        let f = f(env)?.into_fn();
-                        let arg1 = arg1(env)?;
-                        let arg2 = arg2(env)?;
+                        let f = f(env).into_fn();
+                        let arg1 = arg1(env);
+                        let arg2 = arg2(env);
                         f(env, &[arg1, arg2])
                     })
                 }
@@ -223,20 +239,20 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     let arg2 = compile_expr(&args[1], env);
                     let arg3 = compile_expr(&args[2], env);
                     Box::new(move |env| {
-                        let f = f(env)?.into_fn();
-                        let arg1 = arg1(env)?;
-                        let arg2 = arg2(env)?;
-                        let arg3 = arg3(env)?;
+                        let f = f(env).into_fn();
+                        let arg1 = arg1(env);
+                        let arg2 = arg2(env);
+                        let arg3 = arg3(env);
                         f(env, &[arg1, arg2, arg3])
                     })
                 }
                 _ => {
                     let args = args.iter().map(|e| compile_expr(e, env)).collect::<Vec<_>>();
                     Box::new(move |env| {
-                        let f = f(env)?.into_fn();
+                        let f = f(env).into_fn();
                         let mut arg_values = Vec::with_capacity(args.len());
                         for a in &args {
-                            arg_values.push(a(env)?);
+                            arg_values.push(a(env));
                         }
                         f(env, &arg_values)
                     })
@@ -248,7 +264,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
             let t = compile_expr(t, env);
             let e = compile_expr(e, env);
             Box::new(move |env| {
-                if c(env)?.into_bool() {
+                if c(env).into_bool() {
                     t(env)
                 } else {
                     e(env)
@@ -260,59 +276,59 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
             let b = compile_expr(b, env);
             match op {
                 ir::Op::Add => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.wrapping_add(b)))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Int(a.wrapping_add(b))
                 }),
                 ir::Op::Subtract => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.wrapping_sub(b)))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Int(a.wrapping_sub(b))
                 }),
                 ir::Op::Multiply => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.wrapping_mul(b)))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Int(a.wrapping_mul(b))
                 }),
                 ir::Op::Divide => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.checked_div(b).unwrap_or(0)))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Int(a.checked_div(b).unwrap_or(0))
                 }),
                 ir::Op::Modulo => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Int(a.checked_rem(b).unwrap_or(a)))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Int(a.checked_rem(b).unwrap_or(a))
                 }),
                 ir::Op::Less => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a < b))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Bool(a < b)
                 }),
                 ir::Op::LessEq => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a <= b))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Bool(a <= b)
                 }),
                 ir::Op::Greater => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a > b))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Bool(a > b)
                 }),
                 ir::Op::GreaterEq => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a >= b))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Bool(a >= b)
                 }),
                 ir::Op::Equal => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a == b))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Bool(a == b)
                 }),
                 ir::Op::NotEqual => Box::new(move |env| {
-                    let a = a(env)?.into_int();
-                    let b = b(env)?.into_int();
-                    Ok(Value::Bool(a != b))
+                    let a = a(env).into_int();
+                    let b = b(env).into_int();
+                    Value::Bool(a != b)
                 }),
             }
         }
@@ -321,30 +337,30 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                 ir::Intrinsic::StringLen => {
                     let arg = compile_expr(&args[0], env);
                     Box::new(move |env| {
-                        let arg = arg(env)?.into_string();
-                        Ok(Value::Int(arg.len() as u64))
+                        let arg = arg(env).into_string();
+                        Value::Int(arg.len() as u64)
                     })
                 }
                 ir::Intrinsic::StringConcat => {
                     let s1 = compile_expr(&args[0], env);
                     let s2 = compile_expr(&args[1], env);
                     Box::new(move |env| {
-                        let s1 = s1(env)?.into_string();
-                        let s2 = s2(env)?.into_string();
+                        let s1 = s1(env).into_string();
+                        let s2 = s2(env).into_string();
                         let mut res = String::with_capacity(s1.len() + s2.len());
                         res.push_str(&s1);
                         res.push_str(&s2);
-                        Ok(Value::String(res.into()))
+                        Value::String(res.into())
                     })
                 }
                 ir::Intrinsic::StringCharAt => {
                     let idx = compile_expr(&args[0], env);
                     let s = compile_expr(&args[1], env);
                     Box::new(move |env| {
-                        let idx = idx(env)?.into_int() as usize;
-                        let s = s(env)?.into_string();
+                        let idx = idx(env).into_int() as usize;
+                        let s = s(env).into_string();
                         let ch = s.as_bytes().get(idx).copied().unwrap_or(0);
-                        Ok(Value::Int(u64::from(ch)))
+                        Value::Int(u64::from(ch))
                     })
                 }
                 ir::Intrinsic::StringSubstring => {
@@ -352,26 +368,26 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     let len = compile_expr(&args[1], env);
                     let s = compile_expr(&args[2], env);
                     Box::new(move |env| {
-                        let start = start(env)?.into_int() as usize;
-                        let len = len(env)?.into_int() as usize;
-                        let s = s(env)?.into_string();
+                        let start = start(env).into_int() as usize;
+                        let len = len(env).into_int() as usize;
+                        let s = s(env).into_string();
                         let s = s.get(start..).unwrap_or("");
                         let s = s.get(..len).unwrap_or(s);
-                        Ok(Value::String(s.into()))
+                        Value::String(s.into())
                     })
                 }
                 ir::Intrinsic::StringFromChar => {
                     let ch = compile_expr(&args[0], env);
                     Box::new(move |env| {
-                        let ch = ch(env)?.into_int() as u8 as char;
-                        Ok(Value::String(ch.to_string().into()))
+                        let ch = ch(env).into_int() as u8 as char;
+                        Value::String(ch.to_string().into())
                     })
                 }
                 ir::Intrinsic::IntToString => {
                     let arg = compile_expr(&args[0], env);
                     Box::new(move |env| {
-                        let arg = arg(env)?.into_int();
-                        Ok(Value::String(arg.to_string().into()))
+                        let arg = arg(env).into_int();
+                        Value::String(arg.to_string().into())
                     })
                 }
             }
@@ -388,7 +404,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
             for param in params {
                 inner_env.add(param.name);
             }
-            let body: Rc<dyn Fn(&mut CompactEnv) -> Result<Value, Trap>> = compile_expr(body, &mut inner_env).into();
+            let body: Rc<dyn Fn(&mut CompactEnv) -> Value> = compile_expr(body, &mut inner_env).into();
             for param in params.iter().rev() {
                 inner_env.remove(param.name);
             }
@@ -400,7 +416,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     .collect::<Vec<_>>()
                     .into();
                 let body = body.clone();
-                Ok(Value::Fn(Function(Rc::new(move |env, args| {
+                Value::Fn(Function(Rc::new(move |env, args| {
                     let prev_frame = env.open_frame();
                     for v in captured_values.iter() {
                         env.add(v.clone());
@@ -417,7 +433,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     }
                     env.pop_frame(prev_frame);
                     res
-                }))))
+                })))
             })
         }
         ir::Expr::Match(x, branches) => {
@@ -437,7 +453,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                 })
                 .collect::<Vec<_>>();
             Box::new(move |env| {
-                let (ctor, fields) = x(env)?.into_composite();
+                let (ctor, fields) = x(env).into_composite();
                 for (br, body) in &branches {
                     if br.ctor == ctor {
                         for f in fields.iter() {
@@ -459,9 +475,9 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
             Box::new(move |env| {
                 let mut field_values = Vec::with_capacity(fields.len());
                 for f in &fields {
-                    field_values.push(f(env)?);
+                    field_values.push(f(env));
                 }
-                Ok(Value::Composite(n, field_values.into()))
+                Value::Composite(n, field_values.into())
             })
         }
         ir::Expr::Let(n, v, r) => {
@@ -471,7 +487,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
             let r = compile_expr(r, env);
             env.remove(n);
             Box::new(move |env| {
-                let v = v(env)?;
+                let v = v(env);
                 env.add(v);
                 let res = r(env);
                 env.remove();
@@ -539,7 +555,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     let f = Rc::new_cyclic(move |this| {
                         let this: Weak<_> = this.clone();
                         let this: Weak<Callable> = unsize(this);
-                        move |env: &mut CompactEnv, args: &[Value]| -> Result<Value, Trap> {
+                        move |env: &mut CompactEnv, args: &[Value]| -> Value {
                             let prev_frame = env.open_frame();
                             for v in captured_values.iter() {
                                 env.add(v.clone());
@@ -575,12 +591,12 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
         ir::Expr::PiApply(e, _) => compile_expr(e, env),
         ir::Expr::Trap(msg, _) => {
             let msg = msg.clone();
-            Box::new(move |_| Err(Trap { message: msg.clone() }))
+            Box::new(move |_| std::panic::panic_any(TrapPanic { trap: Trap { message: msg.clone() } }))
         }
     }
 }
 
-fn unsize(f: Weak<impl Fn(&mut CompactEnv, &[Value]) -> Result<Value, Trap> + 'static>) -> Weak<Callable> {
+fn unsize(f: Weak<impl Fn(&mut CompactEnv, &[Value]) -> Value + 'static>) -> Weak<Callable> {
     f
 }
 
