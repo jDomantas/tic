@@ -60,7 +60,7 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &str) -> Resul
     let Some(Value::Fn(main_fn)) = main_to_run else {
         panic!("main exists but not function value was obtained");
     };
-    match main_fn(&[Value::String(input.into())]) {
+    match main_fn.call(&[Value::String(input.into())]) {
         Ok(Value::String(output)) => Ok(output.as_ref().to_owned()),
         Ok(_) => panic!("main returned non-string"),
         Err(ticc_eval::Trap { message }) => Err(InterpretError::Trap(Trap { message })),
