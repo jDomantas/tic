@@ -14,12 +14,14 @@ pub enum Value {
     Fn(Function),
 }
 
+type Callable = dyn Fn(&mut CompactEnv, &[Value]) -> Result<Value, Trap>;
+
 #[derive(Clone)]
-pub struct Function(Rc<dyn Fn(&[Value]) -> Result<Value, Trap>>);
+pub struct Function(Rc<Callable>);
 
 impl Function {
     pub fn call(&self, args: &[Value]) -> Result<Value, Trap> {
-        (self.0)(args)
+        (self.0)(&mut CompactEnv::default(), args)
     }
 }
 
@@ -75,7 +77,7 @@ impl Value {
         }
     }
 
-    fn into_fn(self) -> Rc<dyn Fn(&[Value]) -> Result<Value, Trap>> {
+    fn into_fn(self) -> Rc<Callable> {
         if let Value::Fn(x) = self {
             x.0
         } else {
@@ -107,30 +109,28 @@ pub struct Trap {
 #[derive(Clone, Copy)]
 struct NameLookup(usize);
 
-// #[derive(Clone, Copy)]
-// struct FramePos(usize);
+#[derive(Clone, Copy)]
+struct FramePos(usize);
 
 #[derive(Default)]
 struct CompactEnv {
     names: Vec<Value>,
-    // frame_start: usize,
+    frame_start: usize,
 }
 
 impl CompactEnv {
-    // fn open_frame(&mut self) -> FramePos {
-    //     let pos = FramePos(self.frame_start);
-    //     self.frame_start = self.names.len();
-    //     pos
-    // }
+    fn open_frame(&mut self) -> FramePos {
+        let pos = FramePos(self.frame_start);
+        self.frame_start = self.names.len();
+        pos
+    }
 
-    // fn pop_frame(&mut self, pos: FramePos) {
-    //     self.frame_start = pos.0;
-    //     assert_eq!(self.names.len(), self.frame_start);
-    // }
+    fn pop_frame(&mut self, pos: FramePos) {
+        self.frame_start = pos.0;
+    }
 
     fn lookup(&self, lookup: NameLookup) -> Value {
-        // self.names[self.frame_start + lookup.0].clone()
-        self.names[lookup.0].clone()
+        self.names[self.frame_start + lookup.0].clone()
     }
 
     fn add(&mut self, value: Value) {
@@ -168,12 +168,14 @@ pub fn eval(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
     let mut compact_env = CompactEnv::default();
     let mut resolver = EnvResolver::default();
     for (&k, v) in &env.values {
-        compact_env.names.push(v.clone());
+        compact_env.add(v.clone());
         resolver.add(k);
     }
     let compiled = compile_expr(expr, &mut resolver);
     assert_eq!(resolver.stack.len(), env.values.len());
-    compiled(&mut compact_env)
+    let res = compiled(&mut compact_env);
+    assert_eq!(compact_env.names.len(), env.values.len());
+    res
 }
 
 fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut CompactEnv) -> Result<Value, Trap>> {
@@ -197,13 +199,13 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
         ir::Expr::Call(f, args) => {
             let f = compile_expr(f, env);
             match args.len() {
-                0 => Box::new(move |env| f(env)?.into_fn()(&[])),
+                0 => Box::new(move |env| f(env)?.into_fn()(env, &[])),
                 1 => {
                     let arg = compile_expr(&args[0], env);
                     Box::new(move |env| {
                         let f = f(env)?.into_fn();
                         let arg = arg(env)?;
-                        f(&[arg])
+                        f(env, &[arg])
                     })
                 }
                 2 => {
@@ -213,7 +215,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                         let f = f(env)?.into_fn();
                         let arg1 = arg1(env)?;
                         let arg2 = arg2(env)?;
-                        f(&[arg1, arg2])
+                        f(env, &[arg1, arg2])
                     })
                 }
                 3 => {
@@ -225,7 +227,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                         let arg1 = arg1(env)?;
                         let arg2 = arg2(env)?;
                         let arg3 = arg3(env)?;
-                        f(&[arg1, arg2, arg3])
+                        f(env, &[arg1, arg2, arg3])
                     })
                 }
                 _ => {
@@ -236,7 +238,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                         for a in &args {
                             arg_values.push(a(env)?);
                         }
-                        f(&arg_values)
+                        f(env, &arg_values)
                     })
                 }
             }
@@ -398,15 +400,23 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     .collect::<Vec<_>>()
                     .into();
                 let body = body.clone();
-                Ok(Value::Fn(Function(Rc::new(move |args| {
-                    let mut inner_env = CompactEnv::default();
+                Ok(Value::Fn(Function(Rc::new(move |env, args| {
+                    let prev_frame = env.open_frame();
                     for v in captured_values.iter() {
-                        inner_env.add(v.clone());
+                        env.add(v.clone());
                     }
                     for arg in args {
-                        inner_env.add(arg.clone());
+                        env.add(arg.clone());
                     }
-                    body(&mut inner_env)
+                    let res = body(env);
+                    for _ in args {
+                        env.remove();
+                    }
+                    for _ in captured_values.iter() {
+                        env.remove();
+                    }
+                    env.pop_frame(prev_frame);
+                    res
                 }))))
             })
         }
@@ -528,18 +538,27 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     let body = body.clone();
                     let f = Rc::new_cyclic(move |this| {
                         let this: Weak<_> = this.clone();
-                        let this: Weak<dyn Fn(&[Value]) -> Result<Value, Trap>> = unsize(this);
-                        move |args: &[Value]| -> Result<Value, Trap> {
-                            let mut inner_env = CompactEnv::default();
+                        let this: Weak<Callable> = unsize(this);
+                        move |env: &mut CompactEnv, args: &[Value]| -> Result<Value, Trap> {
+                            let prev_frame = env.open_frame();
                             for v in captured_values.iter() {
-                                inner_env.add(v.clone());
+                                env.add(v.clone());
                             }
                             for arg in args {
-                                inner_env.add(arg.clone());
+                                env.add(arg.clone());
                             }
                             let this = Value::Fn(Function(this.upgrade().unwrap()));
-                            inner_env.add(this);
-                            body(&mut inner_env)
+                            env.add(this);
+                            let res = body(env);
+                            env.remove();
+                            for _ in args {
+                                env.remove();
+                            }
+                            for _ in captured_values.iter() {
+                                env.remove();
+                            }
+                            env.pop_frame(prev_frame);
+                            res
                         }
                     });
                     env.add(Value::Fn(Function(f)));
@@ -561,7 +580,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
     }
 }
 
-fn unsize(f: Weak<impl Fn(&[Value]) -> Result<Value, Trap> + 'static>) -> Weak<dyn Fn(&[Value]) -> Result<Value, Trap> + 'static> {
+fn unsize(f: Weak<impl Fn(&mut CompactEnv, &[Value]) -> Result<Value, Trap> + 'static>) -> Weak<Callable> {
     f
 }
 
