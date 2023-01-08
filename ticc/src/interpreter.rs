@@ -78,16 +78,16 @@ fn write_value(value: &Value, atom: bool, names: &ir::NameGenerator<'_>, into: &
         Value::String(s) => {
             write!(into, "{:?}", s).unwrap();
         }
-        Value::Composite(ctor, fields) => {
-            if atom && fields.len() > 0 {
+        Value::Composite(tagged) => {
+            if atom && tagged.fields().len() > 0 {
                 into.push('(');
             }
-            into.push_str(names.debug_info(*ctor));
-            for field in fields.iter() {
+            into.push_str(names.debug_info(tagged.tag()));
+            for field in tagged.fields().iter() {
                 into.push(' ');
                 write_value(field, true, names, into);
             }
-            if atom && fields.len() > 0 {
+            if atom && tagged.fields().len() > 0 {
                 into.push(')');
             }
         }

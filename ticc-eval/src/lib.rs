@@ -1,16 +1,19 @@
+mod tagged;
+
 use std::{
     collections::{HashMap, HashSet},
     fmt,
     rc::{Rc, Weak},
 };
 use ticc_core::ir;
+use crate::tagged::Tagged;
 
 #[derive(Clone)]
 pub enum Value {
     Int(u64),
     Bool(bool),
     String(Rc<str>),
-    Composite(ir::Name, Rc<[Value]>),
+    Composite(Tagged),
     Fn(Function),
 }
 
@@ -35,10 +38,10 @@ impl fmt::Debug for Value {
             Value::Int(x) => f.debug_tuple("Int").field(x).finish(),
             Value::Bool(x) => f.debug_tuple("Bool").field(x).finish(),
             Value::String(x) => f.debug_tuple("String").field(x).finish(),
-            Value::Composite(x, xs) => {
+            Value::Composite(v) => {
                 let mut s = f.debug_tuple("Composite");
-                s.field(x);
-                for x in xs.iter() {
+                s.field(&v.tag());
+                for x in v.fields().iter() {
                     s.field(x);
                 }
                 s.finish()
@@ -73,9 +76,9 @@ impl Value {
         }
     }
 
-    fn into_composite(self) -> (ir::Name, Rc<[Value]>) {
-        if let Value::Composite(x, y) = self {
-            (x, y)
+    fn into_composite(self) -> Tagged {
+        if let Value::Composite(x) = self {
+            x
         } else {
             panic!("value is not a composite");
         }
@@ -453,14 +456,15 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                 })
                 .collect::<Vec<_>>();
             Box::new(move |env| {
-                let (ctor, fields) = x(env).into_composite();
+                let tagged = x(env).into_composite();
+                let tag = tagged.tag();
                 for (br, body) in &branches {
-                    if br.ctor == ctor {
-                        for f in fields.iter() {
+                    if br.ctor == tag {
+                        for f in tagged.fields().iter() {
                             env.add(f.clone());
                         }
                         let res = body(env);
-                        for _ in fields.iter() {
+                        for _ in tagged.fields().iter() {
                             env.remove();
                         }
                         return res;
@@ -472,13 +476,58 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
         ir::Expr::Construct(n, _, fields) => {
             let n = *n;
             let fields = fields.iter().map(|f| compile_expr(f, env)).collect::<Vec<_>>();
-            Box::new(move |env| {
-                let mut field_values = Vec::with_capacity(fields.len());
-                for f in &fields {
-                    field_values.push(f(env));
+            match fields.len() {
+                0 => {
+                    Box::new(move |_| Value::Composite(Tagged::from_array(n, [])))
                 }
-                Value::Composite(n, field_values.into())
-            })
+                1 => {
+                    Box::new(move |env| {
+                        let fields = [
+                            fields[0](env),
+                        ];
+                        Value::Composite(Tagged::from_array(n, fields))
+                    })
+                }
+                2 => {
+                    Box::new(move |env| {
+                        let fields = [
+                            fields[0](env),
+                            fields[1](env),
+                        ];
+                        Value::Composite(Tagged::from_array(n, fields))
+                    })
+                }
+                3 => {
+                    Box::new(move |env| {
+                        let fields = [
+                            fields[0](env),
+                            fields[1](env),
+                            fields[2](env),
+                        ];
+                        Value::Composite(Tagged::from_array(n, fields))
+                    })
+                }
+                4 => {
+                    Box::new(move |env| {
+                        let fields = [
+                            fields[0](env),
+                            fields[1](env),
+                            fields[2](env),
+                            fields[3](env),
+                        ];
+                        Value::Composite(Tagged::from_array(n, fields))
+                    })
+                }
+                _ => {
+                    Box::new(move |env| {
+                        let mut field_values = Vec::with_capacity(fields.len());
+                        for f in &fields {
+                            field_values.push(f(env));
+                        }
+                        Value::Composite(Tagged::from_vec(n, field_values))
+                    })
+                }
+            }
         }
         ir::Expr::Let(n, v, r) => {
             let n = *n;
