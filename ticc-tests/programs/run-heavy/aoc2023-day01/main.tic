@@ -1,0 +1,111 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+
+let parseInput : string -> Result (List string) string =
+    \x -> Ok (strings.lines x);
+
+let suffix : int -> string -> string =
+    \idx -> \s ->
+        if idx >= strings.length s then
+            ""
+        else
+            strings.substring idx (strings.length s - idx) s;
+
+type RangeState = RangeState int (List int);
+
+let range : int -> int -> List int =
+    \s -> \e ->
+        if s >= e then
+            Nil
+        else
+            let step = \state ->
+                match state with
+                | RangeState x acc -> RangeState (x + 1) (Cons x acc)
+                end;
+            match ints.iterate (e - s) step (RangeState s Nil) with
+            | RangeState _ res -> list.reverse res
+            end;
+
+let digits : string -> List int =
+    \s ->
+        s
+        |> strings.chars
+        |> list.filter (\x -> x >= 48)
+        |> list.filter (\x -> x < 58)
+        |> list.map (\x -> x - 48);
+
+type Encoding = Encoding string int;
+
+let digitEncodings : List Encoding =
+    Nil
+    |> Cons (Encoding "0" 0)
+    |> Cons (Encoding "1" 1)
+    |> Cons (Encoding "2" 2)
+    |> Cons (Encoding "3" 3)
+    |> Cons (Encoding "4" 4)
+    |> Cons (Encoding "5" 5)
+    |> Cons (Encoding "6" 6)
+    |> Cons (Encoding "7" 7)
+    |> Cons (Encoding "8" 8)
+    |> Cons (Encoding "9" 9)
+    |> Cons (Encoding "zero" 0)
+    |> Cons (Encoding "one" 1)
+    |> Cons (Encoding "two" 2)
+    |> Cons (Encoding "three" 3)
+    |> Cons (Encoding "four" 4)
+    |> Cons (Encoding "five" 5)
+    |> Cons (Encoding "six" 6)
+    |> Cons (Encoding "seven" 7)
+    |> Cons (Encoding "eight" 8)
+    |> Cons (Encoding "nine" 9);
+
+let decodeDigit : string -> Option int =
+    \s ->
+        digitEncodings
+        |> list.filterMap (\e ->
+            match e with
+            | Encoding str digit ->
+                if strings.startsWith str s then
+                    Some digit
+                else
+                    None
+            end)
+        |> list.head;
+
+let digitsFancy : string -> List int =
+    \s ->
+        range 0 (strings.length s)
+        |> list.filterMap (\idx -> decodeDigit (suffix idx s));
+
+let decode : (string -> List int) -> string -> Result int string =
+    \getDigits -> \line ->
+        let f = getDigits line |> list.head;
+        let l = getDigits line |> list.reverse |> list.head;
+        f
+        |> option.map (\x -> \y -> x * 10 + y)
+        |> option.apply l
+        |> result.okOr "no digits in line";
+
+let part1 : List string -> string =
+    \input ->
+        input
+        |> list.map (decode digits)
+        |> list.allOk
+        |> result.map list.sum
+        |> result.map ints.toString
+        |> result.join;
+
+let part2 : List string -> string =
+    \input ->
+        input
+        |> list.map (decode digitsFancy)
+        |> list.allOk
+        |> result.map list.sum
+        |> result.map ints.toString
+        |> result.join;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
