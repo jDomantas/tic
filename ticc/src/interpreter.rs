@@ -67,6 +67,33 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &str) -> Resul
     }
 }
 
+pub(crate) fn eval_int_main(compilation: &mut CompilationUnit) -> Result<u64, InterpretError> {
+    let program = crate::codegen::emit_core(compilation);
+    let mut main = None;
+    for v in program.values.iter().rev() {
+        if v.export_name.as_deref() == Some("main") {
+            match &v.ty {
+                ir::Ty::Int => main = Some(v.name),
+                _ => return Err(InterpretError::InvalidMain),
+            }
+        }
+    }
+    let main = match main {
+        Some(m) => m,
+        None => return Err(InterpretError::NoMain),
+    };
+    let mut e = None;
+    for v in program.values.iter().rev() {
+        if v.name == main {
+            e = Some(v.value.clone());
+        } else if let Some(ee) = e {
+            e = Some(ir::Expr::Let(v.name, Box::new(v.value.clone()), Box::new(ee)));
+        }
+    }
+    let e = e.unwrap();
+    Ok(ticc_eval::eval_int_expr(&e))
+}
+
 fn write_value(value: &Value, atom: bool, names: &ir::NameGenerator<'_>, into: &mut String) {
     match value {
         Value::Int(i) => {

@@ -1,0 +1,4 @@
+import ints from "std/int";
+import (Result, Ok, Err) from "std/result";
+
+export let main : int = match ints.parse "123" with | Ok x -> x | Err _ -> 420 end;

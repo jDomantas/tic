@@ -1,3 +1,5 @@
+mod heap;
+mod rt;
 mod tagged;
 
 use std::{
@@ -7,6 +9,8 @@ use std::{
 };
 use ticc_core::ir;
 use crate::tagged::Tagged;
+
+pub use crate::rt::eval_int_expr;
 
 #[derive(Clone)]
 pub enum Value {
