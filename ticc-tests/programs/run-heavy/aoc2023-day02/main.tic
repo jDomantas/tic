@@ -1,0 +1,147 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import parse(Parse) from "../shared/parse.tic";
+import utils from "../shared/aoc-utils.tic";
+
+type TrimState = TrimStart int | TrimDone int;
+
+let trim : string -> string =
+    let trailingSpaces =
+        \s -> strings.foldChars 0 (\acc -> \c -> if c == 32 then acc + 1 else 0) s;
+    let leadingSpaces =
+        let addChar = \state -> \c ->
+            match state with
+            | TrimStart x -> if c == 32 then TrimStart (x + 1) else TrimDone x
+            | TrimDone x -> TrimDone x
+            end;
+        \s ->
+            match strings.foldChars (TrimStart 0) addChar s with
+            | TrimStart x -> x
+            | TrimDone x -> x
+            end;
+    \s ->
+        let t = trailingSpaces s;
+        let s = strings.substring 0 (strings.length s - t) s;
+        let l = leadingSpaces s;
+        strings.substring l (strings.length s - l) s;
+
+type Sample = Sample int int int;
+
+let add : Sample -> Sample -> Sample =
+    \s1 -> \s2 ->
+        match s1 with
+        | Sample r1 g1 b1 ->
+            match s2 with
+            | Sample r2 g2 b2 -> Sample (r1 + r2) (g1 + g2) (b1 + b2)
+            end
+        end;
+
+type Line = Line int (List Sample);
+
+let parseSingleSample : string -> Result Sample string =
+    let red : Parse Sample =
+        parse.ok (\r -> Sample r 0 0)
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal " red");
+    let green : Parse Sample =
+        parse.ok (\g -> Sample 0 g 0)
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal " green");
+    let blue : Parse Sample =
+        parse.ok (\b -> Sample 0 0 b)
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal " blue");
+    let p = parse.or (parse.or red green) blue;
+    \s -> parse.run (trim s) p;
+
+let parseSample : string -> Result Sample string =
+    \s ->
+        s
+        |> strings.split (strings.charAt 0 ",")
+        |> list.map trim
+        |> list.map parseSingleSample
+        |> list.allOk
+        |> result.map (list.foldl (Sample 0 0 0) add);
+
+let parseSampleList : string -> Result (List Sample) string =
+    \s ->
+        s
+        |> strings.split (strings.charAt 0 ";")
+        |> list.map parseSample
+        |> list.allOk;
+
+let parseLine : string -> Result Line string =
+    \line ->
+        parse.ok Line
+        |> parse.ignore (parse.literal "Game ")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ": ")
+        |> parse.apply (parse.remainder |> parse.andThen parseSampleList)
+        |> parse.run line;
+
+let parseInput : string -> Result (List Line) string =
+    \x ->
+        x
+        |> strings.lines
+        |> list.map parseLine
+        |> list.allOk;
+
+
+let validPart1 : List Sample -> bool =
+    let valid : Sample -> bool =
+        \sample ->
+            match sample with
+            | Sample r g b ->
+                if r > 12 then
+                    false
+                else if g > 13 then
+                    false
+                else
+                    b <= 14
+            end;
+    \samples ->
+        samples
+        |> list.map valid
+        |> list.all;
+
+let part1 : List Line -> string =
+    \input ->
+        input
+        |> list.map (\line ->
+            match line with
+            | Line id samples ->
+                if validPart1 samples then
+                    id
+                else
+                    0
+            end)
+        |> list.sum
+        |> ints.toString;
+
+let union : Sample -> Sample -> Sample =
+    let max = \a -> \b -> if a > b then a else b;
+    \s1 -> \s2 ->
+        match s1 with
+        | Sample r1 g1 b1 ->
+            match s2 with
+            | Sample r2 g2 b2 -> Sample (max r1 r2) (max g1 g2) (max b1 b2)
+            end
+        end;
+
+let part2 : List Line -> string =
+    \input ->
+        input
+        |> list.map (\line ->
+            match line with
+            | Line id samples ->
+                match list.foldl (Sample 0 0 0) union samples with
+                | Sample r g b -> r * g * b
+                end
+            end)
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

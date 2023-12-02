@@ -66,6 +66,7 @@ pub(crate) enum Visibility {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Def {
+    #[allow(dead_code)] // todo: why was this added here?
     pub(crate) module: ModuleKey,
     pub(crate) symbol: Symbol,
     pub(crate) kind: DefKind,
