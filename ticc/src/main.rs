@@ -32,9 +32,9 @@ struct Opt {
     /// Enable optimizations
     #[structopt(long)]
     optimize: bool,
-    /// Verify ir after codegen and optimization passes
+    /// Skip ir verification after codegen and optimization passes
     #[structopt(long)]
-    verify_ir: bool,
+    no_verify: bool,
     /// Interpreter stack limit in megabytes
     #[structopt(long = "stack")]
     stack: Option<usize>,
@@ -54,7 +54,7 @@ fn main() {
     });
 
     let options = ticc::Options {
-        verify: opt.verify_ir,
+        verify: !opt.no_verify,
         optimize: opt.optimize,
     };
 
