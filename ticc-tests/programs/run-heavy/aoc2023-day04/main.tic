@@ -1,0 +1,162 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import parse(Parse) from "../shared/parse.tic";
+import utils from "../shared/aoc-utils.tic";
+
+type Card = Card (List int) (List int);
+
+type Pair a b = Pair a b;
+
+let splitPair : int -> string -> Option (Pair string string) =
+    \sep -> \s ->
+        match strings.split sep s with
+        | Nil -> None
+        | Cons x xs ->
+            match xs with
+            | Nil -> None
+            | Cons y ys ->
+                match ys with
+                | Cons _ _ -> None
+                | Nil -> Some (Pair x y)
+                end
+            end
+        end;
+
+let parseInt : string -> Result int string =
+    \s ->
+        parse.run s parse.integer;
+
+let parseCard : string -> Result Card string =
+    let colon = strings.charAt 0 ":";
+    let pipe = strings.charAt 0 "|";
+    let parseList : string -> Result (List int) string =
+        \s ->
+            s
+            |> strings.split 32
+            |> list.filter (\x -> strings.length x != 0)
+            |> list.map parseInt
+            |> list.allOk;
+    let parseHalves : Pair string string -> Result Card string =
+        \p ->
+            match p with
+            | Pair a b ->
+                Ok Card
+                |> result.apply (parseList a)
+                |> result.apply (parseList b)
+            end;
+    \line ->
+        line
+        |> splitPair colon
+        |> option.map (\p -> match p with | Pair _ x -> x end)
+        |> option.andThen (splitPair pipe)
+        |> result.okOr "bad card"
+        |> result.andThen parseHalves;
+
+let parseInput : string -> Result (List Card) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parseCard
+        |> list.allOk;
+
+let contains : int -> List int -> bool =
+    \v -> \fold xs ->
+        match xs with
+        | Nil -> false
+        | Cons x xs ->
+            if v == x then
+                true
+            else
+                xs
+        end;
+
+let intersection : List int -> List int -> List int =
+    \as -> \fold bs ->
+        match bs with
+        | Nil -> Nil
+        | Cons b bs ->
+            if contains b as then
+                Cons b bs
+            else
+                bs
+        end;
+
+let rawScore : Card -> int =
+    \c ->
+        match c with
+        | Card a b -> list.length (intersection a b)
+        end;
+
+let pow : int -> int -> int =
+    \a -> \p ->
+        ints.iterate p (\x -> x * a) 1;
+
+let join : int -> List string -> string =
+    let go : int -> List string -> string =
+        \s -> \fold l ->
+            match l with
+            | Nil -> ""
+            | Cons x xs -> strings.concat (strings.fromChar s) (strings.concat x xs)
+            end;
+    \s -> \l ->
+        match l with
+        | Nil -> ""
+        | Cons x xs -> strings.concat x (go s xs)
+        end;
+
+let part1 : List Card -> string =
+    \lines ->
+        lines
+        |> list.map rawScore
+        |> list.filter (\x -> x > 0)
+        |> list.map (\x -> pow 2 (x - 1))
+        |> list.sum
+        |> ints.toString;
+
+type ScoreState = ScoreState int (List int);
+
+let addN : int -> int -> List int -> List int =
+    let step : int -> (List int -> List int) -> (List int -> List int) =
+        \d -> \next -> \l ->
+            match l with
+            | Nil -> Cons d (next Nil)
+            | Cons x xs -> Cons (x + d) (next xs)
+            end;
+    \x -> \d -> \l -> ints.iterate x (step d) (\x -> x) l;
+
+let addCard : ScoreState -> int -> ScoreState =
+    \st -> \card ->
+        match st with
+        | ScoreState total counts ->
+            let copies = 1 + (list.head counts |> option.unwrapOr 0);
+            let nextCounts =
+                counts
+                |> list.tail
+                |> option.unwrapOr Nil
+                |> addN card copies;
+            ScoreState (total + copies) nextCounts
+        end;
+
+let finalScore : ScoreState -> int =
+    \st ->
+        match st with
+        | ScoreState x _ -> x
+        end;
+
+let part2 : List Card -> string =
+    \input ->
+        input
+        |> list.map rawScore
+        |> list.foldl (ScoreState 0 Nil) addCard
+        |> finalScore
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
+
+export let test : int =
+    Cons 0 (Cons 0 (Cons 1 (Cons 1 (Cons 0 (Cons 0 Nil)))))
+    |> list.foldl (ScoreState 0 Nil) addCard
+    |> finalScore;
