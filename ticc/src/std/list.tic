@@ -268,3 +268,20 @@ export let sortBy : (a -> a -> bool) -> List a -> List a =
                     end
             end;
     \less -> \list -> sort less list list;
+
+export let join : string -> List string -> string =
+    let go =
+        \sep -> \fold l ->
+            match l with
+            | Nil -> ""
+            | Cons x xs -> i.stringConcat sep (i.stringConcat x xs)
+            end;
+    \sep -> \l ->
+        match l with
+        | Nil -> ""
+        | Cons x xs ->
+            match xs with
+            | Nil -> x
+            | Cons _ _ -> i.stringConcat x (go sep xs)
+            end
+        end;

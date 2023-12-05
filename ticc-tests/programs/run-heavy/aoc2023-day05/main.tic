@@ -1,0 +1,251 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import parse(Parse) from "../shared/parse.tic";
+import utils from "../shared/aoc-utils.tic";
+
+type Range = Range int int;
+type MapEntry = MapEntry Range int;
+type Map = Map (List MapEntry);
+type Input = Input (List int) (List Map);
+
+let endsWith : string -> string -> bool =
+    \suffix -> \s ->
+        let slen = strings.length s;
+        let suflen = strings.length suffix;
+        if suflen > slen then
+            false
+        else
+            strings.equal suffix (strings.substring (slen - suflen) suflen s);
+
+let parseInt : string -> Result int string =
+    \s ->
+        parse.run s parse.integer;
+
+let parseSeedList : string -> Result (List int) string =
+    \s ->
+        parse.ok (\x -> x)
+        |> parse.ignore (parse.literal "seeds: ")
+        |> parse.apply parse.remainder
+        |> parse.andThen (\s -> s |> strings.split 32 |> list.map parseInt |> list.allOk)
+        |> parse.run s;
+
+let addLine : string -> Input -> Result Input string =
+    \line -> \acc ->
+        match acc with
+        | Input seeds maps ->
+            if endsWith "map:" line then
+                Ok (Input seeds (Cons (Map Nil) maps))
+            else if strings.equal line "" then
+                Ok acc
+            else
+                match maps with
+                | Nil -> Err "no map header"
+                | Cons x xs ->
+                    match x with
+                    | Map entries ->
+                        let add =
+                            \s -> \e -> \n ->
+                                Input seeds (Cons (Map (Cons (MapEntry (Range e (e + n)) (s - e)) entries)) xs);
+                        parse.ok add
+                        |> parse.apply parse.integer
+                        |> parse.ignore (parse.literal " ")
+                        |> parse.apply parse.integer
+                        |> parse.ignore (parse.literal " ")
+                        |> parse.apply parse.integer
+                        |> parse.run line
+                    end
+                end
+        end;
+
+let tryFoldR : b -> (a -> b -> Result b e) -> List a -> Result b e =
+    \init -> \f -> \fold l ->
+        match l with
+        | Nil -> Ok init
+        | Cons x xs -> result.andThen (f x) xs
+        end;
+
+let parseInput : string -> Result Input string =
+    \input ->
+        match strings.lines input with
+        | Nil -> Err "no seed list"
+        | Cons header rest ->
+            header
+            |> parseSeedList
+            |> result.map (\s -> Input s Nil)
+            |> result.andThen (\i -> tryFoldR i addLine (list.reverse rest))
+            |> result.map (\i ->
+                match i with
+                | Input seeds maps -> Input seeds (list.reverse maps)
+                end)
+        end;
+
+let inRange : Range -> int -> bool =
+    \r -> \x ->
+        match r with
+        | Range s e ->
+            if x < s then
+                false
+            else
+                x < e
+        end;
+
+let translate : List MapEntry -> int -> int =
+    \fold entries -> \x ->
+        match entries with
+        | Nil -> x
+        | Cons e es ->
+            match e with
+            | MapEntry r d ->
+                if inRange r x then
+                    x + d
+                else
+                    es x
+            end
+        end;
+
+let translate : List Map -> int -> int =
+    \fold maps -> \x ->
+        match maps with
+        | Nil -> x
+        | Cons m ms ->
+            match m with
+            | Map entries ->
+                x
+                |> translate entries
+                |> ms
+            end
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input seeds maps ->
+            seeds
+            |> list.map (translate maps)
+            |> list.min
+            |> option.map ints.toString
+            |> option.unwrapOr "no seeds"
+        end;
+
+type IntoRangesState =
+    | IntoRangesEven (List Range)
+    | IntoRangesOdd (List Range) int;
+
+let intoRanges : List int -> Result (List Range) string =
+    let go = \fold l ->
+        match l with
+        | Nil -> IntoRangesEven Nil
+        | Cons x xs ->
+            match xs with
+            | IntoRangesEven xs -> IntoRangesOdd xs x
+            | IntoRangesOdd xs y ->
+                let r = Range x (x + y);
+                IntoRangesEven (Cons r xs)
+            end
+        end;
+    \l ->
+        match go l with
+        | IntoRangesEven rs -> Ok rs
+        | IntoRangesOdd _ _ -> Err "odd number of items"
+        end;
+
+let id : a -> a = \x -> x;
+
+let flatMap : (a -> List b) -> List a -> List b =
+    let prepender : List b -> (List b -> List b) =
+        \fold l -> \acc ->
+            match l with
+            | Nil -> acc
+            | Cons x xs -> Cons x (xs acc)
+            end;
+    let helper : (a -> List b) -> List a -> (List b -> List b) =
+        \f -> \fold l -> \acc ->
+            match l with
+            | Nil -> acc
+            | Cons x xs -> prepender (f x) (xs acc)
+            end;
+    \f -> \l ->
+        helper f l Nil;
+
+type Translated = Translated (Option Range) (List Range);
+
+let translate : Range -> int -> Range -> Translated =
+    \r1 -> \d -> \r2 ->
+        match r1 with
+        | Range s1 e1 ->
+            match r2 with
+            | Range s2 e2 ->
+                if e2 <= s1 then
+                    Translated None (Cons r2 Nil)
+                else if e1 <= s2 then
+                    Translated None (Cons r2 Nil)
+                else
+                    let before =
+                        if s2 < s1 then
+                            Cons (Range s2 s1)
+                        else
+                            id;
+                    let after =
+                        if e2 > e1 then
+                            Cons (Range e1 e2)
+                        else
+                            id;
+                    let a = d + ints.max s1 s2;
+                    let b = d + ints.min e1 e2;
+                    Translated (Some (Range a b)) (before (after Nil))
+            end
+        end;
+
+let translate : List MapEntry -> Range -> List Range =
+    \fold entries -> \r ->
+        match entries with
+        | Nil -> Cons r Nil
+        | Cons e es ->
+            match e with
+            | MapEntry rr d ->
+                match translate rr d r with
+                | Translated moved rest ->
+                    rest
+                    |> flatMap es
+                    |> (moved |> option.map Cons |> option.unwrapOr id)
+                end
+            end
+        end;
+
+let translate : List Map -> Range -> List Range =
+    \fold maps -> \x ->
+        match maps with
+        | Nil -> Cons x Nil
+        | Cons m ms ->
+            match m with
+            | Map entries ->
+                x
+                |> translate entries
+                |> flatMap ms
+            end
+        end;
+
+let first : Range -> int =
+    \r ->
+        match r with
+        | Range x _ -> x
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input seeds maps ->
+            seeds
+            |> intoRanges
+            |> result.map (flatMap (translate maps))
+            |> result.map (list.map first)
+            |> result.map list.min
+            |> result.andThen (result.okOr "no seeds")
+            |> result.map ints.toString
+            |> result.join
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
