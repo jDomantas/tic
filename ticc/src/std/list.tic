@@ -25,6 +25,13 @@ export let sum : List int -> int =
         | Cons x xs -> x + xs
         end;
 
+export let product : List int -> int =
+    \fold list ->
+        match list with
+        | Nil -> 1
+        | Cons x xs -> x * xs
+        end;
+
 export let any : List bool -> bool =
     \fold list ->
         match list with

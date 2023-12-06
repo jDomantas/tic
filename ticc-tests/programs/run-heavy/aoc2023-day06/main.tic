@@ -1,0 +1,141 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import parse(Parse) from "../shared/parse.tic";
+import utils from "../shared/aoc-utils.tic";
+
+type Entry = Entry int int;
+
+let parseInt : string -> Result int string =
+    \s ->
+        parse.run s parse.integer;
+
+let makeEntries : List int -> List int -> Result (List Entry) string =
+    \fold times -> \distances ->
+        match times with
+        | Nil ->
+            match distances with
+            | Nil -> Ok Nil
+            | Cons _ _ -> Err "more distances than times"
+            end
+        | Cons t ts ->
+            match distances with
+            | Nil -> Err "more times than distances"
+            | Cons d ds -> ts ds |> result.map (Cons (Entry t d))
+            end
+        end;
+
+let fromChars : List int -> string =
+    \fold l ->
+        match l with
+        | Nil -> ""
+        | Cons x xs -> strings.concat (strings.fromChar x) xs
+        end;
+
+let removeSpaces : string -> string =
+    \s ->
+        s
+        |> strings.chars
+        |> (list.filter (\x -> x != 32))
+        |> fromChars;
+
+let parseLine : (string -> string) -> string -> string -> Result (List int) string =
+    \fixKerning -> \prefix -> \line ->
+        parse.ok (\x -> x)
+        |> parse.ignore (parse.literal prefix)
+        |> parse.apply parse.remainder
+        |> parse.run line
+        |> result.map fixKerning
+        |> result.map (strings.split 32)
+        |> result.map (list.filter (\s -> strings.length s > 0))
+        |> result.map (list.map parseInt)
+        |> result.andThen list.allOk;
+
+let parseInput : (string -> string) -> string -> Result (List Entry) string =
+    \fixKerning -> \input ->
+        match strings.lines input with
+        | Nil -> Err "missing times"
+        | Cons times rest ->
+            match rest with
+            | Nil -> Err "missing distances"
+            | Cons distances rest ->
+                match rest with
+                | Cons _ _ -> Err "too many lines"
+                | Nil ->
+                    Ok makeEntries
+                    |> result.apply (parseLine fixKerning "Time:" times)
+                    |> result.apply (parseLine fixKerning "Distance:" distances)
+                    |> result.andThen (\x -> x)
+                end
+            end
+        end;
+
+let distance : Entry -> int =
+    \e ->
+        match e with
+        | Entry _ d -> d
+        end;
+
+let time : Entry -> int =
+    \e ->
+        match e with
+        | Entry t _ -> t
+        end;
+
+type SearchState = SearchState int int;
+
+let binarySearch : int -> int -> (int -> bool) -> int =
+    \lowerBound -> \upperBound -> \check ->
+        if upperBound <= lowerBound then
+            lowerBound
+        else
+            let state = SearchState lowerBound upperBound;
+            let steps =
+                upperBound - lowerBound
+                |> ints.toString
+                |> strings.length
+                |> (\x -> x * 4);
+            let step = \state ->
+                match state with
+                | SearchState l u ->
+                    let mid = (l + u) / 2;
+                    if check mid then
+                        SearchState l mid
+                    else
+                        SearchState (mid + 1) u
+                end;
+            match ints.iterate steps step state with
+            | SearchState x _ -> x
+            end;
+
+let options : Entry -> int =
+    \e ->
+        let min = binarySearch 0 (time e) (\x -> x * (time e - x) > distance e);
+        (time e + 1 - min * 2);
+        -- list.range 0 (time e + 1)
+        -- |> list.map (\x -> x * (time e - x))
+        -- |> list.filter (\x -> x > distance e)
+        -- |> list.length;
+
+let solve : List Entry -> string =
+    \input ->
+        input
+        |> list.map options
+        |> list.product
+        |> ints.toString;
+
+export let main : string -> string =
+    \input ->
+        let makeOutput = \x -> \y ->
+            let a = (strings.concat "part 1: " x);
+            let nl = strings.fromChar 10;
+            let b = (strings.concat "part 2: " y);
+            strings.concat a (strings.concat nl b);
+        Ok makeOutput
+        |> result.apply (parseInput (\x -> x) input |> result.map solve)
+        |> result.apply (parseInput removeSpaces input |> result.map solve)
+        |> result.join;
+
+export let test : int = options (Entry 71530 940200);
