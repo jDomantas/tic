@@ -1,0 +1,181 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import parse(Parse) from "../shared/parse.tic";
+import utils from "../shared/aoc-utils.tic";
+
+let parseCard : Parse int =
+    let c : string -> int -> Parse int =
+        \s -> \x -> parse.ok x |> parse.ignore (parse.literal s);
+    c "2" 2
+    |> parse.or (c "3" 3)
+    |> parse.or (c "4" 4)
+    |> parse.or (c "5" 5)
+    |> parse.or (c "6" 6)
+    |> parse.or (c "7" 7)
+    |> parse.or (c "8" 8)
+    |> parse.or (c "9" 9)
+    |> parse.or (c "T" 10)
+    |> parse.or (c "J" 11)
+    |> parse.or (c "Q" 12)
+    |> parse.or (c "K" 13)
+    |> parse.or (c "A" 14);
+
+type Hand = Hand (List int);
+
+let parseHand : Parse Hand =
+    parse.ok (\a -> \b -> \c -> \d -> \e -> Hand (Cons a (Cons b (Cons c (Cons d (Cons e Nil))))))
+    |> parse.apply parseCard
+    |> parse.apply parseCard
+    |> parse.apply parseCard
+    |> parse.apply parseCard
+    |> parse.apply parseCard;
+
+type Line = Line Hand int;
+
+let parseLine : Parse Line =
+    parse.ok Line
+    |> parse.apply parseHand
+    |> parse.ignore (parse.literal " ")
+    |> parse.apply parse.integer;
+
+let parseInput : string -> Result (List Line) string =
+    \s ->
+        s
+        |> strings.lines
+        |> list.map (\s -> parse.run s parseLine)
+        |> list.allOk;
+
+type ScoredLine = ScoredLine int int;
+
+type Counts = CountsNil | CountsCons int int rec;
+
+let add : int -> Counts -> Counts =
+    let go =
+        \fold counts -> \x ->
+            match counts with
+            | CountsNil ->
+                match x with
+                | Some x -> CountsCons x 1 CountsNil
+                | None -> CountsNil
+                end
+            | CountsCons y yc rest ->
+                match x with
+                | Some x ->
+                    if x == y then
+                        CountsCons y (yc + 1) (rest None)
+                    else
+                        CountsCons y yc (rest (Some x))
+                | None ->
+                    CountsCons y yc (rest None)
+                end
+            end;
+    \x -> \counts -> go counts (Some x);
+
+let counts : Counts -> List int =
+    \fold c ->
+        match c with
+        | CountsNil -> Nil
+        | CountsCons _ x xs -> Cons x xs
+        end;
+
+let cardCounts : List int -> List int =
+    \cards ->
+        cards
+        |> list.foldr add CountsNil
+        |> counts
+        |> list.sortBy (\a -> \b -> a > b);
+
+let topCount : List int -> int =
+    \l ->
+        match l with
+        | Cons x _ -> x
+        | Nil -> 0
+        end;
+
+let secondCount : List int -> int =
+    \l ->
+        match l with
+        | Cons _ xs ->
+            match xs with
+            | Cons x _ -> x
+            | Nil -> 0
+            end
+        | Nil -> 0
+        end;
+
+let makeFallback : List int -> int -> int =
+    \fold l -> \prefix ->
+        match l with
+        | Nil -> prefix
+        | Cons x xs -> xs (prefix * 100 + x)
+        end;
+
+let scoreHand1 : List int -> int =
+    \cards ->
+        let groups = cardCounts cards;
+        let a = topCount groups;
+        let b = secondCount groups;
+        let rank = a + a / 4 + a / 3 + b / 2;
+        makeFallback cards rank;
+
+let scoreHand2 : List int -> int =
+    \cards ->
+        let jokers =
+            cards
+            |> list.filter (\x -> x == 11)
+            |> list.length;
+        let groups = cardCounts (list.filter (\x -> x != 11) cards);
+        let a = topCount groups + jokers;
+        let b = secondCount groups;
+        let rank = a + a / 4 + a / 3 + b / 2;
+        let adjustedCards = list.map (\x -> if x == 11 then 1 else x) cards;
+        makeFallback adjustedCards rank;
+
+let score : ScoredLine -> int =
+    \l ->
+        match l with
+        | ScoredLine s _ -> s
+        end;
+
+let bid : ScoredLine -> int =
+    \l ->
+        match l with
+        | ScoredLine _ b -> b
+        end;
+
+let total : List int -> int =
+    let go = \fold l -> \m ->
+        match l with
+        | Nil -> 0
+        | Cons x xs -> x * m + xs (m + 1)
+        end;
+    \l -> go l 1;
+
+let cards : Hand -> List int =
+    \h ->
+        match h with
+        | Hand c -> c
+        end;
+
+let part1 : List Line -> string =
+    \lines ->
+        lines
+        |> list.map (\l -> match l with | Line h b -> ScoredLine (scoreHand1 (cards h)) b end)
+        |> list.sortBy (\a -> \b -> score a < score b)
+        |> list.map bid
+        |> total
+        |> ints.toString;
+
+let part2 : List Line -> string =
+    \lines ->
+        lines
+        |> list.map (\l -> match l with | Line h b -> ScoredLine (scoreHand2 (cards h)) b end)
+        |> list.sortBy (\a -> \b -> score a < score b)
+        |> list.map bid
+        |> total
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
