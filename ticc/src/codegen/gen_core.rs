@@ -418,10 +418,16 @@ impl<'a, 'b> Generator<'a, 'b> {
                 };
                 let mut cases = Vec::new();
                 for case in e.cases() {
-                    let ctor_sym = self.name_symbols[&case.ctor().unwrap().syntax().id()];
-                    let bindings = case.vars()
+                    let Some(node::Pattern::Tagged(pattern)) = case.pattern() else {
+                        unreachable!("other patterns are not allowed");
+                    };
+                    let ctor_sym = self.name_symbols[&pattern.ctor().unwrap().syntax().id()];
+                    let bindings = pattern.fields()
                         .into_iter()
-                        .flat_map(|v| v.vars())
+                        .flat_map(|v| v.fields().map(|f| match f {
+                            node::Pattern::Var(v) => v.name().unwrap(),
+                            _ => unreachable!("other patterns are not allowed"),
+                        }))
                         .map(|n| self.gen_name(n))
                         .collect();
                     let value = self.gen_expr(case.body().unwrap());

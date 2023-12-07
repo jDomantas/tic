@@ -53,16 +53,7 @@ pub(super) fn expr(p: &mut Parser<'_>) {
 fn match_case(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump(TokenKind::Pipe);
-    p.expect_name();
-    if p.at(TokenKind::Dot) {
-        p.bump(TokenKind::Dot);
-        p.expect_name();
-    }
-    let v = p.start();
-    while p.at(TokenKind::Ident) {
-        p.bump_name();
-    }
-    v.complete(p, SyntaxKind::MatchVars);
+    super::pattern::pattern(p);
     p.expect(TokenKind::Arrow);
     expr(p);
     m.complete(p, SyntaxKind::MatchCase);

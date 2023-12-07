@@ -93,6 +93,8 @@ pub(crate) enum TokenKind {
     String,
     #[regex(" +")]
     Space,
+    #[token("_")]
+    Underscore,
     #[regex(r"\r?\n")]
     Newline,
     #[regex(r"--[^\n]*")]

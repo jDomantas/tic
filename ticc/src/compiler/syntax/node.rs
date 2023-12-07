@@ -139,9 +139,21 @@ nodes! {
     pub(crate) struct HoleExpr { SyntaxKind::HoleExpr }
 
     pub(crate) struct MatchCase { SyntaxKind::MatchCase }
-    pub(crate) struct MatchVars { SyntaxKind::MatchVars }
+    pub(crate) struct TaggedFields { SyntaxKind::TaggedFields }
     
     pub(crate) struct BinaryOp { SyntaxKind::BinaryOp }
+
+    pub(crate) enum Pattern {
+        Var(VarPattern),
+        Tagged(TaggedPattern),
+        Paren(ParenPattern),
+        Wildcard(WildcardPattern),
+    }
+
+    pub(crate) struct VarPattern { SyntaxKind::VarPattern }
+    pub(crate) struct TaggedPattern { SyntaxKind::TaggedPattern }
+    pub(crate) struct ParenPattern { SyntaxKind::ParenPattern }
+    pub(crate) struct WildcardPattern { SyntaxKind::WildcardPattern }
 
     pub(crate) struct Name { SyntaxKind::Name }
 }
@@ -342,16 +354,39 @@ impl<'a> HoleExpr<'a> {
 
 impl<'a> MatchCase<'a> {
     pub(crate) fn pipe_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Pipe) }
-    pub(crate) fn namespace(&self) -> Option<Name<'a>> { if self.dot().is_some() { child(&self.syntax) } else { None } }
-    pub(crate) fn dot(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Dot) }
-    pub(crate) fn ctor(&self) -> Option<Name<'a>> { if self.dot().is_some() { child2(&self.syntax) } else { child(&self.syntax) } }
-    pub(crate) fn vars(&self) -> Option<MatchVars<'a>> { child(&self.syntax) }
+    pub(crate) fn pattern(&self) -> Option<Pattern<'a>> { child(&self.syntax) }
     pub(crate) fn arrow_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Arrow) }
     pub(crate) fn body(&self) -> Option<Expr<'a>> { child(&self.syntax) }
 }
 
-impl<'a> MatchVars<'a> {
-    pub(crate) fn vars(&self) -> impl Iterator<Item = Name<'a>> + 'a {
+impl<'a> VarPattern<'a> {
+    pub(crate) fn name(&self) -> Option<Name<'a>> {
+        child(&self.syntax)
+    }
+}
+
+impl<'a> TaggedPattern<'a> {
+    pub(crate) fn namespace(&self) -> Option<Name<'a>> { if self.dot().is_some() { child(&self.syntax) } else { None } }
+    pub(crate) fn dot(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Dot) }
+    pub(crate) fn ctor(&self) -> Option<Name<'a>> { if self.dot().is_some() { child2(&self.syntax) } else { child(&self.syntax) } }
+    pub(crate) fn fields(&self) -> Option<TaggedFields<'a>> { child(&self.syntax) }
+}
+
+impl<'a> WildcardPattern<'a> {
+    pub(crate) fn namespace(&self) -> Option<Name<'a>> { if self.dot().is_some() { child(&self.syntax) } else { None } }
+    pub(crate) fn dot(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::Dot) }
+    pub(crate) fn ctor(&self) -> Option<Name<'a>> { if self.dot().is_some() { child2(&self.syntax) } else { child(&self.syntax) } }
+    pub(crate) fn fields(&self) -> Option<TaggedFields<'a>> { child(&self.syntax) }
+}
+
+impl<'a> ParenPattern<'a> {
+    pub(crate) fn left_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::LeftParen) }
+    pub(crate) fn inner(&self) -> Option<Pattern<'a>> { child(&self.syntax) }
+    pub(crate) fn right_paren_token(&self) -> Option<SyntaxToken<'a>> { child_token(&self.syntax, TokenKind::RightParen) }
+}
+
+impl<'a> TaggedFields<'a> {
+    pub(crate) fn fields(&self) -> impl Iterator<Item = Pattern<'a>> + 'a {
         children(&self.syntax)
     }
 }

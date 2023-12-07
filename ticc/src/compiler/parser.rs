@@ -1,6 +1,7 @@
 mod expr;
 mod item;
 mod type_;
+mod pattern;
 
 use std::iter::Peekable;
 
@@ -73,6 +74,7 @@ enum ParseHint {
     Type,
     Expr,
     Operator,
+    Pattern,
 }
 
 impl ParseHint {
@@ -82,6 +84,7 @@ impl ParseHint {
             ParseHint::Type => "type",
             ParseHint::Expr => "expression",
             ParseHint::Operator => "operator",
+            ParseHint::Pattern => "pattern",
         }
     }
 }
@@ -493,6 +496,12 @@ impl ParseHint {
                 TokenKind::EqEq |
                 TokenKind::NotEq |
                 TokenKind::ArgPipe => true,
+                _ => false,
+            },
+            ParseHint::Pattern => match token {
+                TokenKind::Ident |
+                TokenKind::LeftParen |
+                TokenKind::Underscore => true,
                 _ => false,
             },
         }

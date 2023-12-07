@@ -34,8 +34,12 @@ pub enum SyntaxKind {
     ParenExpr,
     HoleExpr,
     MatchCase,
-    MatchVars,
     BinaryOp,
+    VarPattern,
+    TaggedPattern,
+    ParenPattern,
+    WildcardPattern,
+    TaggedFields,
     Name,
     Error,
     Trivia,
@@ -88,6 +92,7 @@ pub enum TokenKind {
     EqEq,
     NotEq,
     ArgPipe,
+    Underscore,
     Error,
 }
 
@@ -144,6 +149,7 @@ impl TokenKind {
             TokenKind::Hole => "hole",
             TokenKind::Number => "number",
             TokenKind::String => "string",
+            TokenKind::Underscore => "`_`",
             TokenKind::Error => "bad token",
         }
     }
