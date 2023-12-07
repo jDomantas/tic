@@ -37,8 +37,12 @@ fn main() {
     }
 
     let tests = ticc_tests::get_tests(&dir, true);
+    let mut total_tests = 0;
+    let mut passed_tests = 0;
+    let mut tests_ran = 0;
 
     for test in tests {
+        total_tests += 1;
         if test.optimize && !optimized {
             continue;
         }
@@ -56,6 +60,7 @@ fn main() {
         if !matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !no_node {
             continue;
         }
+        tests_ran += 1;
         print!("test {}", test.key);
         std::io::stdout().flush().expect("failed stdout write");
         let start = std::time::Instant::now();
@@ -64,6 +69,7 @@ fn main() {
         let source = &test.modules.modules[&test.modules.main].source;
         match outcome {
             ticc_tests::TestOutcome::Success => {
+                passed_tests += 1;
                 println!(" ... ok ({:.2}s)", duration.as_secs_f64());
             }
             ticc_tests::TestOutcome::BadCompilation(comp) => {
@@ -126,6 +132,8 @@ fn main() {
             }
         }
     }
+
+    println!("passed {passed_tests}/{tests_ran} tests, {} skipped", total_tests - tests_ran);
 }
 
 fn print_diagnostics(
