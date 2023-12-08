@@ -8,16 +8,25 @@ import utils from "../shared/aoc-utils.tic";
 
 type Step = Left | Right;
 
-type Node = Node string string string;
+type Node = Node int int int;
+
+let convertNodeId : string -> int =
+    \s ->
+        s
+        |> strings.chars
+        |> list.foldl 0 (\a -> \b -> a * 100 + b);
+
+let parseNodeId : Parse int =
+    parse.takeWhile (\ch -> ch >= 65) |> parse.map convertNodeId;
 
 let parseNode : string -> Result Node string =
     \s ->
         parse.ok Node
-        |> parse.apply parse.word
+        |> parse.apply parseNodeId
         |> parse.ignore (parse.literal " = (")
-        |> parse.apply (parse.takeWhile (\ch -> ch >= 65))
+        |> parse.apply parseNodeId
         |> parse.ignore (parse.literal ", ")
-        |> parse.apply (parse.takeWhile (\ch -> ch >= 65))
+        |> parse.apply parseNodeId
         |> parse.ignore (parse.literal ")")
         |> parse.run s;
 
@@ -56,14 +65,14 @@ let parseInput : string -> Result Input string =
             |> result.apply nodes
         end;
 
-let makeStep : Step -> List Node -> string -> Result string string =
+let makeStep : Step -> List Node -> int -> Result int string =
     \dir -> \fold nodes -> \current ->
         match nodes with
         | Nil -> Err "current node does not exist"
         | Cons n ns ->
             match n with
             | Node id left right ->
-                if strings.equal id current then
+                if id == current then
                     match dir with
                     | Left -> Ok left
                     | Right -> Ok right
@@ -74,7 +83,7 @@ let makeStep : Step -> List Node -> string -> Result string string =
         end;
 
 type NonEmptyList a = NCons a (List a);
-type WalkState = WalkState string int (List Step) (NonEmptyList Step);
+type WalkState = WalkState int int (List Step) (NonEmptyList Step);
 
 let nHead : NonEmptyList a -> a =
     \l ->
@@ -88,11 +97,11 @@ let nTail : NonEmptyList a -> List a =
         | NCons _ xs -> xs
         end;
 
-let tryMakeStep : string -> List Node -> WalkState -> Result WalkState string =
+let tryMakeStep : int -> List Node -> WalkState -> Result WalkState string =
     \target -> \nodes -> \state ->
         match state with
         | WalkState current steps next all ->
-            if strings.equal current target then
+            if current == target then
                 Ok state
             else
                 let step = list.head next |> option.unwrapOr (nHead all);
@@ -103,6 +112,9 @@ let tryMakeStep : string -> List Node -> WalkState -> Result WalkState string =
                 end
         end;
 
+let start : int = convertNodeId "AAA";
+let finish : int = convertNodeId "ZZZ";
+
 let part1 : Input -> string =
     \input ->
         match input with
@@ -110,9 +122,9 @@ let part1 : Input -> string =
             match steps with
             | Nil -> "no steps given"
             | Cons s ss ->
-                let state = WalkState "AAA" 0 (Cons s ss) (NCons s ss);
+                let state = WalkState start 0 (Cons s ss) (NCons s ss);
                 let maxSteps = list.length nodes * list.length steps;
-                let afterSteps = ints.iterate maxSteps (\s -> s |> result.andThen (tryMakeStep "ZZZ" nodes)) (Ok state);
+                let afterSteps = ints.iterate maxSteps (\s -> s |> result.andThen (tryMakeStep finish nodes)) (Ok state);
                 match afterSteps with
                 | Ok state ->
                     match state with
