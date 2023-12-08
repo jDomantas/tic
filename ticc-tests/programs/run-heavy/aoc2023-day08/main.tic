@@ -1,0 +1,130 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import parse(Parse) from "../shared/parse.tic";
+import utils from "../shared/aoc-utils.tic";
+
+type Step = Left | Right;
+
+type Node = Node string string string;
+
+let parseNode : string -> Result Node string =
+    \s ->
+        parse.ok Node
+        |> parse.apply parse.word
+        |> parse.ignore (parse.literal " = (")
+        |> parse.apply (parse.takeWhile (\ch -> ch >= 65))
+        |> parse.ignore (parse.literal ", ")
+        |> parse.apply (parse.takeWhile (\ch -> ch >= 65))
+        |> parse.ignore (parse.literal ")")
+        |> parse.run s;
+
+let parseStep : int -> Result Step string =
+    let r = strings.charAt 0 "R";
+    let l = strings.charAt 0 "L";
+    \ch ->
+        if ch == l then
+            Ok Left
+        else if ch == r then
+            Ok Right
+        else
+            Err "invalid step";
+
+let parseSteps : string -> Result (List Step) string =
+    \s ->
+        s
+        |> strings.chars
+        |> list.map parseStep
+        |> list.allOk;
+
+type Input = Input (List Step) (List Node);
+
+let parseInput : string -> Result Input string =
+    \s ->
+        match strings.lines s with
+        | Nil -> Err "no steps"
+        | Cons x xs ->
+            let nodes =
+                xs
+                |> list.filter (\line -> strings.length line > 0)
+                |> list.map parseNode
+                |> list.allOk;
+            Ok Input
+            |> result.apply (parseSteps x)
+            |> result.apply nodes
+        end;
+
+let makeStep : Step -> List Node -> string -> Result string string =
+    \dir -> \fold nodes -> \current ->
+        match nodes with
+        | Nil -> Err "current node does not exist"
+        | Cons n ns ->
+            match n with
+            | Node id left right ->
+                if strings.equal id current then
+                    match dir with
+                    | Left -> Ok left
+                    | Right -> Ok right
+                    end
+                else
+                    ns current
+            end
+        end;
+
+type NonEmptyList a = NCons a (List a);
+type WalkState = WalkState string int (List Step) (NonEmptyList Step);
+
+let nHead : NonEmptyList a -> a =
+    \l ->
+        match l with
+        | NCons x _ -> x
+        end;
+
+let nTail : NonEmptyList a -> List a =
+    \l ->
+        match l with
+        | NCons _ xs -> xs
+        end;
+
+let tryMakeStep : string -> List Node -> WalkState -> Result WalkState string =
+    \target -> \nodes -> \state ->
+        match state with
+        | WalkState current steps next all ->
+            if strings.equal current target then
+                Ok state
+            else
+                let step = list.head next |> option.unwrapOr (nHead all);
+                let next = list.tail next |> option.unwrapOr (nTail all);
+                match makeStep step nodes current with
+                | Ok node -> Ok (WalkState node (steps + 1) next all)
+                | Err e -> Err e
+                end
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input steps nodes ->
+            match steps with
+            | Nil -> "no steps given"
+            | Cons s ss ->
+                let state = WalkState "AAA" 0 (Cons s ss) (NCons s ss);
+                let maxSteps = list.length nodes * list.length steps;
+                let afterSteps = ints.iterate maxSteps (\s -> s |> result.andThen (tryMakeStep "ZZZ" nodes)) (Ok state);
+                match afterSteps with
+                | Ok state ->
+                    match state with
+                    | WalkState _ steps _ _ -> ints.toString steps
+                    end
+                | Err e -> e
+                end
+            end
+        end;
+                
+
+let part2 : Input -> string =
+    \input -> "todo";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
