@@ -1,0 +1,249 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import parse(Parse) from "../shared/parse.tic";
+import utils from "../shared/aoc-utils.tic";
+import tree from "../shared/tree.tic";
+
+type Step = Left | Right;
+
+type Node = Node int int int;
+
+let convertNodeId : string -> int =
+    \s ->
+        s
+        |> strings.chars
+        |> list.foldl 0 (\a -> \b -> a * 100 + b);
+
+let parseNodeId : Parse int =
+    parse.takeWhile (\ch -> ch >= 65) |> parse.map convertNodeId;
+
+let parseNode : string -> Result Node string =
+    \s ->
+        parse.ok Node
+        |> parse.apply parseNodeId
+        |> parse.ignore (parse.literal " = (")
+        |> parse.apply parseNodeId
+        |> parse.ignore (parse.literal ", ")
+        |> parse.apply parseNodeId
+        |> parse.ignore (parse.literal ")")
+        |> parse.run s;
+
+let parseStep : int -> Result Step string =
+    let r = strings.charAt 0 "R";
+    let l = strings.charAt 0 "L";
+    \ch ->
+        if ch == l then
+            Ok Left
+        else if ch == r then
+            Ok Right
+        else
+            Err "invalid step";
+
+let parseSteps : string -> Result (List Step) string =
+    \s ->
+        s
+        |> strings.chars
+        |> list.map parseStep
+        |> list.allOk;
+
+type Input = Input (List Step) (List Node);
+
+let parseInput : string -> Result Input string =
+    \s ->
+        match strings.lines s with
+        | Nil -> Err "no steps"
+        | Cons x xs ->
+            let nodes =
+                xs
+                |> list.filter (\line -> strings.length line > 0)
+                |> list.map parseNode
+                |> list.allOk;
+            Ok Input
+            |> result.apply (parseSteps x)
+            |> result.apply nodes
+        end;
+
+let start : int = convertNodeId "AAA";
+let finish : int = convertNodeId "ZZZ";
+
+let nodeId : Node -> int =
+    \n ->
+        match n with
+        | Node id _ _ -> id
+        end;
+
+let makeLookup : Step -> tree.Tree Node -> int -> int =
+    \step -> \fold t ->
+        match t with
+        | tree.Empty -> \x -> x
+        | tree.Node l node r ->
+            match node with
+            | Node id a b ->
+                let next =
+                    match step with
+                    | Left -> a
+                    | Right -> b
+                    end;
+                \x ->
+                    if x < id then
+                        l x
+                    else if x > id then
+                        r x
+                    else
+                        next
+            end
+        end;
+
+let balancedNodeTree : List Node -> tree.Tree Node =
+    \nodes ->
+        nodes
+        |> list.sortBy (\a -> \b -> nodeId a < nodeId b)
+        |> tree.balanced;
+
+type NonEmptyList a = NCons a (List a);
+type CyclicList a = CyclicList int a (List a) (NonEmptyList a);
+
+type WalkState = Walking int int (CyclicList (int -> int)) | Done int;
+
+let at : CyclicList a -> a =
+    \l ->
+        match l with
+        | CyclicList _ at _ _ -> at
+        end;
+
+let stepCycle : CyclicList a -> CyclicList a =
+    \l ->
+        match l with
+        | CyclicList pos _ l r ->
+            match l with
+            | Cons x xs -> CyclicList (pos + 1) x xs r
+            | Nil ->
+                match r with
+                | NCons s rs -> CyclicList 0 s rs r
+                end
+            end
+        end;
+
+let walkStep : int -> WalkState -> WalkState =
+    \target -> \state ->
+        match state with
+        | Walking cur count steps ->
+            if cur == target then
+                Done count
+            else
+                let next = at steps cur;
+                Walking next (count + 1) (stepCycle steps)
+        | Done _ -> state
+        end;
+
+let makeSteps : List (int -> int) -> CyclicList (int -> int) =
+    \s ->
+        match s with
+        | Nil -> CyclicList 0 (\x -> x) Nil (NCons (\x -> x) Nil)
+        | Cons x xs -> CyclicList 0 x xs (NCons x xs)
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input steps nodes ->
+            let t = balancedNodeTree nodes;
+            let lookupLeft = makeLookup Left t;
+            let lookupRight = makeLookup Right t;
+            let steps =
+                steps
+                |> list.map (\s ->
+                    match s with
+                    | Left -> lookupLeft
+                    | Right -> lookupRight
+                    end);
+            let state = Walking start 0 (makeSteps steps);
+            let state = ints.iterate (list.length nodes * list.length steps) (walkStep finish) state;
+            match state with
+            | Walking _ steps _ -> ints.toString steps
+            | Done steps -> ints.toString steps
+            end
+        end;
+
+let isGhostFinish : int -> bool =
+    let z = strings.charAt 0 "Z";
+    \x -> x % 100 == z;
+
+let isGhostStart : int -> bool =
+    let a = strings.charAt 0 "A";
+    \x -> x % 100 == a;
+
+type WalkState = Walking int int int (CyclicList (int -> int)) | Done int;
+
+let walkStep : WalkState -> WalkState =
+    \state ->
+        match state with
+        | Walking f cur count steps ->
+            let f = if isGhostFinish cur then f - 1 else f;
+            if f == 0 then
+                Done count
+            else
+                let next = at steps cur;
+                Walking f next (count + 1) (stepCycle steps)
+        | Done _ -> state
+        end;
+
+let stepCount : int -> WalkState -> int =
+    \limit -> \state ->
+        match ints.iterate limit walkStep state with
+        | Walking _ _ count _ -> count
+        | Done count -> count
+        end;
+
+type GcdState = GcdState int int;
+
+let gcd : int -> int -> int =
+    let stepState = \state ->
+        match state with
+        | GcdState a b ->
+            if b == 0 then
+                state
+            else
+                GcdState b (a % b)
+        end;
+    \a -> \b ->
+        match ints.iterate 60 stepState (GcdState a b) with
+        | GcdState x _ -> x
+        end;
+
+let lcm : int -> int -> int =
+    \a -> \b -> a / (gcd a b) * b;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input steps nodes ->
+            let t = balancedNodeTree nodes;
+            let lookupLeft = makeLookup Left t;
+            let lookupRight = makeLookup Right t;
+            let steps =
+                steps
+                |> list.map (\s ->
+                    match s with
+                    | Left -> lookupLeft
+                    | Right -> lookupRight
+                    end);
+            let limit = list.length nodes * list.length steps * 2;
+            let ghosts =
+                nodes
+                |> list.map (\n -> match n with | Node id _ _ -> id end)
+                |> list.filter isGhostStart
+                |> list.map (\start ->
+                    let first = stepCount limit (Walking 1 start 0 (makeSteps steps));
+                    let second = stepCount limit (Walking 2 start 0 (makeSteps steps));
+                    let loop = second - first;
+                    loop);
+            ghosts
+            |> list.foldl 1 lcm
+            |> ints.toString
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

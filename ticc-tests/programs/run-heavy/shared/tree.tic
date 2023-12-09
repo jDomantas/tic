@@ -1,0 +1,110 @@
+import ints from "std/int";
+import list(List, Nil, Cons) from "std/list";
+
+export type Tree a = export Empty | Node rec a rec;
+
+export let map : (a -> b) -> Tree a -> Tree b =
+    \f -> \fold t ->
+        match t with
+        | Empty -> Empty
+        | Node l x r -> Node l (f x) r
+        end;
+
+let size : int -> int =
+    \x ->
+        ints.iterate 63 (\t -> if x % (t * 2) == 0 then t * 2 else t) 1;
+
+let max : int -> int =
+    \x -> x + size x - 1;
+
+let visitCmp : int -> int -> bool =
+    \a -> \b ->
+        let ma = max a;
+        let mb = max b;
+        if ma != mb then
+            ma > mb
+        else
+            size a > size b;
+
+type NonEmptyTree a = NNode (Tree a) a (Tree a);
+
+let root : NonEmptyTree a -> a =
+    \t ->
+        match t with
+        | NNode _ x _ -> x
+        end;
+
+let toTree : NonEmptyTree a -> Tree a =
+    \t ->
+        match t with
+        | NNode a b c -> Node a b c
+        end;
+
+type ItemWithId a = ItemWithId int a;
+
+let id : ItemWithId a -> int =
+    \i ->
+        match i with
+        | ItemWithId id _ -> id
+        end;
+
+let balancedTreeWithIds : List (ItemWithId a) -> Tree (ItemWithId a) =
+    let subtreeList : List (ItemWithId a) -> List (NonEmptyTree (ItemWithId a)) =
+        \fold l ->
+            match l with
+            | Nil -> Nil
+            | Cons x res ->
+                match res with
+                | Nil -> Cons (NNode Empty x Empty) Nil
+                | Cons a res ->
+                    match res with
+                    | Nil ->
+                        if size (id (root a)) < size (id x) then
+                            Cons (NNode (toTree a) x Empty) Nil
+                        else
+                            Cons (NNode Empty x Empty) (Cons a Nil)
+                    | Cons b res ->
+                        if size (id (root b)) < size (id x) then
+                            Cons (NNode (toTree b) x (toTree a)) res
+                        else if size (id (root a)) < size (id x) then
+                            Cons (NNode (toTree a) x Empty) (Cons b res)
+                        else
+                            Cons (NNode Empty x Empty) (Cons a (Cons b res))
+                    end
+                end
+            end;
+    \l ->
+        match l with
+        | Nil -> Empty
+        | Cons x xs ->
+            let trees = subtreeList xs;
+            match trees with
+            | Nil -> Node Empty x Empty
+            | Cons a ts ->
+                match ts with
+                | Nil -> Node (toTree a) x Empty
+                | Cons b ts ->
+                    match ts with
+                    | Nil -> Node (toTree b) x (toTree a)
+                    | Cons _ _ -> ?todo
+                    end
+                end
+            end
+        end;
+
+let assignIds : List a -> List (ItemWithId a) =
+    let assign =
+        \fold l -> \first ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs -> Cons (ItemWithId first x) (xs (first + 1))
+            end;
+    \l -> assign l 1;
+
+export let balanced : List a -> Tree a =
+    \items ->
+        items
+        |> assignIds
+        |> list.sortBy (\a -> \b -> visitCmp (id a) (id b))
+        |> balancedTreeWithIds
+        |> map (\x -> match x with | ItemWithId _ x -> x end);

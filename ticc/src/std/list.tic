@@ -292,3 +292,16 @@ export let join : string -> List string -> string =
             | Cons _ _ -> i.stringConcat x (go sep xs)
             end
         end;
+
+type RangeState = RangeState int (List int);
+
+export let range : int -> int -> List int =
+    \start -> \stop ->
+        let step = \state ->
+            match state with
+            | RangeState i acc -> RangeState (i - 1) (Cons i acc)
+            end;
+        let steps = stop - start;
+        match i.iterate steps step (RangeState (stop - 1) Nil) with
+        | RangeState _ res -> res
+        end;

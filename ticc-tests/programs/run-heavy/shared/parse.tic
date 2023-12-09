@@ -152,22 +152,22 @@ export let char : Parse int =
 
 type ParseWordState = WordParsing int | WordDone int;
 
-let parseWord : string -> ParseWordState =
-    \input ->
+let parseWord : string -> (int -> bool) -> ParseWordState =
+    \input -> \isWord ->
         let step = \state -> \ch ->
             match state with
             | WordParsing idx ->
-                if ch == 32 then
-                    WordDone idx
-                else
+                if isWord ch then
                     WordParsing (idx + 1)
+                else
+                    WordDone idx
             | WordDone idx -> WordDone idx
             end;
         str.foldChars (WordParsing 0) step input;
 
-export let word : Parse string =
-    let go = \input ->
-        let idx = match parseWord input with
+export let takeWhile : (int -> bool) -> Parse string =
+    let go = \cond -> \input ->
+        let idx = match parseWord input cond with
         | WordParsing idx -> idx
         | WordDone idx -> idx
         end;
@@ -178,7 +178,10 @@ export let word : Parse string =
             let rest = str.length input - idx;
             let rest = str.substring idx rest input;
             ParseOk word rest;
-    Parse go;
+    \cond -> Parse (go cond);
+
+export let word : Parse string =
+    takeWhile (\ch -> ch != 32);
 
 export let remainder : Parse string =
     Parse (\input -> ParseOk input "");
