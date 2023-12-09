@@ -1,0 +1,72 @@
+import ints from "std/int";
+import option from "std/option";
+import result(Result) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+
+let parseInt : string -> Result int string =
+    \x ->
+        if strings.startsWith "-" x then
+            x
+            |> strings.substring 1 (strings.length x - 1)
+            |> ints.parse
+            |> result.map (\x -> 0 - x)
+            |> result.mapErr (\_ -> "bad int")
+        else
+            x
+            |> ints.parse
+            |> result.mapErr (\_ -> "bad int");
+
+let parseInput : string -> Result (List (List int)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map (strings.split 32)
+        |> list.map (list.map parseInt)
+        |> list.map list.allOk
+        |> list.allOk;
+
+let deltas : List int -> List int =
+    let go = \fold l -> \prev ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons (x - prev) (xs x)
+        end;
+    \l -> go l 0;
+
+let undeltas : List int -> List int =
+    let go = \fold l -> \prev ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons (prev + x) (xs (prev + x))
+        end;
+    \l -> go l 0;
+
+let extrapolate : List int -> int =
+    \l ->
+        let iters = list.length l;
+        l
+        |> ints.iterate iters deltas
+        |> list.reverse
+        |> Cons 0
+        |> list.reverse
+        |> ints.iterate iters undeltas
+        |> list.reverse
+        |> list.head
+        |> option.unwrapOr 0;
+
+let part1 : List (List int) -> string =
+    \input ->
+        input
+        |> list.map extrapolate
+        |> list.sum
+        |> ints.toString;
+
+let part2 : List (List int) -> string =
+    \input ->
+        input
+        |> list.map list.reverse
+        |> part1;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
