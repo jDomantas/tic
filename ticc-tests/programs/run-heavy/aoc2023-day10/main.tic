@@ -1,0 +1,342 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import tree(Tree) from "../shared/tree.tic";
+import utils from "../shared/aoc-utils.tic";
+
+type Dir = Left | Right | Up | Down;
+type Cell = Empty | Pipe Dir Dir | Start;
+
+let opposite : Dir -> Dir =
+    \d ->
+        match d with
+        | Left -> Right
+        | Right -> Left
+        | Up -> Down
+        | Down -> Up
+        end;
+
+let eq : Dir -> Dir -> bool =
+    let toInt = \d ->
+        match d with
+        | Left -> 0
+        | Right -> 1
+        | Up -> 2
+        | Down -> 3
+        end;
+    \a -> \b -> toInt a == toInt b;
+
+let deltaRow : Dir -> int =
+    \d ->
+        match d with
+        | Left -> 0
+        | Right -> 0
+        | Up -> 0 - 1
+        | Down -> 1
+        end;
+
+let deltaCol : Dir -> int =
+    \d ->
+        match d with
+        | Left -> 0 - 1
+        | Right -> 1
+        | Up -> 0
+        | Down -> 0
+        end;
+
+let parseCell : int -> Result Cell string =
+    let vertical = strings.charAt 0 "|";
+    let horizontal = strings.charAt 0 "-";
+    let f = strings.charAt 0 "F";
+    let l = strings.charAt 0 "L";
+    let j = strings.charAt 0 "J";
+    let seven = strings.charAt 0 "7";
+    let dot = strings.charAt 0 ".";
+    let s = strings.charAt 0 "S";
+    \x ->
+        if x == vertical then
+            Ok (Pipe Up Down)
+        else if x == horizontal then
+            Ok (Pipe Left Right)
+        else if x == l then
+            Ok (Pipe Up Right)
+        else if x == j then
+            Ok (Pipe Up Left)
+        else if x == f then
+            Ok (Pipe Down Right)
+        else if x == seven then
+            Ok (Pipe Down Left)
+        else if x == dot then
+            Ok Empty
+        else if x == s then
+            Ok Start
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (List (List Cell)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk;
+
+type ItemWithIndex a = ItemWithIndex int a;
+
+let addIndices : List a -> List (ItemWithIndex a) =
+    let go = \fold l -> \first ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons (ItemWithIndex first x) (xs (first + 1))
+        end;
+    \l -> go l 0;
+
+let toLookup : a -> List a -> (int -> a) =
+    \default -> \fold l ->
+        match l with
+        | Nil -> \_ -> default
+        | Cons x xs -> \idx ->
+            if idx == 0 then
+                x
+            else
+                xs (idx - 1)
+        end;
+
+type PathKind = Horizontal | Vertical | UpH | DownH;
+type PathPart = PathPart int int PathKind;
+type WalkState = WalkDone Dir (List PathPart) | WalkBroken | Walking (List PathPart) int int Dir;
+
+let classifyPipe : Dir -> Dir -> PathKind =
+    \a -> \b ->
+        match a with
+        | Left ->
+            match b with
+            | Left -> Horizontal
+            | Right -> Horizontal
+            | Up -> UpH
+            | Down -> DownH
+            end
+        | Right ->
+            match b with
+            | Left -> Horizontal
+            | Right -> Horizontal
+            | Up -> UpH
+            | Down -> DownH
+            end
+        | Up ->
+            match b with
+            | Left -> UpH
+            | Right -> UpH
+            | Up -> Vertical
+            | Down -> Vertical
+            end
+        | Down ->
+            match b with
+            | Left -> DownH
+            | Right -> DownH
+            | Up -> Vertical
+            | Down -> Vertical
+            end
+        end;
+
+let step : (int -> int -> Cell) -> WalkState -> WalkState =
+    \lookup -> \state ->
+        match state with
+        | WalkDone _ _ -> state
+        | WalkBroken -> state
+        | Walking path row col lastDir ->
+            match lookup row col with
+            | Empty -> WalkBroken
+            | Start -> WalkDone lastDir path
+            | Pipe a b ->
+                let part = PathPart row col (classifyPipe a b);
+                let path = Cons part path;
+                if eq (opposite lastDir) a then
+                    let nextDir = b;
+                    Walking path (row + deltaRow nextDir) (col + deltaCol nextDir) nextDir
+                else if eq (opposite lastDir) b then
+                    let nextDir = a;
+                    Walking path (row + deltaRow nextDir) (col + deltaCol nextDir) nextDir
+                else
+                    WalkBroken
+            end
+        end;
+
+type Coord = Coord int int;
+
+let move : Dir -> Coord -> Coord =
+    \d -> \c ->
+        match c with
+        | Coord r c -> Coord (r + deltaRow d) (c + deltaCol d)
+        end;
+
+let findStart : List (List Cell) -> Result Coord string =
+    let findIndex : (a -> bool) -> List a -> Result (ItemWithIndex a) string =
+        \f -> \list ->
+            list
+            |> addIndices
+            |> list.filter (\x -> match x with | ItemWithIndex _ v -> f v end)
+            |> list.head
+            |> result.okOr "no start cell";
+    \cells ->
+        cells
+        |> list.map (findIndex (\c -> match c with | Start -> true | Empty -> false | Pipe _ _ -> false end))
+        |> findIndex (\r ->
+            match r with
+            | Ok _ -> true
+            | Err _ -> false
+            end)
+        |> result.andThen (\x ->
+            match x with
+            | ItemWithIndex row y ->
+                y
+                |> result.andThen (\y ->
+                    match y with
+                    | ItemWithIndex col _ -> Ok (Coord row col)
+                    end)
+            end);
+
+let findLoop : List (List Cell) -> Coord -> Dir -> Option (List PathPart) =
+    \grid -> \start -> \firstStep ->
+        match move firstStep start with
+        | Coord r c ->
+            let maxSteps = grid |> list.map list.length |> list.sum;
+            let cellLookup =
+                grid
+                |> list.map (toLookup Empty)
+                |> toLookup (\_ -> Empty);
+            let state = Walking Nil r c firstStep;
+            match ints.iterate maxSteps (step cellLookup) state with
+            | WalkBroken -> None
+            | Walking _ _ _ _ -> None
+            | WalkDone lastDir steps ->
+                let startCell =
+                    match start with
+                    | Coord r c ->
+                        PathPart r c (classifyPipe (opposite lastDir) firstStep)
+                    end;
+                Some (Cons startCell steps)
+            end
+        end;
+
+let part1 : List (List Cell) -> string =
+    \grid ->
+        let allDirs = Cons Left (Cons Right (Cons Up (Cons Down Nil)));
+        match findStart grid with
+        | Ok start ->
+            allDirs
+            |> list.filterMap (findLoop grid start)
+            |> list.head
+            |> option.map (\x -> list.length x / 2)
+            |> option.map ints.toString
+            |> option.unwrapOr "no loop"
+        | Err e -> e
+        end;
+
+let cmpParts : PathPart -> PathPart -> bool =
+    \a -> \b ->
+        match a with
+        | PathPart r1 c1 _ ->
+            match b with
+            | PathPart r2 c2 _ ->
+                if r1 != r2 then
+                    r1 < r2
+                else
+                    c1 < c2
+            end
+        end;
+
+let partRow : PathPart -> int =
+    \p ->
+        match p with
+        | PathPart r _ _ -> r
+        end;
+
+let groupByRow : List PathPart -> List (List PathPart) =
+    \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons (Cons x Nil) Nil
+            | Cons y ys ->
+                match y with
+                | Nil -> Cons (Cons x Nil) ys
+                | Cons yy _ ->
+                    if partRow yy == partRow x then
+                        Cons (Cons x y) ys
+                    else
+                        Cons (Cons x Nil) xs
+                end
+            end
+        end;
+
+type RowState = RowIn int int | RowOut int | RowTop int | RowBottom int;
+
+let rowArea : List PathPart -> int =
+    let go = \fold parts ->
+        match parts with
+        | Nil -> RowOut 0
+        | Cons x xs ->
+            match x with
+            | PathPart _ col kind ->
+                match kind with
+                | Horizontal -> xs
+                | Vertical ->
+                    match xs with
+                    | RowIn x c -> RowOut (x + (c - col - 1))
+                    | RowOut x -> RowIn x col
+                    | RowTop x -> RowTop x -- impossible
+                    | RowBottom x -> RowBottom x -- impossible
+                    end
+                | UpH ->
+                    match xs with
+                    | RowIn x c -> RowTop (x + (c - col - 1))
+                    | RowOut x -> RowBottom x
+                    | RowTop x -> RowIn x col
+                    | RowBottom x -> RowOut x
+                    end
+                | DownH ->
+                    match xs with
+                    | RowIn x c -> RowBottom (x + (c - col - 1))
+                    | RowOut x -> RowTop x
+                    | RowTop x -> RowOut x
+                    | RowBottom x -> RowIn x col
+                    end
+                end
+            end
+        end;
+    \parts ->
+        match go parts with
+        | RowIn x _ -> x
+        | RowOut x -> x -- the only possible case
+        | RowTop x -> x
+        | RowBottom x -> x
+        end;
+
+let innerArea : List PathPart -> int =
+    \parts ->
+        parts
+        |> list.sortBy cmpParts
+        |> groupByRow
+        |> list.map rowArea
+        |> list.sum;
+
+let part2 : List (List Cell) -> string =
+    \grid ->
+        let allDirs = Cons Left (Cons Right (Cons Up (Cons Down Nil)));
+        match findStart grid with
+        | Ok start ->
+            allDirs
+            |> list.filterMap (findLoop grid start)
+            |> list.head
+            |> option.map innerArea
+            |> option.map ints.toString
+            |> option.unwrapOr "no loop"
+        | Err e -> e
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
