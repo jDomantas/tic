@@ -1,0 +1,105 @@
+import ints from "std/int";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+
+type Cell = Empty | Galaxy;
+
+let parseCell : int -> Result Cell string =
+    let dot = strings.charAt 0 ".";
+    let hash = strings.charAt 0 "#";
+    \c ->
+        if c == dot then
+            Ok Empty
+        else if c == hash then
+            Ok Galaxy
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (List (List Cell)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk;
+
+let apply : List a -> List (a -> b) -> List b =
+    let go = \fold xs -> \fns ->
+        match xs with
+        | Nil -> Nil
+        | Cons x xs ->
+            match fns with
+            | Nil -> Nil
+            | Cons f fs -> Cons (f x) (xs fs)
+            end
+        end;
+    \fns -> \xs -> go fns xs;
+
+let zipSum : List int -> List int -> List int =
+    \fold xs -> \ys ->
+        match xs with
+        | Nil -> ys
+        | Cons x xs ->
+            match ys with
+            | Nil -> Cons x (xs Nil)
+            | Cons y ys -> Cons (x + y) (xs ys)
+            end
+        end;
+
+let calcForCell : int -> int -> int -> int -> int =
+    \expansion -> \before -> \after -> \in ->
+        if in == 0 then
+            before * after * 2 * expansion
+        else
+            before * in + after * in + before * after * 2;
+
+let prefixSums : List int -> List int =
+    let go = \fold l -> \acc ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons acc (xs (acc + x))
+        end;
+    \l -> go l 0;
+
+let solveFlat : int -> List int -> int =
+    \expansion -> \l ->
+        prefixSums l
+        |> list.map (calcForCell expansion)
+        |> apply (l |> list.reverse |> prefixSums |> list.reverse)
+        |> apply l
+        |> list.sum
+        |> (\x -> x / 2);
+
+let galaxyCount : Cell -> int =
+    \c ->
+        match c with
+        | Empty -> 0
+        | Galaxy -> 1
+        end;
+
+let solve : int -> (List (List Cell)) -> int =
+    \expansion -> \cells ->
+        let h =
+            cells
+            |> list.map (list.map galaxyCount)
+            |> list.foldl Nil zipSum
+            |> solveFlat expansion;
+        let v =
+            cells
+            |> list.map (list.map galaxyCount)
+            |> list.map list.sum
+            |> solveFlat expansion;
+        h + v;
+
+let part1 : List (List Cell) -> string =
+    \input ->
+        ints.toString (solve 2 input);
+
+let part2 : List (List Cell) -> string =
+    \input ->
+        ints.toString (solve 1000000 input);
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
