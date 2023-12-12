@@ -1,0 +1,229 @@
+import ints from "std/int";
+import option from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Spring = Operational | Damaged | Unknown;
+
+type Entry = Entry (List Spring) (List int);
+
+let parseSpring : int -> Result Spring string =
+    let dot = strings.charAt 0 ".";
+    let hash = strings.charAt 0 "#";
+    let question = strings.charAt 0 "?";
+    \c ->
+        if c == dot then
+            Ok Operational
+        else if c == hash then
+            Ok Damaged
+        else if c == question then
+            Ok Unknown
+        else
+            Err "bad spring";
+
+let parseLine : string -> Result Entry string =
+    let springs =
+        parse.word
+        |> parse.andThen (\w ->
+            w
+            |> strings.chars
+            |> list.map parseSpring
+            |> list.allOk);
+    let sizes =
+        parse.word
+        |> parse.andThen (\w ->
+            w
+            |> strings.split (strings.charAt 0 ",")
+            |> list.map ints.parse
+            |> list.allOk
+            |> result.mapErr (\_ -> "invalid number"));
+    \line ->
+        parse.ok Entry
+        |> parse.apply springs
+        |> parse.ignore (parse.literal " ")
+        |> parse.apply sizes
+        |> parse.run line;
+
+let parseInput : string -> Result (List Entry) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parseLine
+        |> list.allOk;
+
+let not : bool -> bool =
+    \x -> if x then false else true;
+
+let checkRange : List Spring -> int -> int -> bool -> bool =
+    \springs -> \s -> \e -> \state ->
+        if e < s then
+            true
+        else
+            springs
+            |> list.skip s
+            |> list.take (e - s + 1)
+            |> list.map (\s ->
+                match s with
+                | Damaged -> state
+                | Operational -> not state
+                | Unknown -> true
+                end)
+            |> list.all;
+
+let nth : List int -> int -> int =
+    \l -> \idx ->
+        l
+        |> list.skip idx
+        |> list.head
+        |> option.unwrapOr 0;
+
+let takeWhile : (a -> bool) -> List a -> List a =
+    \cond -> \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            if cond x then
+                Cons x xs
+            else
+                Nil
+        end;
+
+let countAll : List int -> List Spring -> int =
+    \prev -> \springs ->
+        let canTake =
+            springs
+            |> list.reverse
+            |> takeWhile (\s ->
+                match s with
+                | Damaged -> false
+                | Operational -> true
+                | Unknown -> true
+                end)
+            |> list.length;
+        prev
+        |> list.take (list.length springs)
+        |> list.reverse
+        |> list.take (canTake + 1)
+        |> list.sum;
+
+let counts : List int -> int -> int -> int -> List Spring -> (int -> int -> bool -> bool) -> int =
+    \prev -> \idx -> \size -> \endAt -> \springs -> \checkRange ->
+        if size > endAt + 1 then
+            0
+        else if not (checkRange (endAt - size + 1) endAt true) then
+            0
+        else if idx == 0 then
+            if checkRange 0 (endAt - size) false then
+                1
+            else
+                0
+        else if endAt + 1 == size then
+            0
+        else if not (checkRange (endAt - size) (endAt - size) false) then
+            0
+        else
+            countAll prev (list.take (endAt - size) springs);
+            -- list.range 0 (endAt - size)
+            -- |> list.map (\i ->
+            --     if checkRange (i + 1) (endAt - size) false then
+            --         nth prev i
+            --     else
+            --         0)
+            -- |> list.sum;
+
+type SolveState = SolveState (List int) int;
+
+let solve : Entry -> int =
+    \e ->
+        match e with
+        | Entry springs sizes ->
+            let lookup = checkRange springs;
+            let springCount = list.length springs;
+            let go = \fold sizes ->
+                match sizes with
+                | Nil -> SolveState Nil 0
+                | Cons x ss ->
+                    match ss with
+                    | SolveState prev idx ->
+                        let next =
+                            list.range 0 springCount
+                            |> list.map (\i -> counts prev idx x i springs lookup);
+                        SolveState next (idx + 1)
+                    end
+                end;
+            match go (list.reverse sizes) with
+            | SolveState res _ ->
+                list.range 0 springCount
+                |> list.map (\i ->
+                    if lookup (i + 1) (springCount - 1) false then
+                        nth res i
+                    else
+                        0)
+                |> list.sum
+            end
+        end;
+
+let doThing : Entry -> int -> List int =
+    \e -> \cc ->
+        match e with
+        | Entry springs sizes ->
+            let lookup = checkRange springs;
+            let springCount = list.length springs;
+            let go = \fold sizes ->
+                match sizes with
+                | Nil -> SolveState Nil 0
+                | Cons x ss ->
+                    match ss with
+                    | SolveState prev idx ->
+                        let next =
+                            list.range 0 springCount
+                            |> list.map (\i -> counts prev idx x i springs lookup);
+                        SolveState next (idx + 1)
+                    end
+                end;
+            match go (list.reverse (list.take cc sizes)) with
+            | SolveState res _ ->
+                res
+            end
+        end;
+
+let part1 : List Entry -> string =
+    \input ->
+        input
+        |> list.map solve
+        |> list.sum
+        |> ints.toString;
+
+let prepend : List a -> List a -> List a = list.concat;
+
+let amplify : Entry -> Entry =
+    \e ->
+        match e with
+        | Entry springs sizes ->
+            let springs =
+                Cons Unknown springs
+                |> prepend (Cons Unknown springs)
+                |> prepend (Cons Unknown springs)
+                |> prepend (Cons Unknown springs)
+                |> prepend springs;
+            let sizes =
+                sizes
+                |> prepend sizes
+                |> prepend sizes
+                |> prepend sizes
+                |> prepend sizes;
+            Entry springs sizes
+        end;
+
+let part2 : List Entry -> string =
+    \input ->
+        input
+        |> list.map amplify
+        |> list.map solve
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
