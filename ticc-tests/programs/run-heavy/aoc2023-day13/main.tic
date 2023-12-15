@@ -1,0 +1,177 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+let parseLine : string -> Result (List bool) string =
+    let hash = strings.charAt 0 "#";
+    let dot = strings.charAt 0 ".";
+    \line ->
+        line
+        |> strings.chars
+        |> list.map (\c ->
+            if c == hash then
+                Ok true
+            else if c == dot then
+                Ok false
+            else
+                Err "bad cell")
+        |> list.allOk;
+
+let parseInput : List string -> Result (List (List (List bool))) string =
+    \fold lines ->
+        match lines with
+        | Nil -> Ok Nil
+        | Cons x xs ->
+            match xs with
+            | Ok xs ->
+                if strings.length x == 0 then
+                    Ok (Cons Nil xs)
+                else
+                    match parseLine x with
+                    | Ok x ->
+                        match xs with
+                        | Cons xx xxs ->
+                            Ok (Cons (Cons x xx) xxs)
+                        | Nil ->
+                            Ok (Cons (Cons x Nil) Nil)
+                        end
+                    | Err e -> Err e
+                    end
+            | Err e -> Err e
+            end
+        end;
+
+let parseInput : string -> Result (List (List (List bool))) string =
+    \input ->
+        input
+        |> strings.lines
+        |> parseInput;
+
+let compact : List (List bool) -> List int =
+    let compact = \fold x ->
+        match x with
+        | Nil -> 0
+        | Cons x xs ->
+            if x then
+                xs * 2 + 1
+            else
+                xs * 2
+        end;
+    \grid -> list.map compact grid;
+
+let eq : List int -> List int -> bool =
+    \fold l -> \r ->
+        match l with
+        | Nil -> list.length r == 0
+        | Cons x xs ->
+            match r with
+            | Nil -> false
+            | Cons r rs ->
+                if x == r then
+                    xs rs
+                else
+                    false
+            end
+        end;
+
+let almostEq : List int -> List int -> bool =
+    let bits =
+        list.range 0 64
+        |> list.map (\i -> ints.iterate i (\x -> x * 2) 1);
+    let almostEq = \a -> \b ->
+        (bits
+        |> list.filter (\x -> a / x % 2 != b / x % 2)
+        |> list.length) == 1;
+    let go = \fold l -> \r -> \exact ->
+        match l with
+        | Nil ->
+            if exact then
+                list.length r == 0
+            else
+                false
+        | Cons x xs ->
+            match r with
+            | Nil -> false
+            | Cons r rs ->
+                if exact then
+                    if x == r then
+                        xs rs true
+                    else
+                        false
+                else
+                    if x == r then
+                        xs rs false
+                    else if almostEq x r then
+                        xs rs true
+                    else
+                        false
+            end
+        end;
+    \l -> \r -> go l r false;
+
+let mirror : (List int -> List int -> bool) -> List (List bool) -> Option int =
+    \cmp -> \grid ->
+        let grid = compact grid;
+        let rows = list.length grid;
+        list.range 1 (list.length grid)
+        |> list.filterMap (\i ->
+            let size = ints.min i (rows - i);
+            let above = grid |> list.take i |> list.reverse |> list.take size;
+            let below = grid |> list.skip i |> list.take size;
+            if cmp above below then
+                Some i
+            else
+                None)
+        |> list.head;
+
+let zipPrepend : List a -> List (List a) -> List (List a) =
+    \fold p -> \ps ->
+        match p with
+        | Nil -> Nil
+        | Cons x xs ->
+            match ps with
+            | Nil -> Cons (Cons x Nil) (xs Nil)
+            | Cons p ps ->  Cons (Cons x p) (xs ps)
+            end
+        end;
+
+let transpose : List (List a) -> List (List a) =
+    \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> zipPrepend x xs
+        end;
+
+let part1 : List (List (List bool)) -> string =
+    \input ->
+        let vertical =
+            input
+            |> list.filterMap (mirror eq)
+            |> list.sum;
+        let horizontal =
+            input
+            |> list.map transpose
+            |> list.filterMap (mirror eq)
+            |> list.sum;
+        vertical * 100 + horizontal
+        |> ints.toString;
+
+let part2 : List (List (List bool)) -> string =
+    \input ->
+        let vertical =
+            input
+            |> list.filterMap (mirror almostEq)
+            |> list.sum;
+        let horizontal =
+            input
+            |> list.map transpose
+            |> list.filterMap (mirror almostEq)
+            |> list.sum;
+        vertical * 100 + horizontal
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
