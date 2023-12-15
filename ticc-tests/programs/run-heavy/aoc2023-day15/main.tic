@@ -1,0 +1,128 @@
+import ints from "std/int";
+import result(Result) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Op = Insert string int | Remove string;
+
+let parseOp : string -> Result Op string =
+    let eq = strings.charAt 0 "=";
+    let minus = strings.charAt 0 "-";
+    let parseInsert =
+        parse.ok Insert
+        |> parse.apply (parse.takeWhile (\c -> c != eq))
+        |> parse.ignore (parse.literal "=")
+        |> parse.apply parse.integer;
+    let parseRemove =
+        parse.ok Remove
+        |> parse.apply (parse.takeWhile (\c -> c != minus))
+        |> parse.ignore (parse.literal "-");
+    \s ->
+        parse.or parseInsert parseRemove
+        |> parse.run s;
+
+let parseInput : string -> Result (List Op) string =
+    \input ->
+        input
+        |> strings.split (strings.charAt 0 ",")
+        |> list.map parseOp
+        |> list.allOk;
+
+let hash : string -> int =
+    \s ->
+        s
+        |> strings.foldChars 0 (\acc -> \c -> (acc + c) * 17 % 256);
+
+let showOp : Op -> string =
+    \op ->
+        match op with
+        | Insert id x -> strings.concat id (strings.concat "=" (ints.toString x))
+        | Remove id -> strings.concat id "-"
+        end;
+
+let part1 : List Op -> string =
+    \input ->
+        input
+        |> list.map showOp
+        |> list.map hash
+        |> list.sum
+        |> ints.toString;
+
+let mapNth : int -> (a -> a) -> List a -> List a =
+    let mapHead = \f -> \l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons (f x) xs
+        end;
+    let mapNext = \f -> \l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons x (f xs)
+        end;
+    \i -> \f -> \l ->
+        ints.iterate i mapNext (mapHead f) l;
+
+type StoredLens = StoredLens string int;
+
+let id : StoredLens -> string =
+    \l ->
+        match l with
+        | StoredLens i _ -> i
+        end;
+
+let strength : StoredLens -> int =
+    \l ->
+        match l with
+        | StoredLens _ x -> x
+        end;
+
+let insert : string -> int -> List StoredLens -> List StoredLens =
+    \i -> \x -> \l ->
+        let contains =
+            l
+            |> list.map id
+            |> list.map (strings.equal i)
+            |> list.any;
+        if contains then
+            l
+            |> list.map (\lens ->
+                if strings.equal (id lens) i then
+                    StoredLens i x
+                else
+                    lens)
+        else
+            list.concat l (Cons (StoredLens i x) Nil);
+
+let remove : string -> List StoredLens -> List StoredLens =
+    \i -> \l -> list.filter (\lens -> if strings.equal (id lens) i then false else true) l;
+
+let exec : List (List StoredLens) -> Op -> List (List StoredLens) =
+    \map -> \op ->
+        match op with
+        | Insert i x -> mapNth (hash i) (insert i x) map
+        | Remove i -> mapNth (hash i) (remove i) map
+        end;
+
+let mapIdx : (int -> a -> b) -> List a -> List b =
+    let go = \f -> \fold l -> \i ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons (f i x) (xs (i + 1))
+        end;
+    \f -> \l -> go f l 0;
+
+let part2 : List Op -> string =
+    \input ->
+        let map =
+            list.range 0 256
+            |> list.map (\_ -> Nil);
+        input
+        |> list.foldl map exec
+        |> mapIdx (\i -> \lenses -> mapIdx (\o -> \l -> (i + 1) * (o + 1) * (strength l)) lenses)
+        |> list.map list.sum
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
