@@ -1,0 +1,231 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Cell = Empty | Rock | Obstacle;
+
+let parseCell : int -> Result Cell string =
+    let hash = strings.charAt 0 "#";
+    let dot = strings.charAt 0 ".";
+    let o = strings.charAt 0 "O";
+    \c ->
+        if c == hash then
+            Ok Obstacle
+        else if c == dot then
+            Ok Empty
+        else if c == o then
+            Ok Rock
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (List (List Cell)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk;
+
+let zipPrepend : List a -> List (List a) -> List (List a) =
+    \fold p -> \ps ->
+        match p with
+        | Nil -> Nil
+        | Cons x xs ->
+            match ps with
+            | Nil -> Cons (Cons x Nil) (xs Nil)
+            | Cons p ps ->  Cons (Cons x p) (xs ps)
+            end
+        end;
+
+let transpose : List (List a) -> List (List a) =
+    \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> zipPrepend x xs
+        end;
+
+type RollState = RollState int int (List Cell);
+
+let roll : List Cell -> List Cell =
+    let go = \fold l ->
+        match l with
+        | Nil -> RollState 0 0 Nil
+        | Cons x xs ->
+            match xs with
+            | RollState rocks empties rest ->
+                match x with
+                | Rock -> RollState (rocks + 1) empties rest
+                | Empty -> RollState rocks (empties + 1) rest
+                | Obstacle ->
+                    let rest = ints.iterate empties (Cons Empty) rest;
+                    let rest = ints.iterate rocks (Cons Rock) rest;
+                    RollState 0 0 (Cons Obstacle rest)
+                end
+            end
+        end;
+    \l ->
+        match go l with
+        | RollState rocks empties rest ->
+            let rest = ints.iterate empties (Cons Empty) rest;
+            let rest = ints.iterate rocks (Cons Rock) rest;
+            rest
+        end;
+
+let load : List Cell -> int =
+    let go = \fold l -> \m ->
+        match l with
+        | Nil -> 0
+        | Cons x xs ->
+            let x =
+                match x with
+                | Empty -> 0
+                | Obstacle -> 0
+                | Rock -> m
+                end;
+            x + xs (m - 1)
+        end;
+    \l -> go l (list.length l);
+
+let part1 : List (List Cell) -> string =
+    \grid ->
+        grid
+        |> transpose
+        |> list.map roll
+        |> list.map load
+        |> list.sum
+        |> ints.toString;
+
+let cycle : List (List Cell) -> List (List Cell) =
+    \grid ->
+        grid
+        |> transpose
+        |> list.map roll
+        |> transpose
+        |> list.map roll
+        |> transpose
+        |> list.map list.reverse
+        |> list.map roll
+        |> list.map list.reverse
+        |> transpose
+        |> list.map list.reverse
+        |> list.map roll
+        |> list.map list.reverse;
+
+let cellEq : Cell -> Cell -> bool =
+    \a -> \b ->
+        match a with
+        | Empty ->
+            match b with
+            | Empty -> true
+            | Rock -> false
+            | Obstacle -> false
+            end
+        | Rock ->
+            match b with
+            | Empty -> false
+            | Rock -> true
+            | Obstacle -> false
+            end
+        | Obstacle ->
+            match b with
+            | Empty -> false
+            | Rock -> false
+            | Obstacle -> true
+            end
+        end;
+
+let listEq : (a -> a -> bool) -> List a -> List a -> bool =
+    \eq -> \fold a -> \b ->
+        match a with
+        | Nil ->
+            match b with
+            | Nil -> true
+            | Cons _ _ -> false
+            end
+        | Cons a as ->
+            match b with
+            | Nil -> false
+            | Cons b bs -> if eq a b then as bs else false
+            end
+        end;
+
+let gridEq : List (List Cell) -> List (List Cell) -> bool =
+    \a -> \b -> listEq (listEq cellEq) a b;
+
+type Loop = Loop int int;
+
+type LoopState a = Looking int a a | Found int a;
+
+let findLoop : int -> (a -> a -> bool) -> a -> (a -> a) -> Option Loop =
+    \maxSteps -> \eq -> \start -> \step ->
+        let chaseStep = \state ->
+            match state with
+            | Looking steps fast slow ->
+                if eq fast slow then
+                    Found steps fast
+                else
+                    Looking (steps + 1) (step (step fast)) (step slow)
+            | Found _ _ -> state
+            end;
+        match ints.iterate maxSteps chaseStep (Looking 1 (step (step start)) (step start)) with
+        | Looking _ _ _ -> None
+        | Found _ loopState ->
+            let countStep = \state ->
+                match state with
+                | Looking steps x _ ->
+                    if eq x loopState then
+                        Found steps x
+                    else
+                        Looking (steps + 1) (step x) x
+                | Found _ _ -> state
+                end;
+            match ints.iterate maxSteps countStep (Looking 1 (step loopState) loopState) with
+            | Looking _ _ _ -> None -- unreachable, if we found a loop in maxsteps then loop size must be at most maxsteps
+            | Found loopSize _ ->
+                let measureStep = \state ->
+                    match state with
+                    | Looking steps here ahead ->
+                        if eq here ahead then
+                            Found steps here
+                        else
+                            Looking (steps + 1) (step here) (step ahead)
+                    | Found _ _ -> state
+                    end;
+                let ahead = ints.iterate loopSize step start;
+                match ints.iterate maxSteps measureStep (Looking 0 start ahead) with
+                | Looking _ _ _ -> None
+                | Found entry _ -> Some (Loop entry loopSize)
+                end
+            end
+        end;
+
+let reduce : int -> int -> int -> int =
+    \res -> \entry -> \size ->
+        if res <= entry then
+            res
+        else
+            entry + (res - entry) % size;
+
+let part2 : List (List Cell) -> string =
+    \input ->
+        match findLoop 100000 gridEq input cycle with
+        | Some loop ->
+            match loop with
+            | Loop entry size ->
+                let steps = reduce 1000000000 entry size;
+                let grid = ints.iterate steps cycle input;
+                grid
+                |> transpose
+                |> list.map load
+                |> list.sum
+                |> ints.toString
+            end
+        | None -> "no loop found"
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
