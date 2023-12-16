@@ -41,6 +41,7 @@ pub(crate) fn lookup_module(name: &str) -> Option<CompleteUnit> {
     static LIST: LazyModule = LazyModule::new(include_str!("std/list.tic"));
     static STRING: LazyModule = LazyModule::new(include_str!("std/string.tic"));
     static INT: LazyModule = LazyModule::new(include_str!("std/int.tic"));
+    static ARRAY: LazyModule = LazyModule::new(include_str!("std/array.tic"));
     match name {
         "std/intrinsics" => Some(INTRINSICS.force()),
         "std/option" => Some(OPTION.force()),
@@ -48,6 +49,7 @@ pub(crate) fn lookup_module(name: &str) -> Option<CompleteUnit> {
         "std/list" => Some(LIST.force()),
         "std/string" => Some(STRING.force()),
         "std/int" => Some(INT.force()),
+        "std/array" => Some(ARRAY.force()),
         _ => None,
     }
 }

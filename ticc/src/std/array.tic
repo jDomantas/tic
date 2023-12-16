@@ -1,0 +1,147 @@
+import ints from "std/int";
+import (Option, Some, None) from "std/option";
+import list(List, Nil, Cons) from "std/list";
+
+type ArrayData a = Leaf a a a a | Node rec rec rec rec;
+
+let mapLeaf : int -> (a -> a) -> ArrayData a -> ArrayData a =
+    \idx -> \f -> \arr ->
+        match arr with
+        | Leaf a b c d ->
+            if idx == 0 then
+                Leaf (f a) b c d
+            else if idx == 1 then
+                Leaf a (f b) c d
+            else if idx == 2 then
+                Leaf a b (f c) d
+            else
+                Leaf a b c (f d)
+        | Node _ _ _ _ -> arr -- unreachable
+        end;
+
+let mapNode : int -> (int -> (a -> a) -> ArrayData a -> ArrayData a) -> int -> (a -> a) -> ArrayData a -> ArrayData a =
+    \quarter -> \recurse -> \idx -> \f -> \arr ->
+        match arr with
+        | Leaf _ _ _ _ -> arr -- unreachable
+        | Node a b c d ->
+            if idx < quarter then
+                Node (recurse idx f a) b c d
+            else if idx < quarter * 2 then
+                Node a (recurse (idx - quarter) f b) c d
+            else if idx < quarter * 3 then
+                Node a b (recurse (idx - quarter * 2) f c) d
+            else
+                Node a b c (recurse (idx - quarter * 3) f d)
+        end;
+
+let getLeaf : int -> ArrayData a -> a =
+    \idx -> \arr ->
+        match arr with
+        | Leaf a b c d ->
+            if idx == 0 then
+                a
+            else if idx == 1 then
+                b
+            else if idx == 2 then
+                c
+            else
+                d
+        | Node _ _ _ _ -> ?unreachable
+        end;
+
+let getNode : int -> (int -> ArrayData a -> a) -> int -> ArrayData a -> a =
+    \quarter -> \recurse -> \idx -> \arr ->
+        match arr with
+        | Leaf a _ _ _ -> a -- unreachable
+        | Node a b c d ->
+            if idx < quarter then
+                recurse idx a
+            else if idx < quarter * 2 then
+                recurse (idx - quarter) b
+            else if idx < quarter * 3 then
+                recurse (idx - quarter * 2) c
+            else
+                recurse (idx - quarter * 3) d
+        end;
+
+export type Array a =
+    | NonEmptyArray
+        int
+        (ArrayData a)
+        (int -> (a -> a) -> ArrayData a -> ArrayData a)
+        (int -> ArrayData a -> a)
+    | EmptyArray;
+
+export let length : Array a -> int =
+    \arr ->
+        match arr with
+        | NonEmptyArray x _ _ _ -> x
+        | EmptyArray -> 0
+        end;
+
+export let empty : Array a = EmptyArray;
+
+export let new : int -> a -> Array a =
+    \size -> \value ->
+        let grow = \arr ->
+            match arr with
+            | NonEmptyArray size data map get -> NonEmptyArray (size * 4) (Node data data data data) (mapNode size map) (getNode size get)
+            | EmptyArray -> EmptyArray
+            end;
+        let tryGrow = \arr ->
+            if length arr < size then
+                grow arr
+            else
+                arr;
+        let singleton = NonEmptyArray 4 (Leaf value value value value) mapLeaf getLeaf;
+        match ints.iterate 64 tryGrow singleton with
+        | NonEmptyArray _ data map get -> NonEmptyArray size data map get
+        | EmptyArray -> EmptyArray
+        end;
+
+export let mapIdx : int -> (a -> a) -> Array a -> Array a =
+    \idx -> \f -> \arr ->
+        match arr with
+        | NonEmptyArray size data map get ->
+            if idx < size then
+                NonEmptyArray size (map idx f data) map get
+            else
+                arr
+        | EmptyArray -> arr
+        end;
+
+export let get : int -> Array a -> Option a =
+    \idx -> \arr ->
+        match arr with
+        | NonEmptyArray size data _ get ->
+            if idx >= size then
+                None
+            else
+                Some (get idx data)
+        | EmptyArray -> None
+        end;
+
+export let set : int -> a -> Array a -> Array a =
+    \idx -> \value -> \arr ->
+        mapIdx idx (\_ -> value) arr;
+
+export let toList : Array a -> List a =
+    \arr ->
+        list.range 0 (length arr)
+        |> list.filterMap (\i -> get i arr);
+
+export let fromList : List a -> Array a =
+    let go = \fold l -> \idx -> \arr ->
+        match l with
+        | Nil -> arr
+        | Cons x xs ->
+            let arr = set idx x arr;
+            xs (idx + 1) arr
+        end;
+    \l ->
+        match l with
+        | Nil -> empty
+        | Cons x _ ->
+            let init = new (list.length l) x;
+            go l 0 init
+        end;

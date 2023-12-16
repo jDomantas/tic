@@ -3,6 +3,7 @@ import option from "std/option";
 import result(Result, Ok, Err) from "std/result";
 import list(List, Nil, Cons) from "std/list";
 import strings from "std/string";
+import array(Array) from "std/array";
 import utils from "../shared/aoc-utils.tic";
 
 type Cell = Empty | UpLeft | DownLeft | SplitH | SplitV;
@@ -38,39 +39,9 @@ let parseInput : string -> Result (List (List Cell)) string =
 
 type Dir = Left | Right | Up | Down;
 
-let mapNth : int -> (a -> a) -> List a -> List a =
-    let mapHead = \f -> \l ->
-        match l with
-        | Nil -> Nil
-        | Cons x xs -> Cons (f x) xs
-        end;
-    let mapNext = \f -> \l ->
-        match l with
-        | Nil -> Nil
-        | Cons x xs -> Cons x (f xs)
-        end;
-    \i -> \f -> \l ->
-        if i >= list.length l then
-            l
-        else
-            ints.iterate i mapNext (mapHead f) l;
-
-let nth : a -> int -> List a -> a =
-    \d -> \idx -> \l ->
-        if idx >= list.length l then
-            d
-        else
-            l
-            |> list.skip idx
-            |> list.head
-            |> option.unwrapOr d;
-
-let mark : int -> int -> List (List bool) -> List (List bool) =
-    \r -> \c -> \arr -> mapNth r (mapNth c (\_ -> true)) arr;
-
 type Stepper = Stepper Dir int int;
 
-type MarkState = MarkState (List (List bool)) (List (List bool)) (List (List bool)) (List (List bool));
+type MarkState = MarkState (Array (Array bool)) (Array (Array bool)) (Array (Array bool)) (Array (Array bool));
 
 let get : Dir -> int -> int -> MarkState -> bool =
     \dir -> \r -> \c -> \state ->
@@ -84,13 +55,14 @@ let get : Dir -> int -> int -> MarkState -> bool =
                 | Right -> right
                 end;
             arr
-            |> nth Nil r
-            |> nth true c
+            |> array.get r
+            |> option.andThen (array.get c)
+            |> option.unwrapOr true
         end;
 
 let set : Dir -> int -> int -> MarkState -> MarkState =
     \dir -> \r -> \c -> \state ->
-        let doSet = \arr -> mapNth r (mapNth c (\_ -> true)) arr;
+        let doSet = \arr -> array.mapIdx r (array.set c true) arr;
         match state with
         | MarkState up down left right ->
             match dir with
@@ -101,15 +73,19 @@ let set : Dir -> int -> int -> MarkState -> MarkState =
             end
         end;
 
-let getCell : int -> int -> List (List Cell) -> Cell =
-    \r -> \c -> \cells -> nth Empty c (nth Nil r cells);
+let getCell : int -> int -> Array (Array Cell) -> Cell =
+    \r -> \c -> \cells ->
+        cells
+        |> array.get r
+        |> option.andThen (array.get c)
+        |> option.unwrapOr Empty;
 
 type State = State (List Stepper) MarkState;
 
 let single : a -> List a =
     \x -> Cons x Nil;
 
-let stepStepper : List (List Cell) -> Stepper -> List Stepper =
+let stepStepper : Array (Array Cell) -> Stepper -> List Stepper =
     \cells -> \stepper ->
         match stepper with
         | Stepper dir r c ->
@@ -170,7 +146,7 @@ let flatMap : (a -> List b) -> List a -> List b =
         end;
     \f -> \l -> go f l Nil;
 
-let step : List (List Cell) -> State -> State =
+let step : Array (Array Cell) -> State -> State =
     \cells -> \state ->
         match state with
         | State steppers mark ->
@@ -188,23 +164,29 @@ let step : List (List Cell) -> State -> State =
             State nextSteppers mark
         end;
 
+let unpack : Array (Array a) -> List (List a) =
+    \arr ->
+        arr
+        |> array.toList
+        |> list.map array.toList;
+
 let union : List (List bool) -> List (List bool) -> List (List bool) =
     \a -> \b ->
         list.zip (list.zip (\a -> \b -> if a then true else b)) a b;
 
-let solveWithStepper : List (List Cell) -> Stepper -> int =
-    \grid -> \stepper ->
-        let mark = list.map (list.map (\_ -> false)) grid;
+let solveWithStepper : int -> int -> Array (Array Cell) -> Stepper -> int =
+    \w -> \h -> \grid -> \stepper ->
+        let mark = array.new h (array.new w false);
         let state = State (Cons stepper Nil) (MarkState mark mark mark mark);
-        let maxSteps = list.sum (list.map list.length grid);
+        let maxSteps = w * h;
         match ints.iterate maxSteps (step grid) state with
         | State _ mark ->
             match mark with
             | MarkState markUp markDown markLeft markRight ->
-                markUp
-                |> union markDown
-                |> union markLeft
-                |> union markRight
+                (unpack markUp)
+                |> union (unpack markDown)
+                |> union (unpack markLeft)
+                |> union (unpack markRight)
                 |> list.map (list.filter (\x -> x))
                 |> list.map list.length
                 |> list.sum
@@ -213,20 +195,24 @@ let solveWithStepper : List (List Cell) -> Stepper -> int =
 
 let part1 : List (List Cell) -> string =
     \grid ->
-        solveWithStepper grid (Stepper Right 0 0)
+        let w = grid |> list.head |> option.unwrapOr Nil |> list.length;
+        let h = grid |> list.length;
+        let grid = grid |> list.map array.fromList |> array.fromList;
+        solveWithStepper w h grid (Stepper Right 0 0)
         |> ints.toString;
 
 let part2 : List (List Cell) -> string =
     \grid ->
         let w = grid |> list.head |> option.unwrapOr Nil |> list.length;
         let h = grid |> list.length;
+        let grid = grid |> list.map array.fromList |> array.fromList;
         let top = list.range 0 w |> list.map (\c -> Stepper Down 0 c);
         let bottom = list.range 0 w |> list.map (\c -> Stepper Up (h - 1) c);
         let left = list.range 0 h |> list.map (\r -> Stepper Right r 0);
         let right = list.range 0 h |> list.map (\r -> Stepper Left r (w - 1));
         let starts = list.concat (list.concat top bottom) (list.concat left right);
         starts
-        |> list.map (solveWithStepper grid)
+        |> list.map (solveWithStepper w h grid)
         |> list.max
         |> option.unwrapOr 0
         |> ints.toString;
