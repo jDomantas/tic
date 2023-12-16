@@ -1,0 +1,234 @@
+import ints from "std/int";
+import option from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+
+type Cell = Empty | UpLeft | DownLeft | SplitH | SplitV;
+
+let parseCell : int -> Result Cell string =
+    let dot = strings.charAt 0 ".";
+    let slash = strings.charAt 0 "/";
+    let backslash = strings.charAt 0 "\";
+    let dash = strings.charAt 0 "-";
+    let pipe = strings.charAt 0 "|";
+    \c ->
+        if c == dot then
+            Ok Empty
+        else if c == slash then
+            Ok UpLeft
+        else if c == backslash then
+            Ok DownLeft
+        else if c == dash then
+            Ok SplitH
+        else if c == pipe then
+            Ok SplitV
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (List (List Cell)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk;
+
+type Dir = Left | Right | Up | Down;
+
+let mapNth : int -> (a -> a) -> List a -> List a =
+    let mapHead = \f -> \l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons (f x) xs
+        end;
+    let mapNext = \f -> \l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons x (f xs)
+        end;
+    \i -> \f -> \l ->
+        if i >= list.length l then
+            l
+        else
+            ints.iterate i mapNext (mapHead f) l;
+
+let nth : a -> int -> List a -> a =
+    \d -> \idx -> \l ->
+        if idx >= list.length l then
+            d
+        else
+            l
+            |> list.skip idx
+            |> list.head
+            |> option.unwrapOr d;
+
+let mark : int -> int -> List (List bool) -> List (List bool) =
+    \r -> \c -> \arr -> mapNth r (mapNth c (\_ -> true)) arr;
+
+type Stepper = Stepper Dir int int;
+
+type MarkState = MarkState (List (List bool)) (List (List bool)) (List (List bool)) (List (List bool));
+
+let get : Dir -> int -> int -> MarkState -> bool =
+    \dir -> \r -> \c -> \state ->
+        match state with
+        | MarkState up down left right ->
+            let arr =
+                match dir with
+                | Up -> up
+                | Down -> down
+                | Left -> left
+                | Right -> right
+                end;
+            arr
+            |> nth Nil r
+            |> nth true c
+        end;
+
+let set : Dir -> int -> int -> MarkState -> MarkState =
+    \dir -> \r -> \c -> \state ->
+        let doSet = \arr -> mapNth r (mapNth c (\_ -> true)) arr;
+        match state with
+        | MarkState up down left right ->
+            match dir with
+            | Up -> MarkState (doSet up) down left right
+            | Down -> MarkState up (doSet down) left right
+            | Left -> MarkState up down (doSet left) right
+            | Right -> MarkState up down left (doSet right)
+            end
+        end;
+
+let getCell : int -> int -> List (List Cell) -> Cell =
+    \r -> \c -> \cells -> nth Empty c (nth Nil r cells);
+
+type State = State (List Stepper) MarkState;
+
+let single : a -> List a =
+    \x -> Cons x Nil;
+
+let stepStepper : List (List Cell) -> Stepper -> List Stepper =
+    \cells -> \stepper ->
+        match stepper with
+        | Stepper dir r c ->
+            match dir with
+            | Up ->
+                match getCell r c cells with
+                | Empty -> Stepper Up (r - 1) c |> single
+                | UpLeft -> Stepper Right r (c + 1) |> single
+                | DownLeft -> Stepper Left r (c - 1) |> single
+                | SplitH ->
+                    let a = Stepper Right r (c + 1);
+                    let b = Stepper Left r (c - 1);
+                    Cons a (Cons b Nil)
+                | SplitV -> Stepper Up (r - 1) c |> single
+                end
+            | Down ->
+                match getCell r c cells with
+                | Empty -> Stepper Down (r + 1) c |> single
+                | UpLeft -> Stepper Left r (c - 1) |> single
+                | DownLeft -> Stepper Right r (c + 1) |> single
+                | SplitH ->
+                    let a = Stepper Right r (c + 1);
+                    let b = Stepper Left r (c - 1);
+                    Cons a (Cons b Nil)
+                | SplitV -> Stepper Down (r + 1) c |> single
+                end
+            | Left ->
+                match getCell r c cells with
+                | Empty -> Stepper Left r (c - 1) |> single
+                | UpLeft -> Stepper Down (r + 1) c |> single
+                | DownLeft -> Stepper Up (r - 1) c |> single
+                | SplitH -> Stepper Left r (c - 1) |> single
+                | SplitV ->
+                    let a = Stepper Up (r - 1) c;
+                    let b = Stepper Down (r + 1) c;
+                    Cons a (Cons b Nil)
+                end
+            | Right ->
+                match getCell r c cells with
+                | Empty -> Stepper Right r (c + 1) |> single
+                | UpLeft -> Stepper Up (r - 1) c |> single
+                | DownLeft -> Stepper Down (r + 1) c |> single
+                | SplitH -> Stepper Right r (c + 1) |> single
+                | SplitV ->
+                    let a = Stepper Up (r - 1) c;
+                    let b = Stepper Down (r + 1) c;
+                    Cons a (Cons b Nil)
+                end
+            end
+        end;
+
+let flatMap : (a -> List b) -> List a -> List b =
+    let go = \f -> \fold l -> \acc ->
+        match l with
+        | Nil -> acc
+        | Cons x xs ->
+            list.concat (f x) (xs acc)
+        end;
+    \f -> \l -> go f l Nil;
+
+let step : List (List Cell) -> State -> State =
+    \cells -> \state ->
+        match state with
+        | State steppers mark ->
+            let nextSteppers =
+                steppers
+                |> list.filter (\s ->
+                    match s with
+                    | Stepper dir r c -> if get dir r c mark then false else true
+                    end)
+                |> flatMap (stepStepper cells);
+            let mark = list.foldl mark (\mark -> \s ->
+                match s with
+                | Stepper dir r c -> set dir r c mark
+                end) steppers;
+            State nextSteppers mark
+        end;
+
+let union : List (List bool) -> List (List bool) -> List (List bool) =
+    \a -> \b ->
+        list.zip (list.zip (\a -> \b -> if a then true else b)) a b;
+
+let solveWithStepper : List (List Cell) -> Stepper -> int =
+    \grid -> \stepper ->
+        let mark = list.map (list.map (\_ -> false)) grid;
+        let state = State (Cons stepper Nil) (MarkState mark mark mark mark);
+        let maxSteps = list.sum (list.map list.length grid);
+        match ints.iterate maxSteps (step grid) state with
+        | State _ mark ->
+            match mark with
+            | MarkState markUp markDown markLeft markRight ->
+                markUp
+                |> union markDown
+                |> union markLeft
+                |> union markRight
+                |> list.map (list.filter (\x -> x))
+                |> list.map list.length
+                |> list.sum
+            end
+        end;
+
+let part1 : List (List Cell) -> string =
+    \grid ->
+        solveWithStepper grid (Stepper Right 0 0)
+        |> ints.toString;
+
+let part2 : List (List Cell) -> string =
+    \grid ->
+        let w = grid |> list.head |> option.unwrapOr Nil |> list.length;
+        let h = grid |> list.length;
+        let top = list.range 0 w |> list.map (\c -> Stepper Down 0 c);
+        let bottom = list.range 0 w |> list.map (\c -> Stepper Up (h - 1) c);
+        let left = list.range 0 h |> list.map (\r -> Stepper Right r 0);
+        let right = list.range 0 h |> list.map (\r -> Stepper Left r (w - 1));
+        let starts = list.concat (list.concat top bottom) (list.concat left right);
+        starts
+        |> list.map (solveWithStepper grid)
+        |> list.max
+        |> option.unwrapOr 0
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

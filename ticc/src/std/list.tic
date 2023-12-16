@@ -305,3 +305,15 @@ export let range : int -> int -> List int =
         match i.iterate steps step (RangeState (stop - 1) Nil) with
         | RangeState _ res -> res
         end;
+
+export let zip : (a -> b -> c) -> List a -> List b -> List c =
+    \f -> \fold as -> \bs ->
+        match as with
+        | Nil ->
+            Nil
+        | Cons a as ->
+            match bs with
+            | Nil -> Nil
+            | Cons b bs -> Cons (f a b) (as bs)
+            end
+        end;
