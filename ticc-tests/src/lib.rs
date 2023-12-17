@@ -371,7 +371,7 @@ impl Test {
                 }
             }
             TestKind::RunHeavy { input, output } => {
-                let res = run_with_stack(512, move || compilation.interpret_main(&input));
+                let res = run_with_stack(2048, move || compilation.interpret_main(&input));
                 let actual_output = match res {
                     Ok(r) => r,
                     Err(e) => format!("error: {e}"),

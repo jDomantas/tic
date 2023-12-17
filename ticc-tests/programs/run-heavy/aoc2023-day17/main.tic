@@ -1,0 +1,270 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+
+let parseCell : int -> Result int string =
+    let d0 = strings.charAt 0 "0";
+    let d9 = strings.charAt 0 "9";
+    \c ->
+        if c < d0 then
+            Err "invalid digit"
+        else if c > d9 then
+            Err "invalid digit"
+        else
+            Ok (c - d0);
+
+let parseInput : string -> Result (List (List int)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk;
+
+type Dir = Left | Right | Up | Down;
+
+type DirMap a = DirMap a a a a;
+
+let dirGet : Dir -> DirMap a -> a =
+    \dir -> \m ->
+        match m with
+        | DirMap u d l r ->
+            match dir with
+            | Up -> u
+            | Down -> d
+            | Left -> l
+            | Right -> r
+            end
+        end;
+
+let dirMap : Dir -> (a -> a) -> DirMap a -> DirMap a =
+    \dir -> \f -> \m ->
+        match m with
+        | DirMap u d l r ->
+            match dir with
+            | Up -> DirMap (f u) d l r
+            | Down -> DirMap u (f d) l r
+            | Left -> DirMap u d (f l) r
+            | Right -> DirMap u d l (f r)
+            end
+        end;
+
+type Pos = Pos Dir int int int;
+
+type State = State int (List Pos) (List (List Pos)) (DirMap (Array (Array (Array int))));
+
+let dirs : List Dir = Cons Up (Cons Down (Cons Left (Cons Right Nil)));
+
+let eq : Dir -> Dir -> bool =
+    let toInt : Dir -> int =
+        \d ->
+            match d with
+            | Up -> 0
+            | Down -> 1
+            | Left -> 2
+            | Right -> 3
+            end;
+    \a -> \b -> toInt a == toInt b;
+
+let opposite : Dir -> Dir -> bool =
+    let toInt : Dir -> int =
+        \d ->
+            match d with
+            | Up -> 0
+            | Left -> 1
+            | Down -> 2
+            | Right -> 3
+            end;
+    \a -> \b -> (toInt a + 2) % 4 == toInt b;
+
+let getDistance : Pos -> DirMap (Array (Array (Array int))) -> int =
+    \pos -> \v ->
+        match pos with
+        | Pos dir row col straight ->
+            dirGet dir v
+            |> array.get (straight - 1)
+            |> option.andThen (array.get row)
+            |> option.andThen (array.get col)
+            |> option.unwrapOr 0
+        end;
+
+let setDistance : Pos -> int -> DirMap (Array (Array (Array int))) -> DirMap (Array (Array (Array int))) =
+    \pos -> \dist -> \v ->
+        match pos with
+        | Pos dir row col straight ->
+            let set = \grid -> array.mapIdx row (array.set col dist) grid;
+            let set = \d -> array.mapIdx (straight - 1) set d;
+            dirMap dir set v
+        end;
+
+type NextStep = NextStep int Pos;
+
+let insertNext : List (List Pos) -> NextStep -> List (List Pos) =
+    \queues -> \step ->
+        match step with
+        | NextStep idx pos ->
+            let atHead = \l ->
+                match l with
+                | Nil -> Cons (Cons pos Nil) Nil
+                | Cons x xs -> Cons (Cons pos x) xs
+                end;
+            let atNext = \r -> \l ->
+                match l with
+                | Nil -> Cons Nil (r Nil)
+                | Cons x xs -> Cons x (r xs)
+                end;
+            if idx > 9 then
+                ?overflow
+            else
+                ints.iterate idx atNext atHead queues
+        end;
+
+let step : Array (Array int) -> (Dir -> Pos -> Option Pos) -> State -> State =
+    \grid -> \move -> \state ->
+        match state with
+        | State dist cur queues visited ->
+            match cur with
+            | Nil ->
+                match queues with
+                | Nil -> state
+                | Cons q qs -> State (dist + 1) q qs visited
+                end
+            | Cons pos cur ->
+                let best = getDistance pos visited;
+                if best <= dist then
+                    State dist cur queues visited
+                else
+                    let nextVisited = setDistance pos dist visited;
+                    let nextSteps =
+                        dirs
+                        |> list.filterMap (\d -> move d pos)
+                        |> list.filterMap (\p ->
+                            match p with
+                            | Pos _ row col _ ->
+                                grid
+                                |> array.get row
+                                |> option.andThen (array.get col)
+                                |> option.map (\x -> NextStep (x - 1) p)
+                            end);
+                    let queues = list.foldl queues insertNext nextSteps;
+                    State dist cur queues nextVisited
+            end
+        end;
+
+let flatMap : (a -> List b) -> List a -> List b =
+    let go = \f -> \fold l -> \acc ->
+        match l with
+        | Nil -> acc
+        | Cons x xs ->
+            list.concat (f x) (xs acc)
+        end;
+    \f -> \l -> go f l Nil;
+
+let and : bool -> bool -> bool =
+    \a -> \b -> if a then b else false;
+
+let move1 : Dir -> Pos -> Option Pos =
+    \d -> \p ->
+        match p with
+        | Pos dir row col straight ->
+            if and (straight == 3) (eq d dir) then
+                None
+            else if opposite d dir then
+                None
+            else
+                let straight =
+                    if eq d dir then
+                        straight + 1
+                    else
+                        1;
+                Some (match d with
+                | Up -> Pos d (row - 1) col straight
+                | Down -> Pos d (row + 1) col straight
+                | Left -> Pos d row (col - 1) straight
+                | Right -> Pos d row (col + 1) straight
+                end)
+        end;
+
+let part1 : List (List int) -> string =
+    \grid ->
+        let w = grid |> list.head |> option.unwrapOr Nil |> list.length;
+        let h = grid |> list.length;
+        let grid = grid |> list.map array.fromList |> array.fromList;
+        let visited = array.new h (array.new w (0 - 1));
+        let visited = array.new 3 visited;
+        let visited = DirMap visited visited visited visited;
+        let start = Pos Right 0 0 1;
+        let init = State 0 (Cons start Nil) Nil visited;
+        let allFinals =
+            Cons Pos Nil
+            |> flatMap (\p -> list.map p dirs)
+            |> list.map (\p -> p (h - 1) (w - 1))
+            |> flatMap (\p -> list.map p (list.range 1 4));
+        match ints.iterate (w * h * (4 * 3 * 4 + 9)) (step grid move1) init with
+        | State _ _ _ visited ->
+            allFinals
+            |> list.map (\pos -> getDistance pos visited)
+            |> list.filter (\d -> d < (0 - 1))
+            |> list.min
+            |> option.map ints.toString
+            |> option.unwrapOr "no path"
+        end;
+
+let not : bool -> bool =
+    \x -> if x then false else true;
+
+let move2 : Dir -> Pos -> Option Pos =
+    \d -> \p ->
+        match p with
+        | Pos dir row col straight ->
+            if and (straight == 10) (eq d dir) then
+                None
+            else if opposite d dir then
+                None
+            else if and (straight < 4) (eq d dir |> not) then
+                None
+            else
+                let straight =
+                    if eq d dir then
+                        straight + 1
+                    else
+                        1;
+                Some (match d with
+                | Up -> Pos d (row - 1) col straight
+                | Down -> Pos d (row + 1) col straight
+                | Left -> Pos d row (col - 1) straight
+                | Right -> Pos d row (col + 1) straight
+                end)
+        end;
+
+let part2 : List (List int) -> string =
+    \grid ->
+        let w = grid |> list.head |> option.unwrapOr Nil |> list.length;
+        let h = grid |> list.length;
+        let grid = grid |> list.map array.fromList |> array.fromList;
+        let visited = array.new h (array.new w (0 - 1));
+        let visited = array.new 10 visited;
+        let visited = DirMap visited visited visited visited;
+        let start = Pos Right 0 0 1;
+        let init = State 0 (Cons start Nil) Nil visited;
+        let allFinals =
+            Cons Pos Nil
+            |> flatMap (\p -> list.map p dirs)
+            |> list.map (\p -> p (h - 1) (w - 1))
+            |> flatMap (\p -> list.map p (list.range 4 11));
+        match ints.iterate (w * h * (4 * 10 * 4 + 9)) (step grid move2) init with
+        | State _ _ _ visited ->
+            allFinals
+            |> list.map (\pos -> getDistance pos visited)
+            |> list.filter (\d -> d < (0 - 1))
+            |> list.min
+            |> option.map ints.toString
+            |> option.unwrapOr "no path"
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
