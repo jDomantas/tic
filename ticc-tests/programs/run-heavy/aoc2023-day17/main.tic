@@ -198,8 +198,9 @@ let part1 : List (List int) -> string =
         let visited = array.new h (array.new w (0 - 1));
         let visited = array.new 3 visited;
         let visited = DirMap visited visited visited visited;
-        let start = Pos Right 0 0 1;
-        let init = State 0 (Cons start Nil) Nil visited;
+        let start1 = Pos Down 0 0 1;
+        let start2 = Pos Right 0 0 1;
+        let init = State 0 (Cons start1 (Cons start2 Nil)) Nil visited;
         let allFinals =
             Cons Pos Nil
             |> flatMap (\p -> list.map p dirs)
@@ -250,8 +251,9 @@ let part2 : List (List int) -> string =
         let visited = array.new h (array.new w (0 - 1));
         let visited = array.new 10 visited;
         let visited = DirMap visited visited visited visited;
-        let start = Pos Right 0 0 1;
-        let init = State 0 (Cons start Nil) Nil visited;
+        let start1 = Pos Right 0 0 1;
+        let start2 = Pos Down 0 0 1;
+        let init = State 0 (Cons start1 (Cons start2 Nil)) Nil visited;
         let allFinals =
             Cons Pos Nil
             |> flatMap (\p -> list.map p dirs)
