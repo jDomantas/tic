@@ -1,0 +1,176 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Dir = Left | Right | Up | Down;
+
+let parseDir : Parse Dir =
+    let u = strings.charAt 0 "U";
+    let d = strings.charAt 0 "D";
+    let l = strings.charAt 0 "L";
+    let r = strings.charAt 0 "R";
+    parse.char
+    |> parse.andThen (\c ->
+        if c == u then
+            Ok Up
+        else if c == d then
+            Ok Down
+        else if c == l then
+            Ok Left
+        else if c == r then
+            Ok Right
+        else
+            Err "invalid direction");
+
+let parseDir2 : Parse Dir =
+    let u = strings.charAt 0 "3";
+    let d = strings.charAt 0 "1";
+    let l = strings.charAt 0 "2";
+    let r = strings.charAt 0 "0";
+    parse.char
+    |> parse.andThen (\c ->
+        if c == u then
+            Ok Up
+        else if c == d then
+            Ok Down
+        else if c == l then
+            Ok Left
+        else if c == r then
+            Ok Right
+        else
+            Err "invalid direction");
+
+let parseHexDigit : Parse int =
+    let a = strings.charAt 0 "a";
+    let f = strings.charAt 0 "f";
+    let d0 = strings.charAt 0 "0";
+    let d9 = strings.charAt 0 "9";
+    parse.char
+    |> parse.andThen (\c ->
+        if c < d0 then
+            Err "bad hex digit"
+        else if c <= d9 then
+            Ok (c - d0)
+        else if c < a then
+            Err "bad hex digit"
+        else if c <= f then
+            Ok (c - a + 10)
+        else
+            Err "bad hex digit");
+
+let parseHexNum : Parse int =
+    parse.ok (\a -> \b -> \c -> \d -> \e -> e + 16 * (d + 16 * (c + 16 * (b + 16 * a))))
+    |> parse.apply parseHexDigit
+    |> parse.apply parseHexDigit
+    |> parse.apply parseHexDigit
+    |> parse.apply parseHexDigit
+    |> parse.apply parseHexDigit;
+
+type Line = Line Dir int;
+
+type Pair a b = Pair a b;
+
+let first : Pair a b -> a =
+    \p ->
+        match p with
+        | Pair x _ -> x
+        end;
+
+let second : Pair a b -> b =
+    \p ->
+        match p with
+        | Pair _ x -> x
+        end;
+
+let parseLine : string -> Result (Pair Line Line) string =
+    \line ->
+        parse.ok (\d1 -> \l1 -> \l2 -> \d2 -> Pair (Line d1 l1) (Line d2 l2))
+        |> parse.apply parseDir
+        |> parse.ignore (parse.literal " ")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal " (#")
+        |> parse.apply parseHexNum
+        |> parse.apply parseDir2
+        |> parse.ignore (parse.literal ")")
+        |> parse.run line;
+
+let parseInput : string -> Result (List (Pair Line Line)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parseLine
+        |> list.allOk;
+
+type L = Vertical int int int | Horizontal int int int;
+
+let toLines : List Line -> List L =
+    let go = \fold lines -> \x -> \y ->
+        match lines with
+        | Nil -> Nil
+        | Cons l ls ->
+            match l with
+            | Line dir len ->
+                match dir with
+                | Up -> Cons
+                    (Vertical x (y - len) y)
+                    (ls x (y - len))
+                | Down -> Cons
+                    (Vertical x y (y + len))
+                    (ls x (y + len))
+                | Left -> Cons
+                    (Horizontal y x (x - len))
+                    (ls (x - len) y)
+                | Right -> Cons
+                    (Horizontal y x (x + len))
+                    (ls (x + len) y)
+                end
+            end
+        end;
+    \lines -> go lines 1000000000 1000000000;
+
+let absDiff : int -> int -> int =
+    \a -> \b ->
+        if a < b then
+            b - a
+        else
+            a - b;
+
+let solve : List Line -> int =
+    \lines ->
+        let lines = toLines lines;
+        let innerArea = lines
+            |> list.map (\l ->
+                match l with
+                | Horizontal y x0 x1 -> (x0 - x1) * y
+                | Vertical _ _ _ -> 0
+                end)
+            |> list.sum;
+        let perimeter = lines
+            |> list.map (\l ->
+                match l with
+                | Horizontal _ x0 x1 -> absDiff x0 x1
+                | Vertical _ y0 y1 -> absDiff y0 y1
+                end)
+            |> list.sum;
+        innerArea + perimeter / 2 + 1;
+
+let part1 : List (Pair Line Line) -> string =
+    \input ->
+        input
+        |> list.map first
+        |> solve
+        |> ints.toString;
+
+let part2 : List (Pair Line Line) -> string =
+    \input ->
+        input
+        |> list.map second
+        |> solve
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
