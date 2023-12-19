@@ -1,0 +1,255 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+let isLowerLetter : int -> bool =
+    let a = strings.charAt 0 "a";
+    let z = strings.charAt 0 "z";
+    \c ->
+        if c >= a then
+            c <= z
+        else
+            false;
+
+let parseName : Parse string = parse.takeWhile isLowerLetter;
+
+type Action = Accept | Reject | Goto string;
+
+type Rule =
+    | CheckGreater int int Action
+    | CheckLess int int Action
+    | Act Action;
+
+let parseAction : Parse Action =
+    (parse.map (\_ -> Accept) (parse.literal "A"))
+    |> parse.or (parse.map (\_ -> Reject) (parse.literal "R"))
+    |> parse.or (parse.map Goto parseName);
+
+let parseCmp : string -> (int -> int -> Action -> a) -> Parse a =
+    \op -> \f ->
+        parse.ok f
+        |> parse.apply parse.char
+        |> parse.ignore (parse.literal op)
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ":")
+        |> parse.apply parseAction;
+
+let parseRule : Parse Rule =
+    (parseCmp "<" CheckLess)
+    |> parse.or (parseCmp ">" CheckGreater)
+    |> parse.or (parseAction |> parse.map Act);
+
+type Workflow = Workflow string (List Rule) Action;
+
+let parseList : Parse a -> Parse (List a) =
+    let close = strings.charAt 0 "}";
+    \elem ->
+        parse.ok (\x -> x)
+        |> parse.ignore (parse.literal "{")
+        |> parse.apply (parse.takeWhile (\c -> c != close))
+        |> parse.ignore (parse.literal "}")
+        |> parse.andThen (\s ->
+            s
+            |> strings.split (strings.charAt 0 ",")
+            |> list.map (\s -> parse.run s elem)
+            |> list.allOk);
+
+type Pair a b = Pair a b;
+
+let unpackFallback : List Rule -> Result (Pair (List Rule) Action) string =
+    \rules ->
+        match list.reverse rules with
+        | Nil -> Err "no fallback rule"
+        | Cons x xs ->
+            match x with
+            | Act a -> Ok (Pair (list.reverse xs) a)
+            | CheckGreater _ _ _ -> Err "no fallback rule"
+            | CheckLess _ _ _ -> Err "no fallback rule"
+            end
+        end;
+
+let parseWorkflow : Parse Workflow =
+    parse.ok Pair
+    |> parse.apply parseName
+    -- |> parse.apply (parse.ok Nil)
+    -- |> parse.ignore parse.remainder;
+    |> parse.apply (parseList parseRule)
+    |> parse.andThen (\w ->
+        match w with
+        | Pair id rules ->
+            match unpackFallback rules with
+            | Ok p ->
+                match p with
+                | Pair l f -> Ok (Workflow id l f)
+                end
+            | Err e -> Err e
+            end
+        end);
+
+type Entry = Entry int int;
+type Item = Item (List Entry);
+
+let parseEntry : Parse Entry =
+    parse.ok Entry
+    |> parse.apply parse.char
+    |> parse.ignore (parse.literal "=")
+    |> parse.apply parse.integer;
+
+type Line = WorkflowLine Workflow | ItemLine Item;
+
+let parseLine : Parse Line =
+    parse.map WorkflowLine parseWorkflow
+    |> parse.or (parse.map (\x -> ItemLine (Item x)) (parseList parseEntry));
+
+type Input = Input (List Workflow) (List Item);
+
+let collectInput : List Line -> Input =
+    \fold lines ->
+        match lines with
+        | Nil -> Input Nil Nil
+        | Cons x xs ->
+            match xs with
+            | Input wfs items ->
+                match x with
+                | WorkflowLine w -> Input (Cons w wfs) items
+                | ItemLine i -> Input wfs (Cons i items)
+                end
+            end
+        end;
+
+let parseInput : string -> Result Input string =
+    \s ->
+        s
+        |> strings.lines
+        |> list.filter (\l -> strings.length l > 0)
+        |> list.map (\s -> parse.run s parseLine)
+        |> list.allOk
+        |> result.map collectInput;
+
+let get : Item -> int -> Option int =
+    \i -> \key ->
+        match i with
+        | Item entries ->
+            entries
+            |> list.filterMap (\e ->
+                match e with
+                | Entry k v ->
+                    if k == key then
+                        Some v
+                    else
+                        None
+                end)
+            |> list.head
+        end;
+
+let matchRule : Rule -> Item -> Option Action =
+    \r -> \i ->
+        match r with
+        | CheckGreater x t a ->
+            match get i x with
+            | Some xx -> if xx > t then Some a else None
+            | None -> None
+            end
+        | CheckLess x t a ->
+            match get i x with
+            | Some xx -> if xx < t then Some a else None
+            | None -> None
+            end
+        | Act a -> Some a
+        end;
+
+let matchWorkflow : Workflow -> Item -> Action =
+    \w -> \i ->
+        match w with
+        | Workflow _ rules fallback ->
+            rules
+            |> list.foldl None (\x -> \r ->
+                match x with
+                | Some _ -> x
+                | None -> matchRule r i
+                end)
+            |> option.unwrapOr fallback
+        end;
+
+type PartState = Accepted | Rejected | InWorkflow string | Error string;
+
+let advanceState : Item -> List Workflow -> PartState -> PartState =
+    \item -> \wfs -> \state ->
+        match state with
+        | Accepted -> state
+        | Rejected -> state
+        | Error _ -> state
+        | InWorkflow wf ->
+            let wf =
+                wfs
+                |> list.filter (\w ->
+                    match w with
+                    | Workflow id _ _ -> strings.equal wf id
+                    end)
+                |> list.head;
+            match wf with
+            | Some wf ->
+                match matchWorkflow wf item with
+                | Accept -> Accepted
+                | Reject -> Rejected
+                | Goto wf -> InWorkflow wf
+                end
+            | None -> Error "item is in nonexistent workflow"
+            end
+        end;
+
+let isAccepted : List Workflow -> Item -> Result bool string =
+    \wfs -> \item ->
+        let state = InWorkflow "in";
+        match ints.iterate (list.length wfs) (advanceState item wfs) state with
+        | Accepted -> Ok true
+        | Rejected -> Ok false
+        | Error e -> Err e
+        | InWorkflow _ -> Err "item is in a loop"
+        end;
+
+let rating : Item -> int =
+    \i ->
+        match i with
+        | Item entries ->
+            entries
+            |> list.map (\e -> match e with | Entry _ v -> v end)
+            |> list.sum
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input wfs items ->
+            items
+            |> list.filterMap (\i ->
+                match isAccepted wfs i with
+                | Ok x ->
+                    if x then
+                        Some (Ok i)
+                    else
+                        None
+                | Err e -> Some (Err e)
+                end)
+            |> list.allOk
+            |> result.map (list.map rating)
+            |> result.map (list.sum)
+            |> result.map ints.toString
+            |> result.join
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        "todo";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
+
+export let check : Result Rule string =
+    parse.run
+        "m>2090:A"
+        (parseCmp ">" CheckGreater);
