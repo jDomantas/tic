@@ -84,8 +84,6 @@ let unpackFallback : List Rule -> Result (Pair (List Rule) Action) string =
 let parseWorkflow : Parse Workflow =
     parse.ok Pair
     |> parse.apply parseName
-    -- |> parse.apply (parse.ok Nil)
-    -- |> parse.ignore parse.remainder;
     |> parse.apply (parseList parseRule)
     |> parse.andThen (\w ->
         match w with
@@ -288,14 +286,14 @@ let matchRule : Rule -> RangeItem -> Option RangeAction =
             else if getHigh i x <= t then
                 None
             else
-                Some (RangeSwitch x t)
+                Some (RangeSwitch x (t + 1))
         | CheckLess x t a ->
-            if getLow i x < t then
+            if getHigh i x < t then
                 Some (toRange a)
-            else if getHigh i x >= t then
+            else if getLow i x >= t then
                 None
             else
-                Some (RangeSwitch x (t + 1))
+                Some (RangeSwitch x t)
         | Act a -> Some (toRange a)
         end;
 
@@ -333,15 +331,87 @@ let advanceState : RangeItem -> List Workflow -> PartState -> PartState =
                 | RangeAccept -> Accepted
                 | RangeReject -> Rejected
                 | RangeGoto wf -> InWorkflow wf
-                | RangeSwitch _ _ -> ?todo
+                | RangeSwitch p x -> Switch p x
                 end
             | None -> Error "item is in nonexistent workflow"
             end
         end;
 
+let itemState : List Workflow -> RangeItem -> PartState =
+    \wfs -> \item ->
+        let state = InWorkflow "in";
+        ints.iterate (list.length wfs) (advanceState item wfs) state;
+
+type State = State (List RangeItem) (List RangeItem);
+
+let stepState : List Workflow -> State -> State =
+    \wfs -> \s ->
+        match s with
+        | State pending accepted ->
+            match pending with
+            | Nil -> s
+            | Cons i is ->
+                match itemState wfs i with
+                | Accepted -> State is (Cons i accepted)
+                | Rejected -> State is accepted
+                | InWorkflow _ -> ?stuckInALoop
+                | Error _ -> ?error
+                | Switch prop x ->
+                    match i with
+                    | RangeItem x1 x2 m1 m2 a1 a2 s1 s2 ->
+                        match prop with
+                        | X ->
+                            let a = RangeItem x1 (x - 1) m1 m2 a1 a2 s1 s2;
+                            let b = RangeItem x x2 m1 m2 a1 a2 s1 s2;
+                            State (Cons a (Cons b is)) accepted
+                        | M ->
+                            let a = RangeItem x1 x2 m1 (x - 1) a1 a2 s1 s2;
+                            let b = RangeItem x1 x2 x m2 a1 a2 s1 s2;
+                            State (Cons a (Cons b is)) accepted
+                        | A ->
+                            let a = RangeItem x1 x2 m1 m2 a1 (x - 1) s1 s2;
+                            let b = RangeItem x1 x2 m1 m2 x a2 s1 s2;
+                            State (Cons a (Cons b is)) accepted
+                        | S ->
+                            let a = RangeItem x1 x2 m1 m2 a1 a2 s1 (x - 1);
+                            let b = RangeItem x1 x2 m1 m2 a1 a2 x s2;
+                            State (Cons a (Cons b is)) accepted
+                        end
+                    end
+                end
+            end
+        end;
+
+let options : RangeItem -> int =
+    \i ->
+        match i with
+        | RangeItem x1 x2 m1 m2 a1 a2 s1 s2 ->
+            let x = x2 - x1 + 1;
+            let m = m2 - m1 + 1;
+            let a = a2 - a1 + 1;
+            let s = s2 - s1 + 1;
+            x * m * a * s
+        end;
+
 let part2 : Input -> string =
     \input ->
-        "todo";
+        match input with
+        | Input wfs _ ->
+            let all = RangeItem 1 4000 1 4000 1 4000 1 4000;
+            let state = State (Cons all Nil) Nil;
+            let accepted =
+                match ints.iterate 10000 (stepState wfs) state with
+                | State items accepted ->
+                    if list.length items > 0 then
+                        ?notEnoughIters
+                    else
+                        accepted
+                end;
+            accepted
+            |> list.map options
+            |> list.sum
+            |> ints.toString
+        end;
 
 export let main : string -> string = utils.makeSolution parseInput part1 part2;
 
