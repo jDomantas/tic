@@ -20,20 +20,28 @@ let parseName : Parse string = parse.takeWhile isLowerLetter;
 
 type Action = Accept | Reject | Goto string;
 
+type Prop = X | M | A | S;
+
 type Rule =
-    | CheckGreater int int Action
-    | CheckLess int int Action
+    | CheckGreater Prop int Action
+    | CheckLess Prop int Action
     | Act Action;
+
+let parseProp : Parse Prop =
+    (parse.map (\_ -> X) (parse.literal "x"))
+    |> parse.or (parse.map (\_ -> M) (parse.literal "m"))
+    |> parse.or (parse.map (\_ -> A) (parse.literal "a"))
+    |> parse.or (parse.map (\_ -> S) (parse.literal "s"));
 
 let parseAction : Parse Action =
     (parse.map (\_ -> Accept) (parse.literal "A"))
     |> parse.or (parse.map (\_ -> Reject) (parse.literal "R"))
     |> parse.or (parse.map Goto parseName);
 
-let parseCmp : string -> (int -> int -> Action -> a) -> Parse a =
+let parseCmp : string -> (Prop -> int -> Action -> a) -> Parse a =
     \op -> \f ->
         parse.ok f
-        |> parse.apply parse.char
+        |> parse.apply parseProp
         |> parse.ignore (parse.literal op)
         |> parse.apply parse.integer
         |> parse.ignore (parse.literal ":")
@@ -91,20 +99,25 @@ let parseWorkflow : Parse Workflow =
             end
         end);
 
-type Entry = Entry int int;
-type Item = Item (List Entry);
+type Item = Item int int int int;
 
-let parseEntry : Parse Entry =
-    parse.ok Entry
-    |> parse.apply parse.char
-    |> parse.ignore (parse.literal "=")
-    |> parse.apply parse.integer;
+let parseItem : Parse Item =
+    parse.ok Item
+    |> parse.ignore (parse.literal "{x=")
+    |> parse.apply parse.integer
+    |> parse.ignore (parse.literal ",m=")
+    |> parse.apply parse.integer
+    |> parse.ignore (parse.literal ",a=")
+    |> parse.apply parse.integer
+    |> parse.ignore (parse.literal ",s=")
+    |> parse.apply parse.integer
+    |> parse.ignore (parse.literal "}");
 
 type Line = WorkflowLine Workflow | ItemLine Item;
 
 let parseLine : Parse Line =
     parse.map WorkflowLine parseWorkflow
-    |> parse.or (parse.map (\x -> ItemLine (Item x)) (parseList parseEntry));
+    |> parse.or (parse.map ItemLine parseItem);
 
 type Input = Input (List Workflow) (List Item);
 
@@ -131,35 +144,23 @@ let parseInput : string -> Result Input string =
         |> list.allOk
         |> result.map collectInput;
 
-let get : Item -> int -> Option int =
+let get : Item -> Prop -> int =
     \i -> \key ->
         match i with
-        | Item entries ->
-            entries
-            |> list.filterMap (\e ->
-                match e with
-                | Entry k v ->
-                    if k == key then
-                        Some v
-                    else
-                        None
-                end)
-            |> list.head
+        | Item x m a s ->
+            match key with
+            | X -> x
+            | M -> m
+            | A -> a
+            | S -> s
+            end
         end;
 
 let matchRule : Rule -> Item -> Option Action =
     \r -> \i ->
         match r with
-        | CheckGreater x t a ->
-            match get i x with
-            | Some xx -> if xx > t then Some a else None
-            | None -> None
-            end
-        | CheckLess x t a ->
-            match get i x with
-            | Some xx -> if xx < t then Some a else None
-            | None -> None
-            end
+        | CheckGreater x t a -> if get i x > t then Some a else None
+        | CheckLess x t a -> if get i x < t then Some a else None
         | Act a -> Some a
         end;
 
@@ -216,10 +217,7 @@ let isAccepted : List Workflow -> Item -> Result bool string =
 let rating : Item -> int =
     \i ->
         match i with
-        | Item entries ->
-            entries
-            |> list.map (\e -> match e with | Entry _ v -> v end)
-            |> list.sum
+        | Item a b c d -> a + b + c + d
         end;
 
 let part1 : Input -> string =
@@ -241,6 +239,104 @@ let part1 : Input -> string =
             |> result.map (list.sum)
             |> result.map ints.toString
             |> result.join
+        end;
+
+type RangeItem = RangeItem int int int int int int int int;
+
+type PartState = Accepted | Rejected | InWorkflow string | Error string | Switch Prop int;
+
+type RangeAction = RangeAccept | RangeReject | RangeGoto string | RangeSwitch Prop int;
+
+let getLow : RangeItem -> Prop -> int =
+    \i -> \key ->
+        match i with
+        | RangeItem x _ m _ a _ s _ ->
+            match key with
+            | X -> x
+            | M -> m
+            | A -> a
+            | S -> s
+            end
+        end;
+
+let getHigh : RangeItem -> Prop -> int =
+    \i -> \key ->
+        match i with
+        | RangeItem _ x _ m _ a _ s ->
+            match key with
+            | X -> x
+            | M -> m
+            | A -> a
+            | S -> s
+            end
+        end;
+
+let toRange : Action -> RangeAction =
+    \a ->
+        match a with
+        | Accept -> RangeAccept
+        | Reject -> RangeReject
+        | Goto x -> RangeGoto x
+        end;
+
+let matchRule : Rule -> RangeItem -> Option RangeAction =
+    \r -> \i ->
+        match r with
+        | CheckGreater x t a ->
+            if getLow i x > t then
+                Some (toRange a)
+            else if getHigh i x <= t then
+                None
+            else
+                Some (RangeSwitch x t)
+        | CheckLess x t a ->
+            if getLow i x < t then
+                Some (toRange a)
+            else if getHigh i x >= t then
+                None
+            else
+                Some (RangeSwitch x (t + 1))
+        | Act a -> Some (toRange a)
+        end;
+
+let matchWorkflow : Workflow -> RangeItem -> RangeAction =
+    \w -> \i ->
+        match w with
+        | Workflow _ rules fallback ->
+            rules
+            |> list.foldl None (\x -> \r ->
+                match x with
+                | Some _ -> x
+                | None -> matchRule r i
+                end)
+            |> option.unwrapOr (toRange fallback)
+        end;
+
+let advanceState : RangeItem -> List Workflow -> PartState -> PartState =
+    \item -> \wfs -> \state ->
+        match state with
+        | Accepted -> state
+        | Rejected -> state
+        | Error _ -> state
+        | Switch _ _ -> state
+        | InWorkflow wf ->
+            let wf =
+                wfs
+                |> list.filter (\w ->
+                    match w with
+                    | Workflow id _ _ -> strings.equal wf id
+                    end)
+                |> list.head;
+            match wf with
+            | Some wf ->
+                match matchWorkflow wf item with
+                | RangeAccept -> Accepted
+                | RangeReject -> Rejected
+                | RangeGoto wf -> InWorkflow wf
+                | RangeSwitch _ _ -> ?todo
+                end
+            | None -> Error "item is in nonexistent workflow"
+            end
         end;
 
 let part2 : Input -> string =
