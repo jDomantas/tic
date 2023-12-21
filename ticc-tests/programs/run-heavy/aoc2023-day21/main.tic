@@ -1,0 +1,196 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Cell = Empty | Wall | Start;
+
+let parseCell : int -> Result Cell string =
+    let dot = strings.charAt 0 ".";
+    let hash = strings.charAt 0 "#";
+    let s = strings.charAt 0 "S";
+    \c ->
+        if c == dot then
+            Ok Empty
+        else if c == hash then
+            Ok Wall
+        else if c == s then
+            Ok Start
+        else
+            Err "bad cell";
+
+type Input = Input (Array (Array bool)) int int;
+
+let findIdx : (a -> bool) -> List a -> Option int =
+    let go = \f -> \fold l -> \idx ->
+        match l with
+        | Nil -> None
+        | Cons x xs ->
+            if f x then
+                Some idx
+            else
+                xs (idx + 1)
+        end;
+    \f -> \l -> go f l 0;
+
+let isStart : Cell -> bool =
+    \c ->
+        match c with
+        | Empty -> false
+        | Wall -> false
+        | Start -> true
+        end;
+
+let isWall : Cell -> bool =
+    \c ->
+        match c with
+        | Empty -> false
+        | Wall -> true
+        | Start -> false
+        end;
+
+let parseInput : string -> Result Input string =
+    \x ->
+        x
+        |> strings.lines
+        |> list.map (\l -> l |> strings.chars |> list.map parseCell |> list.allOk)
+        |> list.allOk
+        |> result.andThen (\cells ->
+            match findIdx (\x -> x |> list.map isStart |> list.any) cells with
+            | None -> Err "no start"
+            | Some rowIdx ->
+                let row =
+                    cells
+                    |> list.skip rowIdx
+                    |> list.head
+                    |> option.unwrapOr Nil;
+                match findIdx isStart row with
+                | None -> Err "no start"
+                | Some colIdx ->
+                    let cells =
+                        cells
+                        |> list.map (list.map isWall)
+                        |> list.map array.fromList
+                        |> array.fromList;
+                    Ok (Input cells rowIdx colIdx)
+                end
+            end);
+
+type Point = Point int int;
+
+type State = State (Array (Array bool)) (Array (Array bool)) (List Point);
+
+let neighbours : Point -> List Point =
+    \pt ->
+        match pt with
+        | Point r c ->
+            let id = \x -> x;
+            let up = if r == 0 then id else Cons (Point (r - 1) c);
+            let left = if c == 0 then id else Cons (Point r (c - 1));
+            Cons (Point (r + 1) c) (Cons (Point r (c + 1)) (up (left Nil)))
+        end;
+
+let get : int -> int -> a -> Array (Array a) -> a =
+    \r -> \c -> \default -> \arr ->
+        arr
+        |> array.get r
+        |> option.andThen (array.get c)
+        |> option.unwrapOr default;
+
+let tryVisit : Point -> State -> State =
+    \pt -> \st ->
+        match st with
+        | State wall visited next ->
+            match pt with
+            | Point r c ->
+                if get r c true wall then
+                    st
+                else if get r c true visited then
+                    st
+                else
+                    let visited = array.mapIdx r (array.set c true) visited;
+                    State wall visited (Cons pt next)
+            end
+        end;
+
+let step : Point -> State -> State =
+    \pt -> \st ->
+        neighbours pt
+        |> list.foldr tryVisit st;
+
+let expand : State -> State =
+    \st ->
+        match st with
+        | State wall visited next ->
+            let st = State wall visited Nil;
+            list.foldr step st next
+        end;
+
+let mapIdx : (int -> a -> b) -> List a -> List b =
+    let go = \f -> \fold l -> \idx ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> Cons (f idx x) (xs (idx + 1))
+        end;
+    \f -> \l -> go f l 0;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input walls startRow startCol ->
+            let visited =
+                walls
+                |> array.toList
+                |> list.map array.toList
+                |> list.map (list.map (\_ -> false))
+                |> list.map array.fromList
+                |> array.fromList
+                |> array.mapIdx startRow (array.set startCol true);
+            let state = State walls visited (Cons (Point startRow startCol) Nil);
+            -- match ints.iterate 6 expand state with
+            -- | State wall visited _ ->
+            --     wall
+            --     |> array.toList
+            --     |> list.map array.toList
+            --     |> mapIdx (\r -> \row ->
+            --         row
+            --         |> mapIdx (\c -> \isWall ->
+            --             if isWall then
+            --                 "#"
+            --             else if get r c false visited then
+            --                 "O"
+            --             else
+            --                 "."))
+            --     |> list.map (list.join "")
+            --     |> list.map (strings.concat (strings.fromChar 10))
+            --     |> list.join ""
+            -- end
+            match ints.iterate 64 expand state with
+            | State _ visited _ ->
+                visited
+                |> array.toList
+                |> list.map array.toList
+                |> mapIdx (\r -> \row ->
+                    row
+                    |> mapIdx (\c -> \visited ->
+                        if visited then
+                            let d = (startRow + startCol + r + c) % 2;
+                            d == 0
+                        else
+                            false)
+                    |> list.filter (\x -> x))
+                |> list.map list.length
+                |> list.sum
+                |> ints.toString
+            end
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        "todo";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

@@ -1,0 +1,276 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Kind = Broadcaster | FlipFlop | Con;
+
+type Module = Module Kind string (List string);
+
+type TrimState = TrimStart int | TrimDone int;
+
+let trim : string -> string =
+    let trailingSpaces =
+        \s -> strings.foldChars 0 (\acc -> \c -> if c == 32 then acc + 1 else 0) s;
+    let leadingSpaces =
+        let addChar = \state -> \c ->
+            match state with
+            | TrimStart x -> if c == 32 then TrimStart (x + 1) else TrimDone x
+            | TrimDone x -> TrimDone x
+            end;
+        \s ->
+            match strings.foldChars (TrimStart 0) addChar s with
+            | TrimStart x -> x
+            | TrimDone x -> x
+            end;
+    \s ->
+        let t = trailingSpaces s;
+        let s = strings.substring 0 (strings.length s - t) s;
+        let l = leadingSpaces s;
+        strings.substring l (strings.length s - l) s;
+
+let parseDests : Parse (List string) =
+    parse.remainder
+    |> parse.map (\x ->
+        x
+        |> strings.split (strings.charAt 0 ",")
+        |> list.map trim);
+
+let parseModule : string -> Result Module string =
+    let parseKind =
+        parse.literal "broadcaster"
+        |> parse.map (\l -> Module Broadcaster l)
+        |> parse.or (
+            parse.ok (Module FlipFlop)
+            |> parse.ignore (parse.literal "%")
+            |> parse.apply parse.word)
+        |> parse.or (
+            parse.ok (Module Con)
+            |> parse.ignore (parse.literal "&")
+            |> parse.apply parse.word);
+    \l ->
+        parseKind
+        |> parse.ignore (parse.literal " -> ")
+        |> parse.apply parseDests
+        |> parse.run l;
+
+let parseInput : string -> Result (List Module) string =
+    \x ->
+        x
+        |> strings.lines
+        |> list.map parseModule
+        |> list.allOk;
+
+type ModuleState =
+    | FlipFlopOff (List int)
+    | FlipFlopOn (List int)
+    | Conjunction (List int) (List int)
+    | Broadcast (List int);
+
+let findIdx : string -> List Module -> int =
+    let go = \name -> \fold modules -> \idx ->
+        match modules with
+        | Nil -> None
+        | Cons x xs ->
+            match x with
+            | Module _ n _ ->
+                if strings.equal n name then
+                    Some idx
+                else
+                    xs (idx + 1)
+            end
+        end;
+    \name -> \modules ->
+        go name modules 0
+        |> option.unwrapOr (list.length modules);
+
+let resolveDsts : List Module -> List string -> Result (List int) string =
+    \all -> \dsts ->
+        dsts
+        |> list.map (\n -> findIdx n all)
+        |> Ok;
+
+let findInputs : List Module -> string -> List int =
+    let go = \name -> \fold modules -> \idx ->
+        match modules with
+        | Nil -> Nil
+        | Cons x xs ->
+            match x with
+            | Module _ _ dsts ->
+                let isInput =
+                    dsts
+                    |> list.map (\x -> strings.equal x name)
+                    |> list.any;
+                if isInput then
+                    Cons idx (xs (idx + 1))
+                else
+                    xs (idx + 1)
+            end
+        end;
+    \all -> \to -> go to all 0;
+
+let makeState : List Module -> Module -> Result ModuleState string =
+    \all -> \m ->
+        match m with
+        | Module kind name dsts ->
+            match resolveDsts all dsts with
+            | Err e -> Err e
+            | Ok dsts ->
+                match kind with
+                | Broadcaster -> Ok (Broadcast dsts)
+                | FlipFlop -> Ok (FlipFlopOff dsts)
+                | Con ->
+                    let inputs = findInputs all name;
+                    Ok (Conjunction inputs dsts)
+                end
+            end
+        end;
+
+type Signal = Low | High;
+type Message = Message Signal int int;
+type Pair a b = Pair a b;
+type Action = SendHigh (List int) | SendLow (List int) | NoAction;
+
+let handleMessage : Array ModuleState -> Message -> Pair (Array ModuleState) (List Message) =
+    \modules -> \msg ->
+        match msg with
+        | Message signal src dst ->
+            match array.get dst modules with
+            | Some module ->
+                let res =
+                    match module with
+                    | FlipFlopOff dsts ->
+                        match signal with
+                        | High -> Pair (FlipFlopOff dsts) NoAction
+                        | Low -> Pair (FlipFlopOn dsts) (SendHigh dsts)
+                        end
+                    | FlipFlopOn dsts ->
+                        match signal with
+                        | High -> Pair (FlipFlopOn dsts) NoAction
+                        | Low -> Pair (FlipFlopOff dsts) (SendLow dsts)
+                        end
+                    | Broadcast dsts ->
+                        match signal with
+                        | High -> Pair module (SendHigh dsts)
+                        | Low -> Pair module (SendLow dsts)
+                        end
+                    | Conjunction lows dsts ->
+                        let lows =
+                            match signal with
+                            | High -> lows |> list.filter (\x -> x != src)
+                            | Low -> Cons src lows
+                            end;
+                        if list.length lows == 0 then
+                            Pair module (SendLow dsts)
+                        else
+                            Pair module (SendHigh dsts)
+                    end;
+                match res with
+                | Pair newState action ->
+                    let modules = array.set dst newState modules;
+                    let messages =
+                        match action with
+                        | NoAction -> Nil
+                        | SendHigh to -> list.map (\i -> Message High dst i) to
+                        | SendLow to -> list.map (\i -> Message Low dst i) to
+                        end;
+                    Pair modules messages
+                end
+            | None -> Pair modules Nil
+            end
+        end;
+
+type State = State (Array ModuleState) (List Message) (List Message);
+
+let step : State -> State =
+    \state ->
+        match state with
+        | State modules messages all ->
+            match messages with
+            | Nil -> state
+            | Cons x xs ->
+                match handleMessage modules x with
+                | Pair modules newMessages ->
+                    let messages = list.concat xs newMessages;
+                    State modules messages (Cons x all)
+                end
+            end
+        end;
+
+let sendAndPropagate : State -> Message -> State =
+    \state -> \msg ->
+        match state with
+        | State modules _ handled ->
+            let state = State modules (Cons msg Nil) handled;
+            let state = ints.iterate 100 step state;
+            match state with
+            | State _ pending _ ->
+                if list.length pending > 0 then
+                    ?notEnoughIters
+                else
+                    state
+            end
+        end;
+
+let solve : Array ModuleState -> int -> List Message =
+    \modules -> \start ->
+        let msg = Message Low 80085 start;
+        let state = State modules (Cons msg Nil) Nil;
+        let state = sendAndPropagate state msg;
+        -- let state = sendAndPropagate state msg;
+        match state with
+        | State _ _ handled ->
+            list.reverse handled
+        end;
+
+let nthName : List Module -> int -> string =
+    \m -> \idx ->
+        if idx == 80085 then
+            "button"
+        else
+            m
+            |> list.skip idx
+            |> list.head
+            |> option.map (\m -> match m with | Module _ n _ -> n end)
+            |> option.unwrapOr "unknown";
+
+let showMessage : List Module -> Message -> string =
+    let append = \a -> \b -> strings.concat b a;
+    \all -> \msg ->
+        match msg with
+        | Message kind src dst ->
+            let kind =
+                match kind with
+                | High -> "high"
+                | Low -> "low"
+                end;
+            nthName all src
+            |> append " -"
+            |> append kind
+            |> append "-> "
+            |> append (nthName all dst)
+        end;
+
+let part1 : List Module -> string =
+    \modules ->
+        let states = modules |> list.map (makeState modules) |> list.allOk;
+        let start = findIdx "broadcaster" modules |> Ok;
+        states
+        |> result.andThen (\states ->
+            start
+            |> result.map (\start ->
+                solve (array.fromList states) start
+                |> list.map (showMessage modules)
+                |> list.map (strings.concat (strings.fromChar 10))
+                |> list.join ""))
+        |> result.join;
+
+let part2 : List Module -> string =
+    \modules ->
+        "todo";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
