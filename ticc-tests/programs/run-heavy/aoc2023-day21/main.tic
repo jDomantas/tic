@@ -1,0 +1,307 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Cell = Empty | Wall | Start;
+
+let parseCell : int -> Result Cell string =
+    let dot = strings.charAt 0 ".";
+    let hash = strings.charAt 0 "#";
+    let s = strings.charAt 0 "S";
+    \c ->
+        if c == dot then
+            Ok Empty
+        else if c == hash then
+            Ok Wall
+        else if c == s then
+            Ok Start
+        else
+            Err "bad cell";
+
+type Input = Input (Array (Array bool)) int int;
+
+let findIdx : (a -> bool) -> List a -> Option int =
+    let go = \f -> \fold l -> \idx ->
+        match l with
+        | Nil -> None
+        | Cons x xs ->
+            if f x then
+                Some idx
+            else
+                xs (idx + 1)
+        end;
+    \f -> \l -> go f l 0;
+
+let isStart : Cell -> bool =
+    \c ->
+        match c with
+        | Empty -> false
+        | Wall -> false
+        | Start -> true
+        end;
+
+let isWall : Cell -> bool =
+    \c ->
+        match c with
+        | Empty -> false
+        | Wall -> true
+        | Start -> false
+        end;
+
+let parseInput : string -> Result Input string =
+    \x ->
+        x
+        |> strings.lines
+        |> list.map (\l -> l |> strings.chars |> list.map parseCell |> list.allOk)
+        |> list.allOk
+        |> result.andThen (\cells ->
+            match findIdx (\x -> x |> list.map isStart |> list.any) cells with
+            | None -> Err "no start"
+            | Some rowIdx ->
+                let row =
+                    cells
+                    |> list.skip rowIdx
+                    |> list.head
+                    |> option.unwrapOr Nil;
+                match findIdx isStart row with
+                | None -> Err "no start"
+                | Some colIdx ->
+                    let cells =
+                        cells
+                        |> list.map (list.map isWall)
+                        |> list.map array.fromList
+                        |> array.fromList;
+                    Ok (Input cells rowIdx colIdx)
+                end
+            end);
+
+type Point = Point int int;
+
+type State = State int (Array (Array bool)) (Array (Array (Option int))) (List Point);
+
+let neighbours : Point -> List Point =
+    \pt ->
+        match pt with
+        | Point r c ->
+            let id = \x -> x;
+            let up = if r == 0 then id else Cons (Point (r - 1) c);
+            let left = if c == 0 then id else Cons (Point r (c - 1));
+            Cons (Point (r + 1) c) (Cons (Point r (c + 1)) (up (left Nil)))
+        end;
+
+let get : int -> int -> a -> Array (Array a) -> a =
+    \r -> \c -> \default -> \arr ->
+        arr
+        |> array.get r
+        |> option.andThen (array.get c)
+        |> option.unwrapOr default;
+
+let isSome : Option a -> bool =
+    \o ->
+        match o with
+        | Some _ -> true
+        | None -> false
+        end;
+
+let tryVisit : Point -> State -> State =
+    \pt -> \st ->
+        match st with
+        | State d wall distances next ->
+            match pt with
+            | Point r c ->
+                if get r c true wall then
+                    st
+                else if get r c None distances |> isSome then
+                    st
+                else
+                    let distances = array.mapIdx r (array.set c (Some d)) distances;
+                    State d wall distances (Cons pt next)
+            end
+        end;
+
+let step : Point -> State -> State =
+    \pt -> \st ->
+        neighbours pt
+        |> list.foldr tryVisit st;
+
+let expand : State -> State =
+    \st ->
+        match st with
+        | State d wall distances next ->
+            let st = State (d + 1) wall distances Nil;
+            list.foldr step st next
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input walls startRow startCol ->
+            let distances =
+                walls
+                |> array.toList
+                |> list.map array.toList
+                |> list.map (list.map (\_ -> None))
+                |> list.map array.fromList
+                |> array.fromList
+                |> array.mapIdx startRow (array.set startCol (Some 0));
+            let state = State 0 walls distances (Cons (Point startRow startCol) Nil);
+            match ints.iterate 64 expand state with
+            | State _ _ visited _ ->
+                visited
+                |> array.toList
+                |> list.map array.toList
+                |> list.map (\row ->
+                    row
+                    |> list.map (\distance ->
+                        match distance with
+                        | Some x -> x % 2 == 0
+                        | None -> false
+                        end)
+                    |> list.filter (\x -> x))
+                |> list.map list.length
+                |> list.sum
+                |> ints.toString
+            end
+        end;
+
+let flipH : Input -> Input =
+    \input ->
+        match input with
+        | Input grid sr sc ->
+            let w = grid |> array.get 0 |> option.map array.length |> option.unwrapOr 0;
+            let sc = w - sc - 1;
+            let grid =
+                grid
+                |> array.toList
+                |> list.map array.toList
+                |> list.map list.reverse
+                |> list.map array.fromList
+                |> array.fromList;
+            Input grid sr sc
+        end;
+
+let flipV : Input -> Input =
+    \input ->
+        match input with
+        | Input grid sr sc ->
+            let h = array.length grid;
+            let sr = h - sr - 1;
+            let grid =
+                grid
+                |> array.toList
+                |> list.reverse
+                |> array.fromList;
+            Input grid sr sc
+        end;
+
+let rotateLeft : int -> Array a -> Array a =
+    \by -> \arr ->
+        let arr = array.toList arr;
+        let prefix = list.take by arr;
+        let suffix = list.skip by arr;
+        list.concat suffix prefix
+        |> array.fromList;
+
+let countCopies : int -> int -> int =
+    \n -> \sd ->
+        let k = sd / n;
+        if n % 2 == 0 then
+            if sd % 2 == 1 then
+                0
+            else
+                (k + 1) * (k + 2) / 2
+        else
+            if sd % 2 == 0 then
+                let k = k / 2;
+                (k + 1) * (k + 1)
+            else
+                if k == 0 then
+                    0
+                else
+                    let k = (k - 1) / 2;
+                    (k + 1) * (k + 2);
+
+let flatMap : (a -> List b) -> List a -> List b =
+    \f -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs -> list.concat (f x) xs
+        end;
+
+let solveQuadrant : Input -> int -> int =
+    \input -> \steps ->
+        match input with
+        | Input grid sr sc ->
+            let size = array.length grid;
+            let grid =
+                grid
+                |> rotateLeft sr
+                |> array.toList
+                |> list.map (rotateLeft sc)
+                |> list.map array.toList
+                |> list.map (\x -> list.concat x (Cons false Nil))
+                |> list.map array.fromList
+                |> (\g ->
+                    let extraRow = array.new (size + 1) false;
+                    list.concat g (Cons extraRow Nil))
+                |> array.fromList;
+            let distances =
+                grid
+                |> array.toList
+                |> list.map array.toList
+                |> list.map (list.map (\_ -> None))
+                |> list.map array.fromList
+                |> array.fromList
+                |> array.mapIdx 0 (array.set 0 (Some 0));
+            let state = State 0 grid distances (Cons (Point 0 0) Nil);
+            let state = ints.iterate ((size + 1) * (size + 1)) expand state;
+            match state with
+            | State _ _ distances _ ->
+                distances
+                |> array.toList
+                |> list.take size
+                |> list.map array.toList
+                |> list.map (list.take size)
+                |> flatMap (\x -> x)
+                |> list.filterMap (\x -> x)
+                |> list.filter (\x -> x <= steps)
+                |> list.map (\d -> countCopies size (steps - d))
+                |> list.sum
+            end
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input grid sr sc ->
+            let h = array.length grid;
+            let w = grid |> array.get 0 |> option.map array.length |> option.unwrapOr 0;
+            if w != h then
+                "non-square input"
+            else if grid |> array.get sr |> option.unwrapOr array.empty |> array.toList |> list.any then
+                "start row has walls"
+            else if list.range 0 h |> list.map (\r -> get r sc false grid) |> list.any then
+                "start column has walls"
+            else
+                let steps = 26501365;
+                let a = solveQuadrant input steps;
+                let b = solveQuadrant (flipH input) steps;
+                let c = solveQuadrant (flipV input) steps;
+                let d = solveQuadrant (flipH (flipV input)) steps;
+                let total = a + b + c + d;
+                let reachable =
+                    if steps % 2 == 0 then
+                        let dup = steps / 2;
+                        total - dup * 4 - 3
+                    else
+                        let dup = (steps + 1) / 2;
+                        total - dup * 4;
+                ints.toString reachable
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
