@@ -1,0 +1,325 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Point = Point int int int;
+
+let x : Point -> int =
+    \p ->
+        match p with
+        | Point x _ _ -> x
+        end;
+
+let y : Point -> int =
+    \p ->
+        match p with
+        | Point _ y _ -> y
+        end;
+
+let z : Point -> int =
+    \p ->
+        match p with
+        | Point _ _ z -> z
+        end;
+
+type Brick = Brick Point Point;
+
+let p0 : Brick -> Point =
+    \b ->
+        match b with
+        | Brick x _ -> x
+        end;
+
+let p1 : Brick -> Point =
+    \b ->
+        match b with
+        | Brick _ x -> x
+        end;
+
+let parseBrick : string -> Result Brick string =
+    \s ->
+        parse.ok (\a -> \b -> \c -> \d -> \e -> \f -> Brick (Point a b c) (Point d e f))
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal "~")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parse.integer
+        |> parse.run s;
+
+let parseInput : string -> Result (List Brick) string =
+    \x ->
+        x
+        |> strings.lines
+        |> list.map parseBrick
+        |> list.allOk;
+
+let flatMap : (a -> List b) -> List a -> List b =
+    let go = \f -> \fold l -> \acc ->
+        match l with
+        | Nil -> acc
+        | Cons x xs ->
+            list.concat (f x) (xs acc)
+        end;
+    \f -> \l -> go f l Nil;
+
+let maxCoord : List Brick -> (Point -> int) -> int =
+    \bricks -> \c ->
+        bricks
+        |> flatMap (\b -> Cons (p0 b) (Cons (p1 b) Nil))
+        |> list.map c
+        |> list.max
+        |> option.unwrapOr 0;
+
+type Column = Column int int;
+
+let brickColumns : Brick -> List Column =
+    \b ->
+        let x0 = x (p0 b);
+        let x1 = x (p1 b);
+        let y0 = y (p0 b);
+        let y1 = y (p1 b);
+        if x0 > x1 then
+            ?shitex
+        else if y0 > y1 then
+            ?shitey
+        else
+            list.range x0 (x1 + 1)
+            |> flatMap (\x ->
+                list.range y0 (y1 + 1)
+                |> list.map (Column x));
+
+type Base = Ground | Brick int int;
+
+let restingHeight : Base -> int =
+    \b ->
+        match b with
+        | Ground -> 1
+        | Brick _ h -> h + 1
+        end;
+
+let baseBrick : Base -> Option int =
+    \b ->
+        match b with
+        | Ground -> None
+        | Brick i _ -> Some i
+        end;
+
+type BrickBase = GroundBase | BrickBase int;
+
+type BrickNode = BrickNode (List BrickBase) (List int);
+
+type State = State (Array (Array Base)) (Array BrickNode);
+
+let distinct : List int -> List int =
+    let go = \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons x Nil
+            | Cons y ys ->
+                if x == y then
+                    Cons x ys
+                else
+                    Cons x (Cons y ys)
+            end
+        end;
+    \l ->
+        l
+        |> list.sortBy (\a -> \b -> a < b)
+        |> go;
+
+let get : Column -> Array (Array Base) -> Base =
+    \col -> \arr ->
+        match col with
+        | Column x y ->
+            arr
+            |> array.get x
+            |> option.andThen (array.get y)
+            |> option.unwrapOr Ground
+        end;
+
+let updateNode : int -> (BrickNode -> BrickNode) -> Array BrickNode -> Array BrickNode =
+    \idx -> \f -> \arr ->
+        if idx < array.length arr then
+            array.mapIdx idx f arr
+        else
+            let newSize = ints.max (idx + 1) (array.length arr * 2);
+            let extend = array.new (newSize - array.length arr) (BrickNode Nil Nil) |> array.toList;
+            let new = list.concat (array.toList arr) extend |> array.fromList;
+            array.mapIdx idx f new;
+
+let setBase : Base -> Column -> Array (Array Base) -> Array (Array Base) =
+    \b -> \col -> \arr ->
+        match col with
+        | Column x y -> array.mapIdx x (array.set y b) arr
+        end;
+
+let addBrick : State -> int -> Brick -> State =
+    \state -> \idx -> \brick ->
+        match state with
+        | State base nodes ->
+            let columns = brickColumns brick;
+            let restingAt =
+                columns
+                |> list.map (\c -> get c base)
+                |> list.map restingHeight
+                |> list.max
+                |> option.unwrapOr (restingHeight Ground);
+            let supportingBricks =
+                columns
+                |> list.map (\c -> get c base)
+                |> list.filter (\b -> restingHeight b == restingAt)
+                |> list.filterMap baseBrick
+                |> distinct;
+            let nodes =
+                if list.length supportingBricks == 0 then
+                    updateNode idx (\_ -> BrickNode (Cons GroundBase Nil) Nil) nodes
+                else
+                    updateNode idx (\_ -> BrickNode (list.map BrickBase supportingBricks) Nil) nodes;
+            let addMe = \n ->
+                match n with
+                | BrickNode bases covers -> BrickNode bases (Cons idx covers)
+                end;
+            let nodes = list.foldl nodes (\nodes -> \idx -> updateNode idx addMe nodes) supportingBricks;
+            let h = z (p1 brick) - z (p0 brick) + 1;
+            let top = Brick idx (restingAt + h - 1);
+            let base = list.foldr (setBase top) base columns;
+            State base nodes
+        end;
+
+let foldlWithIdx : b -> (b -> int -> a -> b) -> List a -> b =
+    let go = \f -> \fold l -> \idx -> \v ->
+        match l with
+        | Nil -> v
+        | Cons x xs -> xs (idx + 1) (f v idx x)
+        end;
+    \init -> \f -> \l -> go f l 0 init;
+
+let bases : BrickNode -> List BrickBase =
+    \n ->
+        match n with
+        | BrickNode b _ -> b
+        end;
+
+let covers : BrickNode -> List int =
+    \n ->
+        match n with
+        | BrickNode _ c -> c
+        end;
+
+let stableBrickGraph : List Brick -> Array BrickNode =
+    \bricks ->
+        let sx = maxCoord bricks x + 1;
+        let sy = maxCoord bricks x + 1;
+        let base = array.new sx (array.new sy Ground);
+        let bricks = list.sortBy (\a -> \b -> z (p0 a) < z (p0 b)) bricks;
+        let state = State base array.empty;
+        let state = foldlWithIdx state addBrick bricks;
+        match state with
+        | State _ nodes ->
+            nodes
+            |> array.toList
+            |> list.take (list.length bricks)
+            |> array.fromList
+        end;
+
+let part1 : List Brick -> string =
+    \bricks ->
+        let nodes = stableBrickGraph bricks;
+        nodes
+        |> array.toList
+        |> list.filter (\n ->
+            match n with
+            | BrickNode _ onTop ->
+                onTop
+                |> list.map (\idx ->
+                    nodes
+                    |> array.get idx
+                    |> option.map bases
+                    |> option.unwrapOr Nil
+                    |> list.length
+                    |> (\x -> x > 1))
+                |> list.all
+            end)
+        |> list.length
+        |> ints.toString;
+
+let roots : List BrickNode -> List int =
+    let go = \fold l -> \idx ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            let isRoot =
+                x
+                |> bases
+                |> list.map (\b -> match b with | GroundBase -> true | BrickBase _ -> false end)
+                |> list.any;
+            if isRoot then
+                Cons idx (xs (idx + 1))
+            else
+                xs (idx + 1)
+        end;
+    \n -> go n 0;
+
+type DfsState = DfsState (Array BrickNode) (Array bool) (List int);
+
+let step : int -> DfsState -> DfsState =
+    \exclue -> \state ->
+        match state with
+        | DfsState nodes visited stack ->
+            match stack with
+            | Nil -> state
+            | Cons x xs ->
+                if x == exclue then
+                    DfsState nodes visited xs
+                else if array.get x visited |> option.unwrapOr false then
+                    DfsState nodes visited xs
+                else
+                    let node = array.get x nodes |> option.unwrapOr (BrickNode Nil Nil);
+                    let visited = array.set x true visited;
+                    let stack = list.concat (covers node) xs;
+                    DfsState nodes visited stack
+            end
+        end;
+
+let reachableCount : Array BrickNode -> List int -> int -> int =
+    \nodes -> \roots -> \exclude ->
+        let edgeCount =
+            nodes
+            |> array.toList
+            |> list.map covers
+            |> list.map list.length
+            |> list.sum;
+        let visited = array.new (array.length nodes) false;
+        let state = DfsState nodes visited roots;
+        match ints.iterate (edgeCount + list.length roots + 1) (step exclude) state with
+        | DfsState _ visited _ ->
+            visited
+            |> array.toList
+            |> list.filter (\x -> x)
+            |> list.length
+        end;
+
+let part2 : List Brick -> string =
+    \bricks ->
+        let nodes = stableBrickGraph bricks;
+        let roots = roots (array.toList nodes);
+        list.range 0 (array.length nodes)
+        |> list.map (reachableCount nodes roots)
+        |> list.map (\x -> array.length nodes - x - 1)
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
