@@ -6,28 +6,6 @@ import strings from "std/string";
 import parse(Parse) from "../shared/parse.tic";
 import utils from "../shared/aoc-utils.tic";
 
-type TrimState = TrimStart int | TrimDone int;
-
-let trim : string -> string =
-    let trailingSpaces =
-        \s -> strings.foldChars 0 (\acc -> \c -> if c == 32 then acc + 1 else 0) s;
-    let leadingSpaces =
-        let addChar = \state -> \c ->
-            match state with
-            | TrimStart x -> if c == 32 then TrimStart (x + 1) else TrimDone x
-            | TrimDone x -> TrimDone x
-            end;
-        \s ->
-            match strings.foldChars (TrimStart 0) addChar s with
-            | TrimStart x -> x
-            | TrimDone x -> x
-            end;
-    \s ->
-        let t = trailingSpaces s;
-        let s = strings.substring 0 (strings.length s - t) s;
-        let l = leadingSpaces s;
-        strings.substring l (strings.length s - l) s;
-
 type Sample = Sample int int int;
 
 let add : Sample -> Sample -> Sample =
@@ -55,13 +33,13 @@ let parseSingleSample : string -> Result Sample string =
         |> parse.apply parse.integer
         |> parse.ignore (parse.literal " blue");
     let p = parse.or (parse.or red green) blue;
-    \s -> parse.run (trim s) p;
+    \s -> parse.run (strings.trim s) p;
 
 let parseSample : string -> Result Sample string =
     \s ->
         s
         |> strings.split (strings.charAt 0 ",")
-        |> list.map trim
+        |> list.map strings.trim
         |> list.map parseSingleSample
         |> list.allOk
         |> result.map (list.foldl (Sample 0 0 0) add);
