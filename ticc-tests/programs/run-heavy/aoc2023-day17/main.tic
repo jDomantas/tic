@@ -156,15 +156,6 @@ let step : Array (Array int) -> (Dir -> Pos -> Option Pos) -> State -> State =
             end
         end;
 
-let flatMap : (a -> List b) -> List a -> List b =
-    let go = \f -> \fold l -> \acc ->
-        match l with
-        | Nil -> acc
-        | Cons x xs ->
-            list.concat (f x) (xs acc)
-        end;
-    \f -> \l -> go f l Nil;
-
 let and : bool -> bool -> bool =
     \a -> \b -> if a then b else false;
 
@@ -203,9 +194,9 @@ let part1 : List (List int) -> string =
         let init = State 0 (Cons start1 (Cons start2 Nil)) Nil visited;
         let allFinals =
             Cons Pos Nil
-            |> flatMap (\p -> list.map p dirs)
+            |> list.flatMap (\p -> list.map p dirs)
             |> list.map (\p -> p (h - 1) (w - 1))
-            |> flatMap (\p -> list.map p (list.range 1 4));
+            |> list.flatMap (\p -> list.map p (list.range 1 4));
         match ints.iterate (w * h * (4 * 3 * 4 + 9)) (step grid move1) init with
         | State _ _ _ visited ->
             allFinals
@@ -256,9 +247,9 @@ let part2 : List (List int) -> string =
         let init = State 0 (Cons start1 (Cons start2 Nil)) Nil visited;
         let allFinals =
             Cons Pos Nil
-            |> flatMap (\p -> list.map p dirs)
+            |> list.flatMap (\p -> list.map p dirs)
             |> list.map (\p -> p (h - 1) (w - 1))
-            |> flatMap (\p -> list.map p (list.range 4 11));
+            |> list.flatMap (\p -> list.map p (list.range 4 11));
         match ints.iterate (w * h * (4 * 10 * 4 + 9)) (step grid move2) init with
         | State _ _ _ visited ->
             allFinals

@@ -64,19 +64,10 @@ let parseInput : string -> Result (List Brick) string =
         |> list.map parseBrick
         |> list.allOk;
 
-let flatMap : (a -> List b) -> List a -> List b =
-    let go = \f -> \fold l -> \acc ->
-        match l with
-        | Nil -> acc
-        | Cons x xs ->
-            list.concat (f x) (xs acc)
-        end;
-    \f -> \l -> go f l Nil;
-
 let maxCoord : List Brick -> (Point -> int) -> int =
     \bricks -> \c ->
         bricks
-        |> flatMap (\b -> Cons (p0 b) (Cons (p1 b) Nil))
+        |> list.flatMap (\b -> Cons (p0 b) (Cons (p1 b) Nil))
         |> list.map c
         |> list.max
         |> option.unwrapOr 0;
@@ -95,7 +86,7 @@ let brickColumns : Brick -> List Column =
             ?shitey
         else
             list.range x0 (x1 + 1)
-            |> flatMap (\x ->
+            |> list.flatMap (\x ->
                 list.range y0 (y1 + 1)
                 |> list.map (Column x));
 

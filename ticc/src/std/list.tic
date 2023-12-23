@@ -317,3 +317,17 @@ export let zip : (a -> b -> c) -> List a -> List b -> List c =
             | Cons b bs -> Cons (f a b) (as bs)
             end
         end;
+
+export let flatMap : (a -> List b) -> List a -> List b =
+    \f -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs -> concat (f x) xs
+        end;
+
+export let flatten : List (List a) -> List a =
+    \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs -> concat x xs
+        end;

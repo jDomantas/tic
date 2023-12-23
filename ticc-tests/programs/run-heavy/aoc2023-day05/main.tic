@@ -154,22 +154,6 @@ let intoRanges : List int -> Result (List Range) string =
 
 let id : a -> a = \x -> x;
 
-let flatMap : (a -> List b) -> List a -> List b =
-    let prepender : List b -> (List b -> List b) =
-        \fold l -> \acc ->
-            match l with
-            | Nil -> acc
-            | Cons x xs -> Cons x (xs acc)
-            end;
-    let helper : (a -> List b) -> List a -> (List b -> List b) =
-        \f -> \fold l -> \acc ->
-            match l with
-            | Nil -> acc
-            | Cons x xs -> prepender (f x) (xs acc)
-            end;
-    \f -> \l ->
-        helper f l Nil;
-
 type Translated = Translated (Option Range) (List Range);
 
 let translate : Range -> int -> Range -> Translated =
@@ -209,7 +193,7 @@ let translate : List MapEntry -> Range -> List Range =
                 match translate rr d r with
                 | Translated moved rest ->
                     rest
-                    |> flatMap es
+                    |> list.flatMap es
                     |> (moved |> option.map Cons |> option.unwrapOr id)
                 end
             end
@@ -224,7 +208,7 @@ let translate : List Map -> Range -> List Range =
             | Map entries ->
                 x
                 |> translate entries
-                |> flatMap ms
+                |> list.flatMap ms
             end
         end;
 
@@ -240,7 +224,7 @@ let part2 : Input -> string =
         | Input seeds maps ->
             seeds
             |> intoRanges
-            |> result.map (flatMap (translate maps))
+            |> result.map (list.flatMap (translate maps))
             |> result.map (list.map first)
             |> result.map list.min
             |> result.andThen (result.okOr "no seeds")

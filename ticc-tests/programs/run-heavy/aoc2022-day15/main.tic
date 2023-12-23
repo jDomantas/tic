@@ -183,13 +183,6 @@ let transformedSquare : Sensor -> Square =
             Square xr yr
         end;
 
-let flatMap : (a -> List b) -> List a -> List b =
-    \f -> \fold list ->
-        match list with
-        | Nil -> Nil
-        | Cons x xs -> list.concat (f x) xs
-        end;
-
 let findGapAtRow : int -> List Square -> Option int =
     \row -> \squares ->
         let squareRange = \square ->
@@ -245,7 +238,7 @@ let part2 : Input -> string =
         match input with
         | Input row sensors ->
             let squares = list.map transformedSquare sensors;
-            let interestingRows = flatMap squareBounds squares;
+            let interestingRows = list.flatMap squareBounds squares;
             let gap =
                 interestingRows
                 |> list.filterMap (\row ->

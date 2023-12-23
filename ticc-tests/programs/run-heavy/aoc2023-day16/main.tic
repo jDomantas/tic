@@ -137,15 +137,6 @@ let stepStepper : Array (Array Cell) -> Stepper -> List Stepper =
             end
         end;
 
-let flatMap : (a -> List b) -> List a -> List b =
-    let go = \f -> \fold l -> \acc ->
-        match l with
-        | Nil -> acc
-        | Cons x xs ->
-            list.concat (f x) (xs acc)
-        end;
-    \f -> \l -> go f l Nil;
-
 let step : Array (Array Cell) -> State -> State =
     \cells -> \state ->
         match state with
@@ -156,7 +147,7 @@ let step : Array (Array Cell) -> State -> State =
                     match s with
                     | Stepper dir r c -> if get dir r c mark then false else true
                     end)
-                |> flatMap (stepStepper cells);
+                |> list.flatMap (stepStepper cells);
             let mark = list.foldl mark (\mark -> \s ->
                 match s with
                 | Stepper dir r c -> set dir r c mark

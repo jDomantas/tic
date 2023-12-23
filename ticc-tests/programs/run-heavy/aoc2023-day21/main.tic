@@ -226,13 +226,6 @@ let countCopies : int -> int -> int =
                     let k = (k - 1) / 2;
                     (k + 1) * (k + 2);
 
-let flatMap : (a -> List b) -> List a -> List b =
-    \f -> \fold list ->
-        match list with
-        | Nil -> Nil
-        | Cons x xs -> list.concat (f x) xs
-        end;
-
 let solveQuadrant : Input -> int -> int =
     \input -> \steps ->
         match input with
@@ -267,7 +260,7 @@ let solveQuadrant : Input -> int -> int =
                 |> list.take size
                 |> list.map array.toList
                 |> list.map (list.take size)
-                |> flatMap (\x -> x)
+                |> list.flatMap (\x -> x)
                 |> list.filterMap (\x -> x)
                 |> list.filter (\x -> x <= steps)
                 |> list.map (\d -> countCopies size (steps - d))
