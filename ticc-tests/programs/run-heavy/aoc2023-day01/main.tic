@@ -15,21 +15,6 @@ let suffix : int -> string -> string =
         else
             strings.substring idx (strings.length s - idx) s;
 
-type RangeState = RangeState int (List int);
-
-let range : int -> int -> List int =
-    \s -> \e ->
-        if s >= e then
-            Nil
-        else
-            let step = \state ->
-                match state with
-                | RangeState x acc -> RangeState (x + 1) (Cons x acc)
-                end;
-            match ints.iterate (e - s) step (RangeState s Nil) with
-            | RangeState _ res -> list.reverse res
-            end;
-
 let digits : string -> List int =
     \s ->
         s
@@ -78,7 +63,7 @@ let decodeDigit : string -> Option int =
 
 let digitsFancy : string -> List int =
     \s ->
-        range 0 (strings.length s)
+        list.range 0 (strings.length s)
         |> list.filterMap (\idx -> decodeDigit (suffix idx s));
 
 let decode : (string -> List int) -> string -> Result int string =

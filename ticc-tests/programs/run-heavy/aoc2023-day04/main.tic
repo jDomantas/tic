@@ -25,10 +25,6 @@ let splitPair : int -> string -> Option (Pair string string) =
             end
         end;
 
-let parseInt : string -> Result int string =
-    \s ->
-        parse.run s parse.integer;
-
 let parseCard : string -> Result Card string =
     let colon = strings.charAt 0 ":";
     let pipe = strings.charAt 0 "|";
@@ -37,8 +33,9 @@ let parseCard : string -> Result Card string =
             s
             |> strings.split 32
             |> list.filter (\x -> strings.length x != 0)
-            |> list.map parseInt
-            |> list.allOk;
+            |> list.map ints.parse
+            |> list.allOk
+            |> result.mapErr (\_ -> "bad number");
     let parseHalves : Pair string string -> Result Card string =
         \p ->
             match p with

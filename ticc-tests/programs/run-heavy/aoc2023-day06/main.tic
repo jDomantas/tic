@@ -8,10 +8,6 @@ import utils from "../shared/aoc-utils.tic";
 
 type Entry = Entry int int;
 
-let parseInt : string -> Result int string =
-    \s ->
-        parse.run s parse.integer;
-
 let makeEntries : List int -> List int -> Result (List Entry) string =
     \fold times -> \distances ->
         match times with
@@ -50,8 +46,11 @@ let parseLine : (string -> string) -> string -> string -> Result (List int) stri
         |> result.map fixKerning
         |> result.map (strings.split 32)
         |> result.map (list.filter (\s -> strings.length s > 0))
-        |> result.map (list.map parseInt)
-        |> result.andThen list.allOk;
+        |> result.map (list.map ints.parse)
+        |> result.andThen (\x ->
+            x
+            |> list.allOk
+            |> result.mapErr (\_ -> "bad number"));
 
 let parseInput : (string -> string) -> string -> Result (List Entry) string =
     \fixKerning -> \input ->

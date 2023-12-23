@@ -20,16 +20,12 @@ let endsWith : string -> string -> bool =
         else
             strings.equal suffix (strings.substring (slen - suflen) suflen s);
 
-let parseInt : string -> Result int string =
-    \s ->
-        parse.run s parse.integer;
-
 let parseSeedList : string -> Result (List int) string =
     \s ->
         parse.ok (\x -> x)
         |> parse.ignore (parse.literal "seeds: ")
         |> parse.apply parse.remainder
-        |> parse.andThen (\s -> s |> strings.split 32 |> list.map parseInt |> list.allOk)
+        |> parse.andThen (\s -> s |> strings.split 32 |> list.map ints.parse |> list.allOk |> result.mapErr (\_ -> "bad number"))
         |> parse.run s;
 
 let addLine : string -> Input -> Result Input string =
