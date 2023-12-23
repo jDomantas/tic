@@ -1,0 +1,365 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+
+type Cell = Wall | Empty | Up | Down | Left | Right;
+
+let parseCell : int -> Result Cell string =
+    let hash = strings.charAt 0 "#";
+    let dot = strings.charAt 0 ".";
+    let lt = strings.charAt 0 "<";
+    let gt = strings.charAt 0 ">";
+    let v = strings.charAt 0 "v";
+    let caret = strings.charAt 0 "^";
+    \c ->
+        if c == hash then
+            Ok Wall
+        else if c == dot then
+            Ok Empty
+        else if c == lt then
+            Ok Left
+        else if c == gt then
+            Ok Right
+        else if c == v then
+            Ok Down
+        else if c == caret then
+            Ok Up
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (Array (Array Cell)) string =
+    \x ->
+        x
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk
+        |> result.map (list.map array.fromList)
+        |> result.map array.fromList;
+
+type Point = Point int int;
+
+let row : Point -> int =
+    \p ->
+        match p with
+        | Point r _ -> r
+        end;
+
+let col : Point -> int =
+    \p ->
+        match p with
+        | Point _ c -> c
+        end;
+
+let width : Array (Array Cell) -> int =
+    \cells ->
+        cells
+        |> array.get 0
+        |> option.map array.length
+        |> option.unwrapOr 0;
+
+let height : Array (Array Cell) -> int =
+    \cells -> array.length cells;
+
+let get : Point -> Array (Array Cell) -> Cell =
+    \pt -> \cells ->
+        cells
+        |> array.get (row pt)
+        |> option.unwrapOr array.empty
+        |> array.get (col pt)
+        |> option.unwrapOr Wall;
+
+type GraphNode = NodeNil | NodeCons int int rec;
+
+let pointNode : Point -> Array (Array Cell) -> int =
+    \pt -> \cells -> row pt * width cells + col pt;
+
+let addEdge : Array (Array Cell) -> Point -> Point -> int -> Array GraphNode -> Array GraphNode =
+    let addRaw = \s -> \e -> \d -> \nodes ->
+        array.mapIdx s (NodeCons e d) nodes;
+    \cells -> \s -> \e -> \d ->  \graph ->
+        let s = pointNode s cells;
+        let e = pointNode e cells;
+        addRaw s e d graph;
+
+let emptyGraph : Array (Array Cell) -> Array GraphNode =
+    \cells ->
+        array.new (width cells * height cells) NodeNil;
+
+let tryReplaceNodeEdge : int -> int -> int -> GraphNode -> Option GraphNode =
+    let go = \to -> \newTo -> \incDist -> \fold n ->
+        match n with
+        | NodeNil -> Err NodeNil
+        | NodeCons x d rest ->
+            if x == to then
+                Ok (NodeCons newTo (d + incDist) (result.join rest))
+            else
+                match rest with
+                | Ok rest -> Ok (NodeCons x d rest)
+                | Err rest -> Err (NodeCons x d rest)
+                end
+        end;
+    \to -> \newTo -> \incDist -> \n ->
+        go to newTo incDist n
+        |> result.ok;
+
+let tryReplaceEdge : int -> int -> int -> int -> Array GraphNode -> Option (Array GraphNode) =
+    \idx -> \to -> \newTo -> \incDist -> \g ->
+        match array.get idx g with
+        | None -> None
+        | Some node ->
+            match tryReplaceNodeEdge to newTo incDist node with
+            | None -> None
+            | Some node ->
+                let g = array.set idx node g;
+                Some g
+            end
+        end;
+
+let simplifyNode : int -> Array GraphNode -> Array GraphNode =
+    \idx -> \g ->
+        let unchanged = g;
+        match array.get idx g with
+        | None -> unchanged
+        | Some node ->
+            match node with
+            | NodeNil -> unchanged
+            | NodeCons n1 d1 xs ->
+                match xs with
+                | NodeNil -> unchanged
+                | NodeCons n2 d2 xs ->
+                    match xs with
+                    | NodeCons _ _ _ -> unchanged
+                    | NodeNil ->
+                        match tryReplaceEdge n1 idx n2 d2 g with
+                        | None -> unchanged
+                        | Some g ->
+                            match tryReplaceEdge n2 idx n1 d1 g with
+                            | None -> unchanged
+                            | Some g -> array.set idx NodeNil g
+                            end
+                        end
+                    end
+                end
+            end
+        end;
+
+let isWall : Cell -> bool =
+    \c ->
+        match c with
+        | Wall -> true
+        | Empty -> false
+        | Up -> false
+        | Down -> false
+        | Left -> false
+        | Right -> false
+        end;
+
+let addCellConnections : Array (Array Cell) -> Point -> Array GraphNode -> Array GraphNode =
+    \cells -> \pt -> \g ->
+        let connectTo = \ng -> \g ->
+            if isWall (get ng cells) then
+                g
+            else
+                addEdge cells pt ng 1 g;
+        match get pt cells with
+        | Wall -> g
+        | Empty ->
+            g
+            |> connectTo (Point (row pt - 1) (col pt))
+            |> connectTo (Point (row pt + 1) (col pt))
+            |> connectTo (Point (row pt) (col pt - 1))
+            |> connectTo (Point (row pt) (col pt + 1))
+        | Up -> connectTo (Point (row pt - 1) (col pt)) g
+        | Down -> connectTo (Point (row pt + 1) (col pt)) g
+        | Left -> connectTo (Point (row pt) (col pt - 1)) g
+        | Right -> connectTo (Point (row pt) (col pt + 1)) g
+        end;
+
+let buildGraph : Array (Array Cell) -> Array GraphNode =
+    \cells ->
+        let points =
+            list.range 0 (height cells)
+            |> list.flatMap (\r ->
+                list.range 0 (width cells)
+                |> list.map (\c -> Point r c));
+        list.foldr (addCellConnections cells) (emptyGraph cells) points;
+
+let simplifyGraph : Array GraphNode -> Array GraphNode =
+    \g ->
+        list.foldr simplifyNode g (list.range 0 (array.length g));
+
+type GraphProblem = GraphProblem int int (Array GraphNode);
+
+type IndexAssignment = IndexAssignment (Array (Option int)) int;
+
+let assignIndex : int -> IndexAssignment -> IndexAssignment =
+    \idx -> \assign ->
+        match assign with
+        | IndexAssignment mapping next ->
+            match array.get idx mapping |> option.flatten with
+            | Some _ -> assign
+            | None ->
+                let mapping = array.set idx (Some next) mapping;
+                IndexAssignment mapping (next + 1)
+            end
+        end;
+
+let assignedIndex : IndexAssignment -> int -> int =
+    \assign -> \idx ->
+        match assign with
+        | IndexAssignment mapping _ ->
+            mapping
+            |> array.get idx
+            |> option.flatten
+            |> option.unwrapOr 0
+        end;
+
+let compactNode : IndexAssignment -> GraphNode -> GraphNode =
+    \assign -> \fold node ->
+        match node with
+        | NodeNil -> NodeNil
+        | NodeCons to d rest -> NodeCons (assignedIndex assign to) d rest
+        end;
+
+let destinations : GraphNode -> List int =
+    \fold node ->
+        match node with
+        | NodeNil -> Nil
+        | NodeCons to _ xs -> Cons to xs
+        end;
+
+let addCompactNode : IndexAssignment -> int -> GraphNode -> Array GraphNode -> Array GraphNode =
+    \assign -> \idx -> \node -> \g ->
+        match node with
+        | NodeNil -> g
+        | NodeCons _ _ _ ->
+            let compact = compactNode assign node;
+            let newIdx = assignedIndex assign idx;
+            array.set newIdx compact g
+        end;
+
+let compactGraph : GraphProblem -> GraphProblem =
+    \p ->
+        match p with
+        | GraphProblem src dst nodes ->
+            let assign = IndexAssignment (array.new (array.length nodes) None) 0;
+            let assign = assignIndex src assign;
+            let assign = assignIndex dst assign;
+            let usedIndices =
+                list.range 0 (array.length nodes)
+                |> list.flatMap (\n ->
+                    let node = array.get n nodes |> option.unwrapOr NodeNil;
+                    match node with
+                    | NodeNil -> Nil
+                    | NodeCons _ _ _ -> Cons n (destinations node)
+                    end);
+            let assign = list.foldr assignIndex assign usedIndices;
+            let newNodeCount =
+                match assign with
+                | IndexAssignment _ next -> next
+                end;
+            let src = assignedIndex assign src;
+            let dst = assignedIndex assign dst;
+            let nodesToRemap =
+                list.range 0 (array.length nodes)
+                |> list.map (\idx -> \f ->
+                    f idx (array.get idx nodes |> option.unwrapOr NodeNil));
+            let newNodes = array.new newNodeCount NodeNil;
+            let newNodes = list.foldl newNodes (\n -> \item -> item (\idx -> \node -> addCompactNode assign idx node n)) nodesToRemap;
+            GraphProblem src dst newNodes
+        end;
+
+
+let longestPath : (int -> int -> Array bool -> Array GraphNode -> Option int)
+                -> int -> int -> Array bool -> Array GraphNode -> Option int =
+    \recurse -> \at -> \dst -> \visited -> \nodes ->
+        let wasVisited = array.get at visited |> option.unwrapOr true;
+        if wasVisited then
+            None
+        else if at == dst then
+            Some 0
+        else
+            let visited = array.set at true visited;
+            let atNode = array.get at nodes |> option.unwrapOr NodeNil;
+            let go = \fold node ->
+                match node with
+                | NodeNil -> None
+                | NodeCons next d rest ->
+                    let p = recurse next dst visited nodes;
+                    match p with
+                    | None -> rest
+                    | Some p ->
+                        match rest with
+                        | None -> Some (p + d)
+                        | Some rest -> Some (ints.max rest (p + d))
+                        end
+                    end
+                end;
+            go atNode;
+
+let longestPath : GraphProblem -> Option int =
+    \p ->
+        match p with
+        | GraphProblem src dst nodes ->
+            let visited = array.new (array.length nodes) false;
+            let f = \_ -> \_ -> \_ -> \_ -> None;
+            let f = ints.iterate (array.length nodes) longestPath f;
+            f src dst visited nodes
+        end;
+
+let part1 : Array (Array Cell) -> string =
+    \cells ->
+        let src = pointNode (Point 0 1) cells;
+        let dst = pointNode (Point (height cells - 1) (width cells - 2)) cells;
+        let g = buildGraph cells;
+        let g = simplifyGraph g;
+        GraphProblem src dst g
+        |> compactGraph
+        |> longestPath
+        |> option.map ints.toString
+        |> option.unwrapOr "no path";
+
+let addCellConnections : Array (Array Cell) -> Point -> Array GraphNode -> Array GraphNode =
+    \cells -> \pt -> \g ->
+        let connectTo = \ng -> \g ->
+            if isWall (get ng cells) then
+                g
+            else
+                addEdge cells pt ng 1 g;
+        if isWall (get pt cells) then
+            g
+        else
+            g
+            |> connectTo (Point (row pt - 1) (col pt))
+            |> connectTo (Point (row pt + 1) (col pt))
+            |> connectTo (Point (row pt) (col pt - 1))
+            |> connectTo (Point (row pt) (col pt + 1));
+
+let buildGraph : Array (Array Cell) -> Array GraphNode =
+    \cells ->
+        let points =
+            list.range 0 (height cells)
+            |> list.flatMap (\r ->
+                list.range 0 (width cells)
+                |> list.map (\c -> Point r c));
+        list.foldr (addCellConnections cells) (emptyGraph cells) points;
+
+let part2 : Array (Array Cell) -> string =
+    \cells ->
+        let src = pointNode (Point 0 1) cells;
+        let dst = pointNode (Point (height cells - 1) (width cells - 2)) cells;
+        let g = buildGraph cells;
+        let g = simplifyGraph g;
+        GraphProblem src dst g
+        |> compactGraph
+        |> longestPath
+        |> option.map ints.toString
+        |> option.unwrapOr "no path";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
