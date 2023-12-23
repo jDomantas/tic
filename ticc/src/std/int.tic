@@ -47,3 +47,22 @@ export let max : int -> int -> int =
             a
         else
             b;
+
+type GcdState = GcdState int int;
+
+export let gcd : int -> int -> int =
+    let stepState = \state ->
+        match state with
+        | GcdState a b ->
+            if b == 0 then
+                state
+            else
+                GcdState b (a % b)
+        end;
+    \a -> \b ->
+        match i.iterate 65 stepState (GcdState a b) with
+        | GcdState x _ -> x
+        end;
+
+export let lcm : int -> int -> int =
+    \a -> \b -> a / (gcd a b) * b;

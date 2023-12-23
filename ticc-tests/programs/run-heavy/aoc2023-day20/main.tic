@@ -390,25 +390,6 @@ let splitSubtasks : List Module -> Result (List (List Module)) string =
             end
         end;
 
-type GcdState = GcdState int int;
-
-let gcd : int -> int -> int =
-    let stepState = \state ->
-        match state with
-        | GcdState a b ->
-            if b == 0 then
-                state
-            else
-                GcdState b (a % b)
-        end;
-    \a -> \b ->
-        match ints.iterate 60 stepState (GcdState a b) with
-        | GcdState x _ -> x
-        end;
-
-let lcm : int -> int -> int =
-    \a -> \b -> a / (gcd a b) * b;
-
 let solveTask : List Module -> Result int string =
     \modules ->
         let states = modules |> list.map (makeState modules) |> list.allOk;
@@ -427,7 +408,7 @@ let part2 : List Module -> string =
             tasks
             |> list.map solveTask
             |> list.allOk
-            |> result.map (list.foldl 1 lcm)
+            |> result.map (list.foldl 1 ints.lcm)
             |> result.map ints.toString
             |> result.join
         end;

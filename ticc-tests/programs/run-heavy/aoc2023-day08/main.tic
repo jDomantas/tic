@@ -198,25 +198,6 @@ let stepCount : int -> WalkState -> int =
         | Done count -> count
         end;
 
-type GcdState = GcdState int int;
-
-let gcd : int -> int -> int =
-    let stepState = \state ->
-        match state with
-        | GcdState a b ->
-            if b == 0 then
-                state
-            else
-                GcdState b (a % b)
-        end;
-    \a -> \b ->
-        match ints.iterate 60 stepState (GcdState a b) with
-        | GcdState x _ -> x
-        end;
-
-let lcm : int -> int -> int =
-    \a -> \b -> a / (gcd a b) * b;
-
 let part2 : Input -> string =
     \input ->
         match input with
@@ -242,7 +223,7 @@ let part2 : Input -> string =
                     let loop = second - first;
                     loop);
             ghosts
-            |> list.foldl 1 lcm
+            |> list.foldl 1 ints.lcm
             |> ints.toString
         end;
 
