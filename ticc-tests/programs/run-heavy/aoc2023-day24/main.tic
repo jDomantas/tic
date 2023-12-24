@@ -1,0 +1,759 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Bigint = Zero | BCons int rec;
+
+let digitSize : int = 65536 * 65536;
+let digitSizeLog2 : int = 32;
+let fromRaw : int -> Bigint =
+    let go = \recurse -> \x ->
+        let low = x % digitSize;
+        let high = x / digitSize;
+        if high != 0 then
+            BCons low (recurse high)
+        else
+            BCons low Zero;
+    let go = ints.iterate 65 go (\_ -> Zero);
+    \x ->
+        if x == 0 then
+            Zero
+        else
+            go x;
+let normalize : Bigint -> Bigint =
+    let fixCarry =
+        \fold l -> \carry ->
+            match l with
+            | Zero ->
+                if carry != 0 then
+                    BCons carry Zero
+                else
+                    Zero
+            | BCons x xs ->
+                let xx = (x + carry) % digitSize;
+                let carry = (x + carry) / digitSize;
+                BCons xx (xs carry)
+            end;
+    let clearLeading =
+        \fold l ->
+            match l with
+            | Zero -> Zero
+            | BCons x xs ->
+                match xs with
+                | Zero -> if x == 0 then Zero else BCons x Zero
+                | BCons _ _ -> BCons x xs
+                end
+            end;
+    \l -> fixCarry l 0 |> clearLeading;
+let badd : Bigint -> Bigint -> Bigint =
+    let addNoNormalize : Bigint -> Bigint -> Bigint =
+        \fold as -> \bs ->
+            match as with
+            | Zero -> bs
+            | BCons a as ->
+                match bs with
+                | Zero -> BCons a (as Zero)
+                | BCons b bs -> BCons (a + b) (as bs)
+                end
+            end;
+    \a -> \b -> addNoNormalize a b |> normalize;
+let bsub : Bigint -> Bigint -> Bigint =
+    let go : Bigint -> Bigint -> bool -> Bigint =
+        \fold as -> \bs -> \borrow ->
+            match as with
+            | Zero -> Zero
+            | BCons a as ->
+                match bs with
+                | Zero ->
+                    let aa =
+                        if borrow then
+                            if a == 0 then digitSize - 1 else a - 1
+                        else
+                            a;
+                    let borrow = if borrow then a == 0 else false;
+                    BCons aa (as Zero borrow)
+                | BCons b bs ->
+                    let b = if borrow then b + 1 else b;
+                    if a >= b then
+                        BCons (a - b) (as bs false)
+                    else
+                        BCons (a + digitSize - b) (as bs true)
+                end
+            end;
+    \a -> \b -> go a b false |> normalize;
+let bmul : Bigint -> Bigint -> Bigint =
+    let doShift : int -> Bigint -> Bigint =
+        \x -> \l -> ints.iterate x (BCons 0) l;
+    let mulSmall : int -> Bigint -> Bigint =
+        \x -> \fold l ->
+            match l with
+            | Zero -> Zero
+            | BCons y ys -> BCons (y * x) ys
+            end;
+    let mulSmall : int -> Bigint -> Bigint =
+        \x -> \l -> l |> mulSmall x |> normalize;
+    let go : Bigint -> Bigint -> int -> Bigint =
+        \fold l -> \b -> \shiftBy ->
+            match l with
+            | Zero -> Zero
+            | BCons x xs ->
+                let r = mulSmall x b |> doShift shiftBy;
+                badd r (xs b (shiftBy + 1))
+            end;
+    \a -> \b -> go a b 0;
+let blt : Bigint -> Bigint -> bool =
+    let go = \fold as -> \bs ->
+        match as with
+        | Zero ->
+            match bs with
+            | Zero -> 1
+            | BCons _ _ -> 0
+            end
+        | BCons a as ->
+            match bs with
+            | Zero -> 2
+            | BCons b bs ->
+                let rest = as bs;
+                if rest != 1 then
+                    rest
+                else if a < b then
+                    0
+                else if a > b then
+                    2
+                else
+                    1
+            end
+        end;
+    \a -> \b -> go a b == 0;
+let zero : Bigint = fromRaw 0;
+let bits : Bigint -> int =
+    let len = \fold l ->
+        match l with
+        | Zero -> 0
+        | BCons _ x -> x + 1
+        end;
+    \a -> len a * digitSizeLog2;
+
+type SmallDivRem = SmallDivRem Bigint int;
+let fastDiv : Bigint -> int -> Bigint =
+    let shiftOne : Bigint -> Bigint =
+        \n ->
+            match n with
+            | Zero -> Zero
+            | BCons _ _ -> BCons 0 n
+            end;
+    let go = \b -> \fold a ->
+        match a with
+        | Zero -> SmallDivRem Zero 0
+        | BCons d rest ->
+            match rest with
+            | SmallDivRem div rem ->
+                let cur = rem * digitSize + d;
+                let q = cur / b;
+                let rem = cur % b;
+                if q == 0 then
+                    SmallDivRem (shiftOne div) rem 
+                else
+                    SmallDivRem (BCons q div) rem
+            end
+        end;
+    \a -> \b ->
+        match go b a with
+        | SmallDivRem d _ -> d
+        end;
+
+type DivRem = DivRem Bigint Bigint;
+let bdiv : Bigint -> Bigint -> Bigint =
+    let doublePlus = \fold d -> \c ->
+        match d with
+        | Zero -> if c > 0 then BCons c Zero else Zero
+        | BCons x xs ->
+            let d = x + x + c;
+            BCons (d % digitSize) (xs (d / digitSize))
+        end;
+    let go = \recurse -> \a -> \b ->
+        match recurse a (doublePlus b 0) with
+        | DivRem div rem ->
+            if blt rem b then
+                DivRem (doublePlus div 0) rem
+            else
+                let div = (doublePlus div 1);
+                let rem = bsub rem b;
+                DivRem div rem
+        end;
+    \a -> \b ->
+        match b with
+        | Zero -> ?divByZero
+        | BCons x xs ->
+            match xs with
+            | Zero -> fastDiv a x
+            | BCons _ _ ->
+                let steps = ints.max (bits a) (bits b);
+                match ints.iterate steps go (\a -> \_ -> DivRem zero a) a b with
+                | DivRem d _ -> d
+                end
+            end
+        end;
+let bIsZero : Bigint -> bool =
+    \a ->
+        match a with
+        | Zero -> true
+        | BCons _ _ -> false
+        end;
+
+type Signed = Pos Bigint | Neg Bigint;
+
+type Vector3 = Vector3 Signed Signed Signed;
+
+let parseBigint : Parse Bigint =
+    parse.map fromRaw parse.integer;
+
+let parseNumber : Parse Signed =
+    parse.ok Neg
+    |> parse.ignore (parse.literal "-")
+    |> parse.apply parseBigint
+    |> parse.or (parseBigint |> parse.map Pos)
+    -- for test input, allow a space before a number
+    |> parse.or (parse.literal " " |> parse.map (\_ -> Pos) |> parse.apply parseBigint);
+
+let parseVector : Parse Vector3 =
+    parse.ok Vector3
+    |> parse.apply parseNumber
+    |> parse.ignore (parse.literal ", ")
+    |> parse.apply parseNumber
+    |> parse.ignore (parse.literal ", ")
+    |> parse.apply parseNumber;
+
+type Hailstone = Hailstone Vector3 Vector3;
+
+let parseHailstone : Parse Hailstone =
+    parse.ok Hailstone
+    |> parse.apply parseVector
+    |> parse.ignore (parse.literal " @ ")
+    |> parse.apply parseVector;
+
+let parseInput : string -> Result (List Hailstone) string =
+    \s ->
+        s
+        |> strings.lines
+        |> list.map (\s -> parse.run s parseHailstone)
+        |> list.allOk;
+
+type Vector2 = Vector2 Signed Signed;
+
+let dropZ : Vector3 -> Vector2 =
+    \v ->
+        match v with
+        | Vector3 x y _ -> Vector2 x y
+        end;
+
+let add : Signed -> Signed -> Signed =
+    \a -> \b ->
+        match a with
+        | Pos a ->
+            match b with
+            | Pos b -> Pos (badd a b)
+            | Neg b -> if blt a b then Neg (bsub b a) else Pos (bsub a b)
+            end
+        | Neg a ->
+            match b with
+            | Pos b -> if blt b a then Neg (bsub a b) else Pos (bsub b a)
+            | Neg b -> Neg (badd a b)
+            end
+        end;
+
+let negate : Signed -> Signed =
+    \x ->
+        match x with
+        | Pos x -> if bIsZero x then Pos zero else Neg x
+        | Neg x -> Pos x
+        end;
+
+let sub : Signed -> Signed -> Signed =
+    \a -> \b -> add a (negate b);
+
+let negative : Bigint -> Signed =
+    \x -> if bIsZero x then Pos zero else Neg x;
+
+let positive : Bigint -> Signed =
+    \x -> Pos x;
+
+let mul : Signed -> Signed -> Signed =
+    \a -> \b ->
+        match a with
+        | Pos a ->
+            match b with
+            | Pos b -> Pos (bmul a b)
+            | Neg b -> negative (bmul a b)
+            end
+        | Neg a ->
+            match b with
+            | Pos b -> negative (bmul a b)
+            | Neg b -> Pos (bmul a b)
+            end
+        end;
+
+let div : Signed -> Signed -> Signed =
+    \a -> \b ->
+        match a with
+        | Pos a ->
+            match b with
+            | Pos b -> Pos (bdiv a b)
+            | Neg b -> negative (bdiv a b)
+            end
+        | Neg a ->
+            match b with
+            | Pos b -> negative (bdiv a b)
+            | Neg b -> Pos (bdiv a b)
+            end
+        end;
+
+let cross : Vector2 -> Vector2 -> Signed =
+    \a -> \b ->
+        match a with
+        | Vector2 xa ya ->
+            match b with
+            | Vector2 xb yb ->
+                sub (mul xa yb) (mul ya xb)
+            end
+        end;
+
+let lt : Signed -> Signed -> bool =
+    \a -> \b ->
+        match a with
+        | Pos a ->
+            match b with
+            | Pos b -> blt a b
+            | Neg _ -> false
+            end
+        | Neg a ->
+            match b with
+            | Pos _ -> true
+            | Neg b -> blt a b
+            end
+        end;
+
+let lte : Signed -> Signed -> bool =
+    let not = \x -> if x then false else true;
+    \a -> \b ->
+        match a with
+        | Pos a ->
+            match b with
+            | Pos b -> not (blt b a)
+            | Neg _ -> false
+            end
+        | Neg a ->
+            match b with
+            | Pos _ -> true
+            | Neg b -> not (blt a b)
+            end
+        end;
+
+type Frac = Frac Signed Bigint;
+
+let makeFrac : Signed -> Signed -> Option Frac =
+    \a -> \b ->
+        match b with
+        | Pos b ->
+            if bIsZero b then
+                None
+            else
+                Some (Frac a b)
+        | Neg b ->
+            if bIsZero b then
+                None
+            else
+                Some (Frac (negate a) b)
+        end;
+
+let floor : Frac -> Signed =
+    \f ->
+        match f with
+        | Frac a b -> div a (Pos b)
+        end;
+
+let ceiling : Frac -> Signed =
+    \f ->
+        match f with
+        | Frac a b -> div (sub (add a (positive b)) (positive (fromRaw 1))) (positive b)
+        end;
+
+let vzip : (Signed -> Signed -> Signed) -> Vector2 -> Vector2 -> Vector2 =
+    \f -> \a -> \b ->
+        match a with
+        | Vector2 ax ay ->
+            match b with
+            | Vector2 bx by -> Vector2 (f ax bx) (f ay by)
+            end
+        end;
+
+let vsub : Vector2 -> Vector2 -> Vector2 = vzip sub;
+
+let x2 : Vector2 -> Signed =
+    \v ->
+        match v with
+        | Vector2 x _ -> x
+        end;
+
+let intersectX : Hailstone -> Hailstone -> Option Frac =
+    \a -> \b ->
+        match a with
+        | Hailstone pa va ->
+            match b with
+            | Hailstone pb vb ->
+                let a = dropZ pa;
+                let b = dropZ va;
+                let c = dropZ pb;
+                let d = dropZ vb;
+                let pt = cross (vsub c a) d;
+                let pb = cross b d;
+                let qt = cross (vsub a c) b;
+                let qb = cross d b;
+                match makeFrac qt qb with
+                | None -> None
+                | Some frac ->
+                    match frac with
+                    | Frac qt _ ->
+                        if lt qt (positive zero) then
+                            None
+                        else
+                            match makeFrac pt pb with
+                            | None -> None
+                            | Some frac ->
+                                match frac with
+                                | Frac pt pb ->
+                                    if lt pt (positive zero) then
+                                        None
+                                    else
+                                        let x = add (mul (x2 a) (positive pb)) (mul pt (x2 b));
+                                        makeFrac x (positive pb)
+                                end
+                            end
+                    end
+                end
+            end
+        end;
+
+let flipAxes : Hailstone -> Hailstone =
+    let flip = \v ->
+        match v with
+        | Vector3 x y z -> Vector3 y x z
+        end;
+    \s ->
+        match s with
+        | Hailstone p v -> Hailstone (flip p) (flip v)
+        end;
+
+let inBounds : Signed -> Signed -> Frac -> bool =
+    \low -> \high -> \f ->
+        if lte (ceiling f) high then
+            lte low (floor f)
+        else
+            false;
+
+let intersectInBounds : Signed -> Signed -> Hailstone -> Hailstone -> bool =
+    \low -> \high -> \a -> \b ->
+        let xOk = intersectX a b |> option.map (inBounds low high) |> option.unwrapOr false;
+        let yOk = intersectX (flipAxes a) (flipAxes b) |> option.map (inBounds low high) |> option.unwrapOr false;
+        if xOk then yOk else false;
+
+let countPairs : (a -> a -> bool) -> List a -> int =
+    let go = \f -> \fold l -> \ys ->
+        match l with
+        | Nil -> 0
+        | Cons x xs ->
+            let cur =
+                ys
+                |> list.filter (f x)
+                |> list.length;
+            cur + xs (Cons x ys)
+        end;
+    \f -> \l -> go f l Nil;
+
+let abs : Signed -> Bigint =
+    \x ->
+        match x with
+        | Pos x -> x
+        | Neg x -> x
+        end;
+
+let isSmallTest : List Hailstone -> bool =
+    let bound = fromRaw 100;
+    \hs ->
+        hs
+        |> list.map (\h ->
+            match h with
+            | Hailstone pos _ ->
+                match pos with
+                | Vector3 x _ _ -> blt (abs x) bound
+                end
+            end)
+        |> list.all;
+
+let part1 : List Hailstone -> string =
+    \stones ->
+        let isSmall = isSmallTest stones;
+        let low = if isSmall then 7 else 200000000000000;
+        let high = if isSmall then 27 else 400000000000000;
+        let low = positive (fromRaw low);
+        let high = positive (fromRaw high);
+        stones
+        |> countPairs (intersectInBounds low high)
+        |> ints.toString;
+
+type Equation = Equation (List Signed) Signed;
+
+let makeEquation : Hailstone -> Hailstone -> Equation =
+    let make = \a -> \b -> \c -> \d -> \e ->
+        Equation (Cons a (Cons b (Cons c (Cons d Nil)))) e;
+    \h1 -> \h2 ->
+        match h1 with
+        | Hailstone p1 v1 ->
+            match h2 with
+            | Hailstone p2 v2 ->
+                match p1 with
+                | Vector3 a1 b1 _ ->
+                    match v1 with
+                    | Vector3 d1 e1 _ ->
+                        match p2 with
+                        | Vector3 a2 b2 _ ->
+                            match v2 with
+                            | Vector3 d2 e2 _ ->
+                                let x1 = sub e1 e2;
+                                let x2 = sub d2 d1;
+                                let x3 = sub b2 b1;
+                                let x4 = sub a1 a2;
+                                let x5 =
+                                    sub (mul d2 b2) (mul d1 b1)
+                                    |> add (sub (mul a1 e1) (mul a2 e2));
+                                make x1 x2 x3 x4 x5
+                            end
+                        end
+                    end
+                end
+            end
+        end;
+
+let mulEquation : Signed -> Equation -> Equation =
+    \x -> \e ->
+        match e with
+        | Equation coefs res -> Equation (list.map (mul x) coefs) (mul x res)
+        end;
+
+let addEquations : Equation -> Equation -> Equation =
+    \a -> \b ->
+        match a with
+        | Equation c1 r1 ->
+            match b with
+            | Equation c2 r2 ->
+                let c = list.zip add c1 c2;
+                let r = add r1 r2;
+                Equation c r
+            end
+        end;
+
+let nthCoef : Equation -> int -> Signed =
+    \e -> \idx ->
+        match e with
+        | Equation c _ ->
+            c
+            |> list.skip idx
+            |> list.head
+            |> option.unwrapOr (positive zero)
+        end;
+
+let res : Equation -> Signed =
+    \e ->
+        match e with
+        | Equation _ r -> r
+        end;
+
+let eliminateVarAtIdx : List Equation -> int -> List Equation =
+    \es -> \idx ->
+        match es with
+        | Nil -> Nil
+        | Cons e es ->
+            let c = nthCoef e idx;
+            let es =
+                es
+                |> list.map (\ee ->
+                    let cc = nthCoef ee idx;
+                    addEquations (mulEquation c ee) (mulEquation (negate cc) e));
+            Cons e es
+        end;
+
+let isZero : Signed -> bool =
+    \x ->
+        match x with
+        | Pos x -> bIsZero x
+        | Neg _ -> false
+        end;
+
+let bubbleConstrainedVar : int -> List Equation -> List Equation =
+    \idx -> \fold es ->
+        match es with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons x xs
+            | Cons y ys ->
+                let coef = nthCoef y idx;
+                if isZero coef then
+                    Cons x (Cons y ys)
+                else
+                    Cons y (Cons x ys)
+            end
+        end;
+
+let smartEliminateVarAtIdx : List Equation -> int -> List Equation =
+    \es -> \idx ->
+        eliminateVarAtIdx (bubbleConstrainedVar idx es) idx;
+
+let firstEliminate : List Equation -> List Equation =
+    let eliminateStep = \eqs -> \skip -> \idx ->
+        let head = list.take skip eqs;
+        let tail = list.skip skip eqs;
+        let eliminated = smartEliminateVarAtIdx tail idx;
+        list.concat head eliminated;
+    \eqs ->
+        let n = list.length eqs;
+        list.range 0 n
+        |> list.foldl eqs (\eqs -> \idx -> eliminateStep eqs idx (n - idx - 1));
+
+let lastEliminate : List Equation -> List Equation =
+    let eliminateStep = \eqs -> \skip -> \idx ->
+        let head = list.take skip eqs;
+        let tail = list.skip skip eqs;
+        let eliminated = eliminateVarAtIdx tail idx;
+        list.concat head eliminated;
+    \eqs ->
+        let n = list.length eqs;
+        list.range 0 n
+        |> list.foldl (list.reverse eqs) (\eqs -> \idx -> eliminateStep eqs idx idx);
+
+type ShowState = ShowState Bigint string;
+
+let showBigBig : Bigint -> string =
+    let showDigit : Bigint -> string =
+        \x ->
+            match x with
+            | Zero -> "0"
+            | BCons x _ -> ints.toString x
+            end;
+    let step = \s ->
+        match s with
+        | ShowState x suffix ->
+            if bIsZero x then
+                s
+            else
+                let d = bdiv x (fromRaw 10);
+                let r = bsub x (bmul d (fromRaw 10));
+                let suffix = strings.concat (showDigit r) suffix;
+                ShowState d suffix
+        end;
+    \x ->
+        match ints.iterate 100 step (ShowState x "") with
+        | ShowState n x ->
+            if bIsZero n then
+                x
+            else
+                "large"
+        end;
+
+let showSigned : Signed -> string =
+    let showBig = \n ->
+        match n with
+        | Zero -> "0"
+        | BCons x xs ->
+            match xs with
+            | Zero -> ints.toString x
+            | BCons _ _ -> showBigBig n
+            end
+        end;
+    \x ->
+        match x with
+        | Pos x -> showBig x
+        | Neg x -> strings.concat "-" (showBig x)
+        end;
+
+type MakeState = MakeEven (List Equation) | MakeOdd Hailstone (List Equation);
+
+let makeEquations : List Hailstone -> List Equation =
+    let go = \fold stones ->
+        match stones with
+        | Nil -> MakeEven Nil
+        | Cons s ss ->
+            match ss with
+            | MakeEven eqs -> MakeOdd s eqs
+            | MakeOdd s2 eqs -> MakeEven (Cons (makeEquation s s2) eqs)
+            end
+        end;
+    \stones ->
+        match go stones with
+        | MakeEven x -> x
+        | MakeOdd _ x -> x
+        end;
+
+let exactDiv : Signed -> Signed -> Option Signed =
+    \a -> \b ->
+        if isZero b then
+            None
+        else
+            let d = div a b;
+            if isZero (sub a (mul d b)) then
+                Some d
+            else
+                None;
+
+let solveTrivialEquations : List Equation -> Option (List Signed) =
+    \eqs ->
+        let n = list.length eqs;
+        list.range 0 n
+        |> list.map (\idx ->
+            eqs
+            |> list.skip idx
+            |> list.head
+            |> option.andThen (\e ->
+                let c = nthCoef e idx;
+                if isZero c then
+                    None
+                else
+                    exactDiv (res e) c))
+        |> list.allSome;
+
+let rotateAxes : Hailstone -> Hailstone =
+    let rot = \v ->
+        match v with
+        | Vector3 x y z -> Vector3 y z x
+        end;
+    \h ->
+        match h with
+        | Hailstone p v -> Hailstone (rot p) (rot v)
+        end;
+
+let shotStartX : List Hailstone -> Option Signed =
+    \stones ->
+        let eqs = makeEquations stones |> list.reverse |> list.take 4;
+        eqs
+        |> firstEliminate
+        |> lastEliminate
+        |> solveTrivialEquations
+        |> option.andThen list.head;
+
+let part2 : List Hailstone -> string =
+    \stones ->
+        let x = shotStartX stones;
+        let y = shotStartX (stones |> list.map rotateAxes);
+        let z = shotStartX (stones |> list.map rotateAxes |> list.map rotateAxes);
+        Some (\a -> \b -> \c -> add a (add b c))
+        |> option.apply x
+        |> option.apply y
+        |> option.apply z
+        |> option.map showSigned
+        |> option.unwrapOr "failed to find integer solution";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
