@@ -145,3 +145,14 @@ export let fromList : List a -> Array a =
             let init = new (list.length l) x;
             go l 0 init
         end;
+
+export let truncate : int -> Array a -> Array a =
+    \newSize -> \arr ->
+        match arr with
+        | EmptyArray -> arr
+        | NonEmptyArray size data map get ->
+            if size <= newSize then
+                arr
+            else
+                NonEmptyArray newSize data map get
+        end;

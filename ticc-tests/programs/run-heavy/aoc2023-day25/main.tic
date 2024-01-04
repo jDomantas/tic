@@ -1,0 +1,269 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import array(Array) from "std/array";
+import parse from "../shared/parse.tic";
+import utils from "../shared/aoc-utils.tic";
+
+type RawEdge = RawEdge string string;
+
+let parseNameList : string -> List string =
+    \s ->
+        s
+        |> strings.split 32
+        |> list.map strings.trim;
+
+let parseLine : string -> Result (List RawEdge) string =
+    let colon = strings.charAt 0 ":";
+    \s ->
+        parse.ok (\a -> \b -> list.map (RawEdge a) b)
+        |> parse.apply (parse.takeWhile (\c -> c != colon))
+        |> parse.ignore (parse.literal ": ")
+        |> parse.apply (parse.remainder |> parse.map parseNameList)
+        |> parse.run s;
+
+let parseInput : string -> Result (List RawEdge) string =
+    \x ->
+        x
+        |> strings.lines
+        |> list.map parseLine
+        |> list.allOk
+        |> result.map list.flatten;
+
+type GraphProgress = GraphProgress (List int) (Array (List int));
+
+type Tuple a b = Tuple a b;
+
+let findNodeIdx : List int -> int -> Option int =
+    let go = \n -> \fold names -> \idx ->
+        match names with
+        | Nil -> None
+        | Cons x xs ->
+            if n == x then
+                Some idx
+            else
+                xs (idx + 1)
+        end;
+    \names -> \n -> go n names 0;
+
+let hashNodeName : string -> int =
+    \s -> strings.foldChars 0 (\acc -> \c -> acc * 256 + c) s;
+
+let resolveNodeIdx : List int -> string -> Tuple (List int) int =
+    let append = \n -> \fold names ->
+        match names with
+        | Nil -> Cons n Nil
+        | Cons x xs -> Cons x xs
+        end;
+    \names -> \n ->
+        let hashed = hashNodeName n;
+        match findNodeIdx names hashed with
+        | Some idx -> Tuple names idx
+        | None ->
+            let idx = list.length names;
+            let names = append hashed names;
+            Tuple names idx
+        end;
+
+let nodeIdx : GraphProgress -> string -> Tuple int GraphProgress =
+    \g -> \n ->
+        match g with
+        | GraphProgress names graph ->
+            match resolveNodeIdx names n with
+            | Tuple newNames idx ->
+                Tuple idx (GraphProgress newNames graph)
+            end
+        end;
+
+let addEdge : int -> int -> Array (List int) -> Array (List int) =
+    \a -> \b -> \graph ->
+        array.mapIdx a (Cons b) graph;
+
+let addEdge : GraphProgress -> string -> string -> GraphProgress =
+    \g -> \a -> \b ->
+        match nodeIdx g a with
+        | Tuple a g ->
+            match nodeIdx g b with
+            | Tuple b g ->
+                match g with
+                | GraphProgress names graph ->
+                    let graph =
+                        graph
+                        |> addEdge a b
+                        |> addEdge b a;
+                    GraphProgress names graph
+                end
+            end
+        end;
+
+let makeGraph : List RawEdge -> Array (List int) =
+    let step = \g -> \r ->
+        match r with
+        | RawEdge a b -> addEdge g a b
+        end;
+    \edges ->
+        let initialSize = list.length edges * 2;
+        match list.foldl (GraphProgress Nil (array.new initialSize Nil)) step edges with
+        | GraphProgress nodes g -> array.truncate (list.length nodes) g
+        end;
+
+type DfsState = DfsState (Array (Option int)) (List int);
+
+let findPath : Array (List int) -> int -> int -> Result (List int) int =
+    \g -> \a -> \b ->
+        let neighboursOf = \node -> array.get node g |> option.unwrapOr Nil;
+        let tryVisit = \parent -> \node -> \state ->
+            match state with
+            | DfsState visited stack ->
+                if array.get node visited |> option.flatten |> option.isSome then
+                    state
+                else
+                    let visited = array.set node (Some parent) visited;
+                    DfsState visited (Cons node stack)
+            end;
+        let step = \state ->
+            match state with
+            | DfsState visited stack ->
+                match stack with
+                | Nil -> state
+                | Cons x xs ->
+                    let state = DfsState visited xs;
+                    list.foldr (tryVisit x) state (neighboursOf x)
+                end
+            end;
+        let edges =
+            g
+            |> array.toList
+            |> list.map list.length
+            |> list.sum
+            |> (\x -> x / 2);
+        let visited =
+            array.new (array.length g) None
+            |> array.set a (Some a);
+        let state = DfsState visited (Cons a Nil);
+        match ints.iterate (edges + 1) step state with
+        | DfsState visited _ ->
+            let addPathStep = \l ->
+                match l with
+                | Nil -> Nil
+                | Cons x _ ->
+                    if x == a then
+                        l
+                    else
+                        match array.get x visited |> option.flatten with
+                        | Some parent -> Cons parent l
+                        | None -> l
+                        end
+                end;
+            if option.isSome (array.get b visited |> option.flatten) then
+                Ok (ints.iterate edges addPathStep (Cons b Nil))
+            else
+                let reachable =
+                    visited
+                    |> array.toList
+                    |> list.filter option.isSome
+                    |> list.length;
+                Err reachable
+        end;
+
+let removeOne : int -> List int -> List int =
+    let go = \fold l -> \x ->
+        match l with
+        | Nil -> Nil
+        | Cons y ys ->
+            if x == y then
+                ys 999999999
+            else
+                Cons y (ys x)
+        end;
+    \x -> \l -> go l x;
+
+let removeEdge : int -> int -> Array (List int) -> Array (List int) =
+    \a -> \b -> \g ->
+        array.mapIdx a (removeOne b) g;
+
+let removePath : List int -> Array (List int) -> Array (List int) =
+    let go = \fold p -> \g -> \prev ->
+        match p with
+        | Nil -> g
+        | Cons x xs -> xs (removeEdge prev x g) x
+        end;
+    \path -> \g ->
+        match path with
+        | Nil -> g
+        | Cons x xs -> go xs g x
+        end;
+
+let addPath : List int -> Array (List int) -> Array (List int) =
+    let go = \fold p -> \g -> \prev ->
+        match p with
+        | Nil -> g
+        | Cons x xs -> xs (array.mapIdx prev (Cons x) g) x
+        end;
+    \path -> \g ->
+        match path with
+        | Nil -> g
+        | Cons x xs -> go xs g x
+        end;
+
+let removeFlow : List int -> Array (List int) -> Array (List int) =
+    \path -> \g ->
+        g
+        |> removePath path
+        |> addPath (list.reverse path);
+
+let checkCut : Array (List int) -> int -> int -> Option int =
+    \g -> \a -> \b ->
+        match findPath g a b with
+        | Ok p ->
+            let g = removeFlow p g;
+            match findPath g a b with
+            | Ok p ->
+                let g = removeFlow p g;
+                match findPath g a b with
+                | Ok p ->
+                    let g = removeFlow p g;
+                    match findPath g a b with
+                    | Ok _ -> None
+                    | Err x -> Some x
+                    end
+                | Err _ -> None -- impossible if min-cut is at least 3
+                end
+            | Err _ -> None -- impossible if min-cut is at least 3
+            end
+        | Err _ -> None -- impossible if min-cut is at least 3
+        end;
+
+let findMap : (a -> Option b) -> List a -> Option b =
+    let go = \fold l -> \f ->
+        match l with
+        | Nil -> None
+        | Cons x xs ->
+            match f x with
+            | Some x -> Some x
+            | None -> xs f
+            end
+        end;
+    \f -> \l -> go l f;
+
+let part1 : List RawEdge -> string =
+    \edges ->
+        let graph = makeGraph edges;
+        let cut =
+            list.range 1 (array.length graph)
+            |> findMap (\x -> checkCut graph 0 x);
+        match cut with
+        | Some a ->
+            let b = array.length graph - a;
+            ints.toString (a * b)
+        | None -> "didn't find a cut"
+        end;
+
+
+let part2 : List RawEdge -> string =
+    \_ ->
+        "none";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

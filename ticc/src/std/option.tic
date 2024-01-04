@@ -34,3 +34,17 @@ export let apply : Option a -> Option (a -> b) -> Option b =
         | None -> None
         | Some f -> map f x
         end;
+
+export let isSome : Option a -> bool =
+    \opt ->
+        match opt with
+        | Some _ -> true
+        | None -> false
+        end;
+
+export let isNone : Option a -> bool =
+    \opt ->
+        match opt with
+        | Some _ -> false
+        | None -> true
+        end;
