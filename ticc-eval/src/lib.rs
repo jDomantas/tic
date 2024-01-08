@@ -145,15 +145,44 @@ impl CompactEnv {
     }
 }
 
-#[derive(Default)]
+enum ResolvedName {
+    Value(Value),
+    Name(NameLookup),
+}
+
 struct EnvResolver {
     names: HashMap<ir::Name, usize>,
     stack: Vec<ir::Name>,
+    known_values: Rc<HashMap<ir::Name, Value>>,
 }
 
 impl EnvResolver {
-    fn lookup(&mut self, name: ir::Name) -> NameLookup {
-        NameLookup(self.names[&name])
+    fn from_env(env: &Env) -> EnvResolver {
+        let mut known_values = HashMap::new();
+        for (k, v) in &env.values {
+            known_values.insert(k.clone(), v.clone());
+        }
+        EnvResolver {
+            names: Default::default(),
+            stack: Default::default(),
+            known_values: Rc::new(known_values),
+        }
+    }
+
+    fn from_other(r: &EnvResolver) -> EnvResolver {
+        EnvResolver {
+            names: Default::default(),
+            stack: Default::default(),
+            known_values: r.known_values.clone(),
+        }
+    }
+
+    fn lookup(&mut self, name: ir::Name) -> ResolvedName {
+        if let Some(v) = self.known_values.get(&name).cloned() {
+            ResolvedName::Value(v)
+        } else {
+            ResolvedName::Name(NameLookup(self.names[&name]))
+        }
     }
 
     fn add(&mut self, name: ir::Name) {
@@ -169,15 +198,11 @@ impl EnvResolver {
 
 pub fn eval(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
     let mut compact_env = CompactEnv::default();
-    let mut resolver = EnvResolver::default();
-    for (&k, v) in &env.values {
-        compact_env.add(v.clone());
-        resolver.add(k);
-    }
+    let mut resolver = EnvResolver::from_env(&env);
     let compiled = compile_expr(expr, &mut resolver);
-    assert_eq!(resolver.stack.len(), env.values.len());
+    assert_eq!(resolver.stack.len(), 0);
     let res = compiled(&mut compact_env);
-    assert_eq!(compact_env.names.len(), env.values.len());
+    assert_eq!(compact_env.names.len(), 0);
     res
 }
 
@@ -196,8 +221,10 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
             Box::new(move |_| Ok(Value::String(s.clone())))
         }
         ir::Expr::Name(n) => {
-            let lookup = env.lookup(*n);
-            Box::new(move |env| Ok(env.lookup(lookup)))
+            match env.lookup(*n) {
+                ResolvedName::Value(v) => Box::new(move |_| Ok(v.clone())),
+                ResolvedName::Name(lookup) => Box::new(move |env| Ok(env.lookup(lookup))),
+            }
         }
         ir::Expr::Call(f, args) => {
             let f = compile_expr(f, env);
@@ -382,11 +409,16 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
         ir::Expr::Lambda(params, body) => {
             let mut captured_names = HashSet::new();
             free_names(expr, &mut captured_names);
-            let mut inner_env = EnvResolver::default();
+            let mut inner_env = EnvResolver::from_other(&env);
             let mut captures = Vec::with_capacity(captured_names.len());
             for &c in &captured_names {
-                captures.push(env.lookup(c));
-                inner_env.add(c);
+                match env.lookup(c) {
+                    ResolvedName::Value(_) => continue,
+                    ResolvedName::Name(l) => {
+                        captures.push(l);
+                        inner_env.add(c);
+                    }
+                }
             }
             for param in params {
                 inner_env.add(param.name);
@@ -395,7 +427,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
             for param in params.iter().rev() {
                 inner_env.remove(param.name);
             }
-            assert_eq!(inner_env.names.len(), captured_names.len());
+            assert_eq!(inner_env.names.len(), captures.len());
             Box::new(move |env| {
                 let captured_values: Rc<[Value]> = captures
                     .iter()
@@ -559,11 +591,16 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                 let mut captured_names = HashSet::new();
                 free_names(v, &mut captured_names);
                 captured_names.remove(&n);
-                let mut inner_env = EnvResolver::default();
+                let mut inner_env = EnvResolver::from_other(&env);
                 let mut captures = Vec::with_capacity(captured_names.len());
                 for &c in &captured_names {
-                    captures.push(env.lookup(c));
-                    inner_env.add(c);
+                    match env.lookup(c) {
+                        ResolvedName::Value(_) => continue,
+                        ResolvedName::Name(l) => {
+                            captures.push(l);
+                            inner_env.add(c);
+                        }
+                    }
                 }
                 for param in params {
                     inner_env.add(param.name);
@@ -574,7 +611,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                 for param in params.iter().rev() {
                     inner_env.remove(param.name);
                 }
-                assert_eq!(inner_env.names.len(), captured_names.len());
+                assert_eq!(inner_env.names.len(), captures.len());
                 env.add(n);
                 let rest = compile_expr(r, env);
                 env.remove(n);
