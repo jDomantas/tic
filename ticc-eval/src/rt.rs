@@ -426,7 +426,6 @@ enum Op {
 struct Branch {
     tag: u64,
     dst: CodeAddr,
-    fields: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -530,7 +529,6 @@ impl Compiler<'_> {
                     table.push(Branch {
                         tag: self.name_to_tag(br.ctor),
                         dst: self.emit.pos(),
-                        fields: br.bindings.len() as u32,
                     });
                     with_local_list(env, &br.bindings, self.emit.stack_size, |env| {
                         self.emit.stack_size += br.bindings.len();
@@ -837,12 +835,4 @@ fn free_variables(expr: &ir::Expr) -> Vec<ir::Name> {
     go(expr, &mut used, &mut defined);
     used.retain(|item| defined.insert(*item));
     used
-}
-
-enum TypeInfo {
-    Function,
-    String,
-    Tagged {
-        name: String,
-    },
 }
