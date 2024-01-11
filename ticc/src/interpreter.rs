@@ -5,18 +5,22 @@ use crate::{CompilationUnit, Trap, InterpretError};
 
 pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
     let program = crate::codegen::emit_core(compilation);
-    let mut env = ticc_eval::Env::new();
     let mut output = String::new();
-    for v in &program.values {
-        match ticc_eval::eval(env.clone(), &v.value) {
+    for (i, v) in program.values.iter().enumerate() {
+        let Some(name) = &v.export_name else { continue };
+        if v.export_name.is_none() {
+            continue;
+        }
+        let mut expr = v.value.clone();
+        for v in program.values[..i].iter().rev() {
+            expr = ir::Expr::Let(v.name, Box::new(v.value.clone()), Box::new(expr));
+        }
+        match ticc_eval::eval_expr(&expr) {
             Ok(value) => {
-                if let Some(name) = &v.export_name {
-                    output.push_str(name);
-                    output.push_str(" = ");
-                    write_value(&value, false, &program.names, &mut output);
-                    output.push('\n');
-                }
-                env.add(v.name, value);
+                output.push_str(name);
+                output.push_str(" = ");
+                write_value(&value, false, &program.names, &mut output);
+                output.push('\n');
             }
             Err(ticc_eval::Trap { message }) => return Err(Trap { message }),
         }
@@ -24,7 +28,7 @@ pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
     Ok(output)
 }
 
-pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &str) -> Result<String, InterpretError> {
+pub(crate) fn eval_main_old(compilation: &mut CompilationUnit, input: &str) -> Result<String, InterpretError> {
     let program = crate::codegen::emit_core(compilation);
     let mut main = None;
     for v in program.values.iter().rev() {
@@ -67,32 +71,66 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &str) -> Resul
     }
 }
 
-pub(crate) fn eval_int_main(compilation: &mut CompilationUnit) -> Result<u64, InterpretError> {
+pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &str) -> Result<String, InterpretError> {
     let program = crate::codegen::emit_core(compilation);
-    let mut main = None;
+    let mut expr = None;
     for v in program.values.iter().rev() {
         if v.export_name.as_deref() == Some("main") {
             match &v.ty {
-                ir::Ty::Int => main = Some(v.name),
+                ir::Ty::Fn(a, b) => match (a.as_slice(), &**b) {
+                    (&[ir::Ty::String], ir::Ty::String) => {
+                        // ok
+                    }
+                    _ => return Err(InterpretError::InvalidMain),
+                },
                 _ => return Err(InterpretError::InvalidMain),
             }
+            expr = Some(ir::Expr::Call(
+                Box::new(v.value.clone()),
+                Vec::from([
+                    ir::Expr::String(input.into()),
+                ]),
+            ));
+        } else if let Some(e) = expr {
+            expr = Some(ir::Expr::Let(v.name, Box::new(v.value.clone()), Box::new(e)));
         }
     }
-    let main = match main {
-        Some(m) => m,
-        None => return Err(InterpretError::NoMain),
+    let Some(expr) = expr else {
+        return Err(InterpretError::NoMain);
     };
-    let mut e = None;
-    for v in program.values.iter().rev() {
-        if v.name == main {
-            e = Some(v.value.clone());
-        } else if let Some(ee) = e {
-            e = Some(ir::Expr::Let(v.name, Box::new(v.value.clone()), Box::new(ee)));
-        }
+    match ticc_eval::eval_expr(&expr) {
+        Ok(Value::String(s)) => Ok(s.to_string()),
+        Ok(_) => panic!("got incorrect value"),
+        Err(t) => Err(InterpretError::Trap(Trap { message: t.message })),
     }
-    let e = e.unwrap();
-    Ok(ticc_eval::eval_int_expr(&e))
 }
+
+// pub(crate) fn eval_int_main(compilation: &mut CompilationUnit) -> Result<u64, InterpretError> {
+//     let program = crate::codegen::emit_core(compilation);
+//     let mut main = None;
+//     for v in program.values.iter().rev() {
+//         if v.export_name.as_deref() == Some("main") {
+//             match &v.ty {
+//                 ir::Ty::Int => main = Some(v.name),
+//                 _ => return Err(InterpretError::InvalidMain),
+//             }
+//         }
+//     }
+//     let main = match main {
+//         Some(m) => m,
+//         None => return Err(InterpretError::NoMain),
+//     };
+//     let mut e = None;
+//     for v in program.values.iter().rev() {
+//         if v.name == main {
+//             e = Some(v.value.clone());
+//         } else if let Some(ee) = e {
+//             e = Some(ir::Expr::Let(v.name, Box::new(v.value.clone()), Box::new(ee)));
+//         }
+//     }
+//     let e = e.unwrap();
+//     Ok(ticc_eval::eval_expr(&e))
+// }
 
 fn write_value(value: &Value, atom: bool, names: &ir::NameGenerator<'_>, into: &mut String) {
     match value {

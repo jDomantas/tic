@@ -10,7 +10,7 @@ use std::{
 use ticc_core::ir;
 use crate::tagged::Tagged;
 
-pub use crate::rt::eval_int_expr;
+pub use crate::rt::eval_expr;
 
 #[derive(Clone)]
 pub enum Value {

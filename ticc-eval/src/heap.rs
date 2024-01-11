@@ -1,5 +1,5 @@
 // TODO: make field not pub
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Addr(pub u64);
 
 pub struct Heap {
@@ -10,7 +10,7 @@ pub struct Heap {
 
 impl Heap {
     pub fn new() -> Heap {
-        let bytes = std::iter::repeat(0).take(1 << 16).collect::<Vec<_>>();
+        let bytes = std::iter::repeat(0).take(1 << 28).collect::<Vec<_>>();
         let bump = bytes.len();
         Heap {
             move_dst: std::iter::repeat(Addr(u64::MAX)).take(bytes.len() / Header::SIZE as usize).collect(),
@@ -19,20 +19,20 @@ impl Heap {
         }
     }
 
-    pub fn alloc_bytes(&mut self, tag: u32, bytes: u32) -> BytesAlloc<'_> {
-        let (addr, _, bytes) = self.raw_alloc(tag as u64, bytes);
+    pub fn alloc_bytes(&mut self, tag: u64, bytes: u32) -> BytesAlloc<'_> {
+        let (addr, _, bytes) = self.raw_alloc(tag, bytes);
         BytesAlloc {
             addr,
             bytes,
         }
     }
 
-    pub fn alloc_object(&mut self, tag: u32, fields: u32) -> ObjAlloc<'_> {
-        let (addr, header, bytes) = self.raw_alloc(tag as u64, fields * 8);
+    pub fn alloc_object(&mut self, tag: u64, fields: u32) -> ObjAlloc<'_> {
+        let (addr, header, bytes) = self.raw_alloc(tag, fields * 8);
         ObjAlloc {
             addr,
             header,
-            fields: bytes_to_words(bytes),
+            fields: bytes_to_words_mut(bytes),
         }
     }
 
@@ -50,8 +50,8 @@ impl Heap {
             ptrs: 0,
             tag,
         };
-        let (header, bytes) = self.bytes.obj_parts(addr);
-        println!("alloc, addr = {}, total size = {total_size}", addr.0);
+        let (header, bytes) = self.bytes.obj_parts_mut(addr);
+        // println!("alloc, addr = {}, total size = {total_size}", addr.0);
         (addr, header, bytes)
     }
 
@@ -64,7 +64,7 @@ impl Heap {
         }
         let mut current = Addr(self.bump as u64);
         while current.0 < self.bytes.raw.len() as u64 {
-            let (header, bytes) = self.bytes.obj_parts(current);
+            let (header, bytes) = self.bytes.obj_parts_mut(current);
             current.0 += u64::from(header.size);
             if header.mark == 0 {
                 continue;
@@ -90,7 +90,7 @@ impl Heap {
             new_bump = place_at;
             self.bytes.raw.copy_within((addr.0 as usize)..((addr.0 + u64::from(size)) as usize), place_at);
             self.move_dst[(addr.0 / 16) as usize] = new_addr;
-            let (header, fields) = self.bytes.obj_fields(new_addr);
+            let (header, fields) = self.bytes.obj_fields_mut(new_addr);
             if header.ptrs != 0 {
                 for (i, ptr) in fields.into_iter().enumerate() {
                     if header.ptrs & (1 << i) != 0 {
@@ -104,7 +104,7 @@ impl Heap {
         }
     }
 
-    pub fn obj_with_fields(&mut self, addr: Addr) -> (u32, impl Iterator<Item = crate::rt::Value> + '_) {
+    pub fn obj_with_fields(&self, addr: Addr) -> (u64, impl Iterator<Item = crate::rt::Value> + '_) {
         let (header, fields) = self.bytes.obj_fields(addr);
         let ptrs = header.ptrs;
         let fields = fields
@@ -116,7 +116,12 @@ impl Heap {
             } else {
                 crate::rt::Value::Int(v)
             });
-        (header.tag as u32, fields)
+        (header.tag, fields)
+    }
+
+    pub fn obj_with_bytes(&self, addr: Addr) -> (u64, &[u8]) {
+        let (header, bytes) = self.bytes.obj_parts(addr);
+        (header.tag, bytes)
     }
 }
 
@@ -125,7 +130,7 @@ struct HeapBytes {
 }
 
 impl HeapBytes {
-    fn obj_parts(&mut self, addr: Addr) -> (&mut Header, &mut [u8]) {
+    fn obj_parts_mut(&mut self, addr: Addr) -> (&mut Header, &mut [u8]) {
         let bytes = &mut self.raw[addr.0 as usize..];
         let (header, rest) = bytes.split_at_mut(Header::SIZE as usize);
         let header = unsafe { &mut *(header.as_mut_ptr() as *mut Header) };
@@ -139,13 +144,32 @@ impl HeapBytes {
         header
     }
 
-    fn obj_fields(&mut self, addr: Addr) -> (&mut Header, &mut [u64]) {
+    fn obj_fields_mut(&mut self, addr: Addr) -> (&mut Header, &mut [u64]) {
+        let (header, bytes) = self.obj_parts_mut(addr);
+        (header, bytes_to_words_mut(bytes))
+    }
+    
+    fn obj_parts(&self, addr: Addr) -> (&Header, &[u8]) {
+        let bytes = &self.raw[addr.0 as usize..];
+        let (header, rest) = bytes.split_at(Header::SIZE as usize);
+        let header = unsafe { &*(header.as_ptr() as *const Header) };
+        let bytes = &rest[..((header.size - Header::SIZE) as usize)];
+        (header, bytes)
+    }
+
+    fn obj_fields(&self, addr: Addr) -> (&Header, &[u64]) {
         let (header, bytes) = self.obj_parts(addr);
         (header, bytes_to_words(bytes))
     }
 }
 
-fn bytes_to_words(bytes: &mut [u8]) -> &mut [u64] {
+fn bytes_to_words(bytes: &[u8]) -> &[u64] {
+    unsafe {
+        std::slice::from_raw_parts(bytes.as_ptr() as *const u64, bytes.len() / 8)
+    }
+}
+
+fn bytes_to_words_mut(bytes: &mut [u8]) -> &mut [u64] {
     unsafe {
         std::slice::from_raw_parts_mut(bytes.as_ptr() as *mut u64, bytes.len() / 8)
     }

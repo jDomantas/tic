@@ -79,7 +79,7 @@ impl CompilationUnit {
     }
 
     pub fn interpret(&mut self) -> Result<String, Trap> {
-        interpreter::eval_int_main(self).map(|x| x.to_string()).map_err(|_| panic!("failed to interpret"))
+        interpreter::eval(self)
     }
 
     pub fn interpret_main(&mut self, input: &str) -> Result<String, InterpretError> {
