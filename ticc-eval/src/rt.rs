@@ -2,7 +2,7 @@ use std::{thread::panicking, collections::{HashSet, HashMap}, rc::Rc};
 
 use ticc_core::ir;
 
-use crate::{heap::{Addr, Heap}, Trap};
+use crate::{heap::{Addr, Heap}, Trap, asm};
 
 #[derive(Clone, Copy)]
 pub enum Value {
@@ -81,6 +81,7 @@ pub fn eval_expr(expr: &ir::Expr) -> Result<crate::Value, Trap> {
     let mut emitter = Emitter {
         ops: Vec::new(),
         stack_size: 0,
+        next_label: asm::Label(0),
     };
     let mut heap = Heap::new();
     let mut consts = Vec::new();
@@ -93,7 +94,7 @@ pub fn eval_expr(expr: &ir::Expr) -> Result<crate::Value, Trap> {
     };
     compiler.compile_expr(expr, &Env::Empty);
     let tag_names = compiler.tag_names;
-    emitter.op(Op::Return(0));
+    emitter.op(asm::Op::Return(0));
     let ops = emitter.ops;
     // println!("compiled code:");
     // for (i, op) in ops.iter().enumerate() {
@@ -104,7 +105,7 @@ pub fn eval_expr(expr: &ir::Expr) -> Result<crate::Value, Trap> {
     let mut runtime = Runtime {
         heap,
         stack: Stack::default(),
-        ops,
+        ops: asm::link(ops),
         frames: Vec::from([
             Frame { ip: CodeAddr(0) },
         ]),
@@ -165,231 +166,234 @@ impl Runtime {
     }
 
     fn tick(&mut self) -> Result<(), Trap> {
-        if self.heap.allocated() > self.heap.capacity() / 2 {
-            // panic!("gc!");
-            // println!("gc!");
-            self.heap.collect(self.stack.ptrs()
-                .chain(self.consts.iter_mut())
-                .chain(std::iter::once(&mut self.bools.t))
-                .chain(std::iter::once(&mut self.bools.f)),
-            );
-        }
+        let mut ip = self.frames.last().unwrap().ip;
+        loop {
+            if self.heap.allocated() > self.heap.capacity() / 2 {
+                // panic!("gc!");
+                // println!("gc!");
+                self.heap.collect(self.stack.ptrs()
+                    .chain(self.consts.iter_mut())
+                    .chain(std::iter::once(&mut self.bools.t))
+                    .chain(std::iter::once(&mut self.bools.f)),
+                );
+            }
 
-        let ip = self.frames.last().unwrap().ip;
-        let mut dst = CodeAddr(ip.0 + 1);
-        // println!("executing op at {}: {:?}, stack = {:?}", ip.0, self.ops[ip.0], self.stack.0);
-        match self.ops[ip.0] {
-            Op::PushInt(i) => {
-                self.stack.push(Value::Int(i));
-            }
-            Op::PushBool(b) => {
-                self.stack.push(self.bools.get(b));
-            }
-            Op::Pick(depth) => {
-                let value = self.stack.0.iter().rev().nth(depth).unwrap();
-                self.stack.push(*value);
-            }
-            Op::SwapPop => {
-                let top = self.stack.pop();
-                *self.stack.peek_mut() = top;
-            }
-            Op::Add => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(Value::Int(a.wrapping_add(b)));
-            }
-            Op::Sub => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(Value::Int(a.wrapping_sub(b)));
-            }
-            Op::Mul => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(Value::Int(a.wrapping_mul(b)));
-            }
-            Op::Div => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(Value::Int(a.checked_div(b).unwrap_or(0)));
-            }
-            Op::Mod => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(Value::Int(a.checked_rem(b).unwrap_or(a)));
-            }
-            Op::Less => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(self.bools.get(a < b));
-            }
-            Op::LessEq => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(self.bools.get(a <= b));
-            }
-            Op::Greater => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(self.bools.get(a > b));
-            }
-            Op::GreaterEq => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(self.bools.get(a >= b));
-            }
-            Op::Eq => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(self.bools.get(a == b));
-            }
-            Op::NotEq => {
-                let b = self.stack.pop_int();
-                let a = self.stack.pop_int();
-                self.stack.push(self.bools.get(a != b));
-            }
-            Op::Jump(d) => {
-                dst = d;
-            }
-            Op::JumpIfFalse(d) => {
-                if self.stack.pop_ptr() == self.bools.f {
+            // let ip = self.frames.last().unwrap().ip;
+            let mut dst = CodeAddr(ip.0 + 1);
+            // println!("executing op at {}: {:?}", ip.0, self.ops[ip.0]);
+            match self.ops[ip.0] {
+                Op::PushInt(i) => {
+                    self.stack.push(Value::Int(i));
+                }
+                Op::PushBool(b) => {
+                    self.stack.push(self.bools.get(b));
+                }
+                Op::Pick(depth) => {
+                    let value = self.stack.0.iter().rev().nth(depth).unwrap();
+                    self.stack.push(*value);
+                }
+                Op::SwapPop => {
+                    let top = self.stack.pop();
+                    *self.stack.peek_mut() = top;
+                }
+                Op::Add => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(Value::Int(a.wrapping_add(b)));
+                }
+                Op::Sub => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(Value::Int(a.wrapping_sub(b)));
+                }
+                Op::Mul => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(Value::Int(a.wrapping_mul(b)));
+                }
+                Op::Div => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(Value::Int(a.checked_div(b).unwrap_or(0)));
+                }
+                Op::Mod => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(Value::Int(a.checked_rem(b).unwrap_or(a)));
+                }
+                Op::Less => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(self.bools.get(a < b));
+                }
+                Op::LessEq => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(self.bools.get(a <= b));
+                }
+                Op::Greater => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(self.bools.get(a > b));
+                }
+                Op::GreaterEq => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(self.bools.get(a >= b));
+                }
+                Op::Eq => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(self.bools.get(a == b));
+                }
+                Op::NotEq => {
+                    let b = self.stack.pop_int();
+                    let a = self.stack.pop_int();
+                    self.stack.push(self.bools.get(a != b));
+                }
+                Op::Jump(d) => {
                     dst = d;
                 }
-            }
-            Op::Return(pops) => {
-                let return_value = self.stack.pop();
-                for _ in 0..pops {
-                    self.stack.pop();
-                }
-                self.stack.push(return_value);
-                self.frames.pop();
-                // don't update ip as the frame was already popped
-                return Ok(());
-            }
-            Op::Call => {
-                let call_addr = match self.stack.peek_mut() {
-                    &mut Value::Ptr(addr) => {
-                        let (tag, fields) = self.heap.obj_with_fields(addr);
-                        for field in fields {
-                            self.stack.push(field);
-                        }
-                        CodeAddr((tag  & TAG_MASK) as usize)
-                    }
-                    _ => unreachable!(),
-                };
-                self.frames.last_mut().unwrap().ip = dst;
-                self.frames.push(Frame {
-                    ip: call_addr,
-                });
-                // don't update ip - we did that manually and then pushed a new frame
-                return Ok(());
-            }
-            Op::Construct { tag, fields } => {
-                let mut obj = self.heap.alloc_object(tag, fields);
-                for i in (0..fields).rev() {
-                    let value = self.stack.pop();
-                    match value {
-                        Value::Int(x) => obj.put_int(i as usize, x),
-                        Value::Ptr(x) => obj.put_ptr(i as usize, x),
+                Op::JumpIfFalse(d) => {
+                    if self.stack.pop_ptr() == self.bools.f {
+                        dst = d;
                     }
                 }
-                self.stack.push(Value::Ptr(obj.addr));
-            }
-            Op::Branch(ref branches) => {
-                let obj = match self.stack.pop() {
-                    Value::Ptr(x) => x,
-                    _ => unreachable!(),
-                };
-                let (tag, fields) = self.heap.obj_with_fields(obj);
-                'find_branch: {
-                    for br in branches.iter() {
-                        if br.tag == tag {
+                Op::Return(pops) => {
+                    let return_value = self.stack.pop();
+                    for _ in 0..pops {
+                        self.stack.pop();
+                    }
+                    self.stack.push(return_value);
+                    self.frames.pop();
+                    // don't update ip as the frame was already popped
+                    break;
+                }
+                Op::Call => {
+                    let call_addr = match self.stack.peek_mut() {
+                        &mut Value::Ptr(addr) => {
+                            let (tag, fields) = self.heap.obj_with_fields(addr);
                             for field in fields {
                                 self.stack.push(field);
                             }
-                            dst = br.dst;
-                            break 'find_branch;
+                            CodeAddr((tag  & TAG_MASK) as usize)
+                        }
+                        _ => unreachable!(),
+                    };
+                    self.frames.last_mut().unwrap().ip = dst;
+                    self.frames.push(Frame {
+                        ip: call_addr,
+                    });
+                    // don't update ip - we did that manually and then pushed a new frame
+                    break;
+                }
+                Op::Construct { tag, fields } => {
+                    let mut obj = self.heap.alloc_object(tag, fields);
+                    for i in (0..fields).rev() {
+                        let value = self.stack.pop();
+                        match value {
+                            Value::Int(x) => obj.put_int(i as usize, x),
+                            Value::Ptr(x) => obj.put_ptr(i as usize, x),
                         }
                     }
-                    panic!("no branch matched");
+                    self.stack.push(Value::Ptr(obj.addr));
+                }
+                Op::Branch(ref branches) => {
+                    let obj = match self.stack.pop() {
+                        Value::Ptr(x) => x,
+                        _ => unreachable!(),
+                    };
+                    let (tag, fields) = self.heap.obj_with_fields(obj);
+                    'find_branch: {
+                        for br in branches.iter() {
+                            if br.tag == tag {
+                                for field in fields {
+                                    self.stack.push(field);
+                                }
+                                dst = br.dst;
+                                break 'find_branch;
+                            }
+                        }
+                        panic!("no branch matched");
+                    }
+                }
+                Op::Const(idx) => {
+                    self.stack.push(Value::Ptr(self.consts[idx]));
+                }
+                Op::Trap(ref msg) => {
+                    return Err(Trap { message: msg.to_string() });
+                }
+                Op::StringLen => {
+                    let ptr = self.stack.pop_ptr();
+                    let (tag, _) = self.heap.obj_with_fields(ptr);
+                    let len = tag & TAG_MASK;
+                    self.stack.push(Value::Int(len));
+                }
+                Op::StringCharAt => {
+                    let ptr = self.stack.pop_ptr();
+                    let idx = self.stack.pop_int();
+                    let (tag, bytes) = self.heap.obj_with_bytes(ptr);
+                    let len = tag & TAG_MASK;
+                    let result = if idx < len {
+                        bytes[idx as usize]
+                    } else {
+                        0
+                    };
+                    self.stack.push(Value::Int(u64::from(result)))
+                }
+                Op::StringConcat => {
+                    let ptr2 = self.stack.pop_ptr();
+                    let (tag2, bytes2) = self.heap.obj_with_bytes(ptr2);
+                    let len2 = tag2 & TAG_MASK;
+                    let bytes2 = &bytes2[..(len2 as usize)];
+                    let ptr1 = self.stack.pop_ptr();
+                    let (tag1, bytes1) = self.heap.obj_with_bytes(ptr1);
+                    let len1 = tag1 & TAG_MASK;
+                    let bytes1 = &bytes1[..(len1 as usize)];
+                    let mut concat = Vec::with_capacity(bytes1.len() + bytes2.len());
+                    concat.extend(bytes1);
+                    concat.extend(bytes2);
+                    let obj = self.heap.alloc_bytes(concat.len() as u64 | STRING_TAG, concat.len() as u32);
+                    obj.bytes[..concat.len()].copy_from_slice(&concat);
+                    self.stack.push(Value::Ptr(obj.addr));
+                }
+                Op::StringFromChar => {
+                    let x = self.stack.pop_int();
+                    let obj = self.heap.alloc_bytes(1 | STRING_TAG, 1);
+                    obj.bytes[0] = (x & 0x7F) as u8;
+                    self.stack.push(Value::Ptr(obj.addr));
+                }
+                Op::IntToString => {
+                    let x = self.stack.pop_int();
+                    let s = x.to_string();
+                    let obj = self.heap.alloc_bytes(s.len() as u64 | STRING_TAG, s.len() as u32);
+                    obj.bytes[..s.len()].copy_from_slice(s.as_bytes());
+                    self.stack.push(Value::Ptr(obj.addr));
+                }
+                Op::StringSubstring => {
+                    let s = self.stack.pop_ptr();
+                    let (tag, bytes) = self.heap.obj_with_bytes(s);
+                    let len = tag & TAG_MASK;
+                    let bytes = &bytes[..(len as usize)];
+                    let take_len = self.stack.pop_int() as usize;
+                    let start = self.stack.pop_int() as usize;
+                    let bytes = bytes.get(start..).unwrap_or(&[]);
+                    let bytes = bytes.get(..take_len).unwrap_or(bytes);
+                    let bytes = bytes.to_vec();
+                    let obj = self.heap.alloc_bytes(bytes.len() as u64 | STRING_TAG, bytes.len() as u32);
+                    obj.bytes[..bytes.len()].copy_from_slice(&bytes);
+                    self.stack.push(Value::Ptr(obj.addr));
                 }
             }
-            Op::Const(idx) => {
-                self.stack.push(Value::Ptr(self.consts[idx]));
-            }
-            Op::Trap(ref msg) => {
-                return Err(Trap { message: msg.to_string() });
-            }
-            Op::StringLen => {
-                let ptr = self.stack.pop_ptr();
-                let (tag, _) = self.heap.obj_with_fields(ptr);
-                let len = tag & TAG_MASK;
-                self.stack.push(Value::Int(len));
-            }
-            Op::StringCharAt => {
-                let ptr = self.stack.pop_ptr();
-                let idx = self.stack.pop_int();
-                let (tag, bytes) = self.heap.obj_with_bytes(ptr);
-                let len = tag & TAG_MASK;
-                let result = if idx < len {
-                    bytes[idx as usize]
-                } else {
-                    0
-                };
-                self.stack.push(Value::Int(u64::from(result)))
-            }
-            Op::StringConcat => {
-                let ptr2 = self.stack.pop_ptr();
-                let (tag2, bytes2) = self.heap.obj_with_bytes(ptr2);
-                let len2 = tag2 & TAG_MASK;
-                let bytes2 = &bytes2[..(len2 as usize)];
-                let ptr1 = self.stack.pop_ptr();
-                let (tag1, bytes1) = self.heap.obj_with_bytes(ptr1);
-                let len1 = tag1 & TAG_MASK;
-                let bytes1 = &bytes1[..(len1 as usize)];
-                let mut concat = Vec::with_capacity(bytes1.len() + bytes2.len());
-                concat.extend(bytes1);
-                concat.extend(bytes2);
-                let obj = self.heap.alloc_bytes(concat.len() as u64 | STRING_TAG, concat.len() as u32);
-                obj.bytes[..concat.len()].copy_from_slice(&concat);
-                self.stack.push(Value::Ptr(obj.addr));
-            }
-            Op::StringFromChar => {
-                let x = self.stack.pop_int();
-                let obj = self.heap.alloc_bytes(1 | STRING_TAG, 1);
-                obj.bytes[0] = (x & 0x7F) as u8;
-                self.stack.push(Value::Ptr(obj.addr));
-            }
-            Op::IntToString => {
-                let x = self.stack.pop_int();
-                let s = x.to_string();
-                let obj = self.heap.alloc_bytes(s.len() as u64 | STRING_TAG, s.len() as u32);
-                obj.bytes[..s.len()].copy_from_slice(s.as_bytes());
-                self.stack.push(Value::Ptr(obj.addr));
-            }
-            Op::StringSubstring => {
-                let s = self.stack.pop_ptr();
-                let (tag, bytes) = self.heap.obj_with_bytes(s);
-                let len = tag & TAG_MASK;
-                let bytes = &bytes[..(len as usize)];
-                let take_len = self.stack.pop_int() as usize;
-                let start = self.stack.pop_int() as usize;
-                let bytes = bytes.get(start..).unwrap_or(&[]);
-                let bytes = bytes.get(..take_len).unwrap_or(bytes);
-                let bytes = bytes.to_vec();
-                let obj = self.heap.alloc_bytes(bytes.len() as u64 | STRING_TAG, bytes.len() as u32);
-                obj.bytes[..bytes.len()].copy_from_slice(&bytes);
-                self.stack.push(Value::Ptr(obj.addr));
-            }
-            Op::Placeholder => unreachable!("placeholders should be replaced before end of compilation"),
+            ip = dst;
+            // self.frames.last_mut().unwrap().ip = dst;
         }
-        self.frames.last_mut().unwrap().ip = dst;
         Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
-enum Op {
+pub(crate) enum Op {
     PushInt(u64),
     PushBool(bool),
     Pick(usize),
@@ -419,17 +423,16 @@ enum Op {
     StringSubstring,
     StringFromChar,
     IntToString,
-    Placeholder,
 }
 
 #[derive(Debug, Clone)]
-struct Branch {
-    tag: u64,
-    dst: CodeAddr,
+pub(crate) struct Branch {
+    pub(crate) tag: u64,
+    pub(crate) dst: CodeAddr,
 }
 
 #[derive(Debug, Clone, Copy)]
-struct CodeAddr(usize);
+pub(crate) struct CodeAddr(pub(crate) usize);
 
 struct Compiler<'a> {
     emit: &'a mut Emitter,
@@ -441,14 +444,14 @@ struct Compiler<'a> {
 
 const STRING_TAG: u64 = 1 << 48;
 const OBJ_TAG: u64 = 2 << 48;
-const FN_TAG: u64 = 4 << 48;
+pub(crate) const FN_TAG: u64 = 4 << 48;
 const TAG_MASK: u64 = (1 << 48) - 1;
 
 impl Compiler<'_> {
     fn compile_expr(&mut self, expr: &ir::Expr, env: &Env<'_>) {
         match expr {
-            ir::Expr::Bool(b) => self.emit.op(Op::PushBool(*b)),
-            ir::Expr::Int(i) => self.emit.op(Op::PushInt(*i)),
+            ir::Expr::Bool(b) => self.emit.op(asm::Op::PushBool(*b)),
+            ir::Expr::Int(i) => self.emit.op(asm::Op::PushInt(*i)),
             ir::Expr::String(s) => {
                 let need_bytes = s.len() + 256;
                 if self.heap.free_space() < need_bytes {
@@ -457,7 +460,7 @@ impl Compiler<'_> {
                 let obj = self.heap.alloc_bytes(s.len() as u64 | STRING_TAG, s.len() as u32);
                 obj.bytes[..s.as_bytes().len()].copy_from_slice(s.as_bytes());
                 self.consts.push(obj.addr);
-                self.emit.op(Op::Const(self.consts.len() - 1));
+                self.emit.op(asm::Op::Const(self.consts.len() - 1));
             }
             ir::Expr::Name(n) => self.emit.pick_var(env, *n),
             ir::Expr::Call(f, args) => {
@@ -465,35 +468,37 @@ impl Compiler<'_> {
                     self.compile_expr(arg, env);
                 }
                 self.compile_expr(f, env);
-                self.emit.op(Op::Call);
+                self.emit.op(asm::Op::Call);
                 // callee pops args, emitter does not get to see it
                 self.emit.stack_size -= args.len();
             }
             ir::Expr::If(c, t, e) => {
                 self.compile_expr(c, env);
-                let branch = self.emit.placeholder(Op::JumpIfFalse(CodeAddr(0)));
+                let else_label = self.emit.fresh_label();
+                let end_label = self.emit.fresh_label();
+                self.emit.op(asm::Op::JumpIfFalse(else_label));
                 self.compile_expr(t, env);
-                let true_finish = self.emit.placeholder(Op::Jump(CodeAddr(0)));
-                self.emit.fill_placeholder(branch, Op::JumpIfFalse(self.emit.pos()));
+                self.emit.op(asm::Op::Jump(end_label));
+                self.emit.op(asm::Op::Label(else_label));
                 self.emit.stack_size -= 1;
                 self.compile_expr(e, env);
-                self.emit.fill_placeholder(true_finish, Op::Jump(self.emit.pos()));
+                self.emit.op(asm::Op::Label(end_label));
             }
             ir::Expr::Op(a, op, b) => {
                 self.compile_expr(a, env);
                 self.compile_expr(b, env);
                 self.emit.op(match op {
-                    ir::Op::Add => Op::Add,
-                    ir::Op::Subtract => Op::Sub,
-                    ir::Op::Multiply => Op::Mul,
-                    ir::Op::Divide => Op::Div,
-                    ir::Op::Modulo => Op::Mod,
-                    ir::Op::Less => Op::Less,
-                    ir::Op::LessEq => Op::LessEq,
-                    ir::Op::Greater => Op::Greater,
-                    ir::Op::GreaterEq => Op::GreaterEq,
-                    ir::Op::Equal => Op::Eq,
-                    ir::Op::NotEqual => Op::NotEq,
+                    ir::Op::Add => asm::Op::Add,
+                    ir::Op::Subtract => asm::Op::Sub,
+                    ir::Op::Multiply => asm::Op::Mul,
+                    ir::Op::Divide => asm::Op::Div,
+                    ir::Op::Modulo => asm::Op::Mod,
+                    ir::Op::Less => asm::Op::Less,
+                    ir::Op::LessEq => asm::Op::LessEq,
+                    ir::Op::Greater => asm::Op::Greater,
+                    ir::Op::GreaterEq => asm::Op::GreaterEq,
+                    ir::Op::Equal => asm::Op::Eq,
+                    ir::Op::NotEqual => asm::Op::NotEq,
                 });
             }
             ir::Expr::Intrinsic(i, args) => {
@@ -501,50 +506,52 @@ impl Compiler<'_> {
                     self.compile_expr(arg, env);
                 }
                 match i {
-                    ir::Intrinsic::StringLen => self.emit.op(Op::StringLen),
-                    ir::Intrinsic::StringConcat => self.emit.op(Op::StringConcat),
-                    ir::Intrinsic::StringCharAt => self.emit.op(Op::StringCharAt),
-                    ir::Intrinsic::StringSubstring => self.emit.op(Op::StringSubstring),
-                    ir::Intrinsic::StringFromChar => self.emit.op(Op::StringFromChar),
-                    ir::Intrinsic::IntToString => self.emit.op(Op::IntToString),
+                    ir::Intrinsic::StringLen => self.emit.op(asm::Op::StringLen),
+                    ir::Intrinsic::StringConcat => self.emit.op(asm::Op::StringConcat),
+                    ir::Intrinsic::StringCharAt => self.emit.op(asm::Op::StringCharAt),
+                    ir::Intrinsic::StringSubstring => self.emit.op(asm::Op::StringSubstring),
+                    ir::Intrinsic::StringFromChar => self.emit.op(asm::Op::StringFromChar),
+                    ir::Intrinsic::IntToString => self.emit.op(asm::Op::IntToString),
                 }
             }
             ir::Expr::Lambda(p, e) => {
-                let skip_over = self.emit.placeholder(Op::Jump(CodeAddr(0)));
+                let over_label = self.emit.fresh_label();
+                self.emit.op(asm::Op::Jump(over_label));
+                let entry = self.emit.fresh_label();
+                self.emit.op(asm::Op::Label(entry));
                 let captures = free_variables(expr);
-                let addr = self.compile_function(&p, None, e, &captures);
-                self.emit.fill_placeholder(skip_over, Op::Jump(self.emit.pos()));
+                self.compile_function(&p, None, e, &captures);
+                self.emit.op(asm::Op::Label(over_label));
                 for &c in &captures {
                     self.emit.pick_var(env, c);
                 }
-                let tag = addr.0 as u64 | FN_TAG;
-                self.emit.op(Op::Construct { tag, fields: captures.len() as u32 })
+                self.emit.op(asm::Op::ConstructClosure { addr: entry, fields: captures.len() as u32 })
             }
             ir::Expr::Match(discr, branches) => {
                 self.compile_expr(discr, env);
-                let mut jumps = Vec::new();
                 let mut table = Vec::with_capacity(branches.len());
-                let dispatch = self.emit.placeholder(Op::Branch(Box::new([])));
-                for br in branches {
-                    table.push(Branch {
+                let end_label = self.emit.fresh_label();
+                let branch_labels = branches.iter().map(|_| self.emit.fresh_label()).collect::<Vec<_>>();
+                for (lbl, br) in std::iter::zip(&branch_labels, branches) {
+                    table.push(asm::Branch {
                         tag: self.name_to_tag(br.ctor),
-                        dst: self.emit.pos(),
-                    });
+                        dst: *lbl,
+                    })
+                }
+                self.emit.op(asm::Op::Branch(table.into()));
+                for (br, lbl) in std::iter::zip(branches, branch_labels) {
+                    self.emit.op(asm::Op::Label(lbl));
                     with_local_list(env, &br.bindings, self.emit.stack_size, |env| {
                         self.emit.stack_size += br.bindings.len();
                         self.compile_expr(&br.value, &env);
                         for _ in &br.bindings {
-                            self.emit.op(Op::SwapPop);
+                            self.emit.op(asm::Op::SwapPop);
                         }
                     });
-                    jumps.push(self.emit.placeholder(Op::Jump(CodeAddr(0))));
+                    self.emit.op(asm::Op::Jump(end_label));
                     self.emit.stack_size -= 1;
                 }
-                let end = self.emit.pos();
-                for jmp in jumps {
-                    self.emit.fill_placeholder(jmp, Op::Jump(end));
-                }
-                self.emit.fill_placeholder(dispatch, Op::Branch(table.into()));
+                self.emit.op(asm::Op::Label(end_label));
                 self.emit.stack_size += 1;
             }
             ir::Expr::Construct(ctor, _, fields) => {
@@ -552,13 +559,13 @@ impl Compiler<'_> {
                     self.compile_expr(field, env);
                 }
                 let tag = self.name_to_tag(*ctor);
-                self.emit.op(Op::Construct { tag, fields: fields.len() as u32 })
+                self.emit.op(asm::Op::Construct { tag, fields: fields.len() as u32 })
             }
             ir::Expr::Let(n, v, e) => {
                 self.compile_expr(v, env);
                 let env = env.define(*n, self.emit);
                 self.compile_expr(e, &env);
-                self.emit.op(Op::SwapPop);
+                self.emit.op(asm::Op::SwapPop);
             }
             ir::Expr::LetRec(n, _, v, e) => {
                 let v = unwrap_pis(v);
@@ -566,26 +573,28 @@ impl Compiler<'_> {
                     panic!("let rec value is not lambda");
                 };
                 // compile lambda value
-                let skip_over = self.emit.placeholder(Op::Jump(CodeAddr(0)));
+                let over_label = self.emit.fresh_label();
+                self.emit.op(asm::Op::Jump(over_label));
                 let mut captures = free_variables(expr);
                 captures.retain(|c| c != n);
+                let entry = self.emit.fresh_label();
+                self.emit.op(asm::Op::Label(entry));
                 // println!("let rec captured {:?}", captures);
-                let addr = self.compile_function(&p, Some(*n), v, &captures);
-                self.emit.fill_placeholder(skip_over, Op::Jump(self.emit.pos()));
+                self.compile_function(&p, Some(*n), v, &captures);
+                self.emit.op(asm::Op::Label(over_label));
                 for &c in &captures {
                     self.emit.pick_var(env, c);
                 }
-                let tag = addr.0 as u64 | FN_TAG;
-                self.emit.op(Op::Construct { tag, fields: captures.len() as u32 });
+                self.emit.op(asm::Op::ConstructClosure { addr: entry, fields: captures.len() as u32 });
                 // compile let
                 let env = env.define(*n, self.emit);
                 self.compile_expr(e, &env);
-                self.emit.op(Op::SwapPop);
+                self.emit.op(asm::Op::SwapPop);
             }
             ir::Expr::Pi(_, e) => self.compile_expr(e, env),
             ir::Expr::PiApply(e, _) => self.compile_expr(e, env),
             ir::Expr::Trap(msg, _) => {
-                self.emit.op(Op::Trap(msg.as_str().into()));
+                self.emit.op(asm::Op::Trap(msg.as_str().into()));
             }
         }
     }
@@ -599,13 +608,11 @@ impl Compiler<'_> {
         })
     }
 
-    fn compile_function(&mut self, p: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name]) -> CodeAddr {
+    fn compile_function(&mut self, p: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name]) {
         let old_stack = std::mem::replace(&mut self.emit.stack_size, 0);
-        let addr = self.emit.pos();
         self.compile_function_inner(p, rec_name, e, captures, &Env::Empty);
-        self.emit.op(Op::Return(p.len() + captures.len() + 1));
+        self.emit.op(asm::Op::Return(p.len() + captures.len() + 1));
         self.emit.stack_size = old_stack;
-        addr
     }
 
     fn compile_function_inner(&mut self, p: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name], env: &Env<'_>) {
@@ -694,46 +701,48 @@ impl<'a> Env<'a> {
 }
 
 struct Emitter {
-    ops: Vec<Op>,
+    ops: Vec<asm::Op>,
     stack_size: usize,
+    next_label: asm::Label,
 }
 
 impl Emitter {
-    fn op(&mut self, op: Op) {
+    fn op(&mut self, op: asm::Op) {
         match op {
-            Op::PushInt(_) |
-            Op::PushBool(_) |
-            Op::Pick(_) => self.stack_size += 1,
-            Op::SwapPop |
-            Op::Add |
-            Op::Sub |
-            Op::Mul |
-            Op::Div |
-            Op::Mod |
-            Op::Less |
-            Op::LessEq |
-            Op::Greater |
-            Op::GreaterEq |
-            Op::Eq |
-            Op::NotEq => self.stack_size -= 1,
-            Op::Jump(_) => {}
-            Op::JumpIfFalse(_) => self.stack_size -= 1,
-            Op::Return(pops) => self.stack_size -= pops,
-            Op::Call => {}
-            Op::Construct { tag: _, fields } => {
+            asm::Op::PushInt(_) |
+            asm::Op::PushBool(_) |
+            asm::Op::Pick(_) => self.stack_size += 1,
+            asm::Op::SwapPop |
+            asm::Op::Add |
+            asm::Op::Sub |
+            asm::Op::Mul |
+            asm::Op::Div |
+            asm::Op::Mod |
+            asm::Op::Less |
+            asm::Op::LessEq |
+            asm::Op::Greater |
+            asm::Op::GreaterEq |
+            asm::Op::Eq |
+            asm::Op::NotEq => self.stack_size -= 1,
+            asm::Op::Jump(_) => {}
+            asm::Op::JumpIfFalse(_) => self.stack_size -= 1,
+            asm::Op::Return(pops) => self.stack_size -= pops,
+            asm::Op::Call => {}
+            asm::Op::Construct { tag: _, fields } |
+            asm::Op::ConstructClosure { addr: _, fields } => {
                 self.stack_size -= fields as usize;
                 self.stack_size += 1;
             }
-            Op::Branch(_) => self.stack_size -= 1,
-            Op::Const(_) => self.stack_size += 1,
-            Op::Trap(_) => {}
-            Op::StringLen => {}
-            Op::StringCharAt => self.stack_size -= 1,
-            Op::StringConcat => self.stack_size -= 1,
-            Op::StringFromChar => {}
-            Op::IntToString => {}
-            Op::StringSubstring => self.stack_size -= 2,
-            Op::Placeholder => {}
+            asm::Op::Branch(_) => self.stack_size -= 1,
+            asm::Op::Const(_) => self.stack_size += 1,
+            asm::Op::Trap(_) => {}
+            asm::Op::StringLen => {}
+            asm::Op::StringCharAt => self.stack_size -= 1,
+            asm::Op::StringConcat => self.stack_size -= 1,
+            asm::Op::StringFromChar => {}
+            asm::Op::IntToString => {}
+            asm::Op::StringSubstring => self.stack_size -= 2,
+            asm::Op::Label(_) => {}
         }
         self.ops.push(op);
     }
@@ -742,23 +751,13 @@ impl Emitter {
         // let at = env.find(name);
         let depth = self.stack_size - env.find(name) - 1;
         // println!("picking {name:?}, at {at}, depth {depth}, stack {}", self.stack_size);
-        self.op(Op::Pick(depth));
+        self.op(asm::Op::Pick(depth));
     }
 
-    fn placeholder(&mut self, op: Op) -> Placeholder {
-        let p = Placeholder(self.pos());
-        self.op(op);
-        *self.ops.last_mut().unwrap() = Op::Placeholder;
-        p
-    }
-
-    fn pos(&self) -> CodeAddr {
-        CodeAddr(self.ops.len())
-    }
-
-    fn fill_placeholder(&mut self, p: Placeholder, op: Op) {
-        self.ops[p.0.0] = op;
-        std::mem::forget(p);
+    fn fresh_label(&mut self) -> asm::Label {
+        let l = self.next_label;
+        self.next_label.0 += 1;
+        l
     }
 }
 

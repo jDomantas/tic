@@ -1,3 +1,4 @@
+mod asm;
 mod heap;
 mod rt;
 mod tagged;
