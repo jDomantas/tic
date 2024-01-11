@@ -1,4 +1,4 @@
-use std::{thread::panicking, collections::{HashSet, HashMap}, fmt, rc::Rc};
+use std::{thread::panicking, collections::{HashSet, HashMap}, rc::Rc};
 
 use ticc_core::ir;
 
@@ -8,15 +8,6 @@ use crate::{heap::{Addr, Heap}, Trap};
 pub enum Value {
     Int(u64),
     Ptr(Addr),
-}
-
-impl fmt::Debug for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Int(x) => f.debug_tuple("Int").field(x).finish(),
-            Self::Ptr(x) => f.debug_tuple("Ptr").field(&x.0).finish(),
-        }
-    }
 }
 
 struct Frame {
@@ -76,6 +67,13 @@ impl Stack {
 
     fn push(&mut self, value: Value) {
         self.0.push(value);
+    }
+
+    fn ptrs<'a>(&'a mut self) -> impl Iterator<Item = &'a mut Addr> + 'a {
+        self.0.iter_mut().filter_map(|x| match x {
+            Value::Int(_) => None,
+            Value::Ptr(x) => Some(x),
+        })
     }
 }
 
@@ -167,6 +165,16 @@ impl Runtime {
     }
 
     fn tick(&mut self) -> Result<(), Trap> {
+        if self.heap.allocated() > self.heap.capacity() / 2 {
+            // panic!("gc!");
+            // println!("gc!");
+            self.heap.collect(self.stack.ptrs()
+                .chain(self.consts.iter_mut())
+                .chain(std::iter::once(&mut self.bools.t))
+                .chain(std::iter::once(&mut self.bools.f)),
+            );
+        }
+
         let ip = self.frames.last().unwrap().ip;
         let mut dst = CodeAddr(ip.0 + 1);
         // println!("executing op at {}: {:?}, stack = {:?}", ip.0, self.ops[ip.0], self.stack.0);
@@ -443,6 +451,10 @@ impl Compiler<'_> {
             ir::Expr::Bool(b) => self.emit.op(Op::PushBool(*b)),
             ir::Expr::Int(i) => self.emit.op(Op::PushInt(*i)),
             ir::Expr::String(s) => {
+                let need_bytes = s.len() + 256;
+                if self.heap.free_space() < need_bytes {
+                    self.heap.collect_and_grow(self.consts.iter_mut(), need_bytes as u32);
+                }
                 let obj = self.heap.alloc_bytes(s.len() as u64 | STRING_TAG, s.len() as u32);
                 obj.bytes[..s.as_bytes().len()].copy_from_slice(s.as_bytes());
                 self.consts.push(obj.addr);
