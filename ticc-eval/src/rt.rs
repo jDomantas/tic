@@ -1,4 +1,4 @@
-use std::{thread::panicking, collections::{HashSet, HashMap}, rc::Rc};
+use std::{collections::{HashSet, HashMap}, rc::Rc};
 
 use ticc_core::ir;
 
@@ -61,8 +61,12 @@ impl Stack {
         self.0.pop().unwrap()
     }
 
-    fn peek_mut(&mut self) -> &mut Value {
-        self.0.last_mut().unwrap()
+    fn peek(&self) -> Value {
+        *self.0.last().unwrap()
+    }
+
+    fn pick(&self, depth: usize) -> Value {
+        *self.0.iter().rev().nth(depth).unwrap()
     }
 
     fn push(&mut self, value: Value) {
@@ -94,7 +98,8 @@ pub fn eval_expr(expr: &ir::Expr) -> Result<crate::Value, Trap> {
     };
     compiler.compile_expr(expr, &Env::Empty);
     let tag_names = compiler.tag_names;
-    emitter.op(asm::Op::Return(0));
+    emitter.op(asm::Op::Exit);
+    assert_eq!(emitter.stack_size, 0);
     let ops = emitter.ops;
     // println!("compiled code:");
     // for (i, op) in ops.iter().enumerate() {
@@ -116,13 +121,9 @@ pub fn eval_expr(expr: &ir::Expr) -> Result<crate::Value, Trap> {
             f: false_obj,
         },
     };
-    while runtime.frames.len() > 0 {
-        runtime.tick()?;
-    }
-    match runtime.stack.0.as_slice() {
-        &[x] => Ok(runtime.decode_value(x)),
-        _ => panic!("shite"),
-    }
+    runtime.run()?;
+    let result = runtime.stack.pop();
+    Ok(runtime.decode_value(result))
 }
 
 impl Runtime {
@@ -165,20 +166,9 @@ impl Runtime {
         go(self, &mut HashMap::new(), value)
     }
 
-    fn tick(&mut self) -> Result<(), Trap> {
+    fn run(&mut self) -> Result<(), Trap> {
         let mut ip = self.frames.last().unwrap().ip;
         loop {
-            if self.heap.allocated() > self.heap.capacity() / 2 {
-                // panic!("gc!");
-                // println!("gc!");
-                self.heap.collect(self.stack.ptrs()
-                    .chain(self.consts.iter_mut())
-                    .chain(std::iter::once(&mut self.bools.t))
-                    .chain(std::iter::once(&mut self.bools.f)),
-                );
-            }
-
-            // let ip = self.frames.last().unwrap().ip;
             let mut dst = CodeAddr(ip.0 + 1);
             // println!("executing op at {}: {:?}", ip.0, self.ops[ip.0]);
             match self.ops[ip.0] {
@@ -189,12 +179,13 @@ impl Runtime {
                     self.stack.push(self.bools.get(b));
                 }
                 Op::Pick(depth) => {
-                    let value = self.stack.0.iter().rev().nth(depth).unwrap();
-                    self.stack.push(*value);
+                    let value = self.stack.pick(depth);
+                    self.stack.push(value);
                 }
                 Op::SwapPop => {
                     let top = self.stack.pop();
-                    *self.stack.peek_mut() = top;
+                    self.stack.pop();
+                    self.stack.push(top);
                 }
                 Op::Add => {
                     let b = self.stack.pop_int();
@@ -266,12 +257,11 @@ impl Runtime {
                     }
                     self.stack.push(return_value);
                     self.frames.pop();
-                    // don't update ip as the frame was already popped
-                    break;
+                    dst = self.frames.last().unwrap().ip;
                 }
                 Op::Call => {
-                    let call_addr = match self.stack.peek_mut() {
-                        &mut Value::Ptr(addr) => {
+                    let call_addr = match self.stack.peek() {
+                        Value::Ptr(addr) => {
                             let (tag, fields) = self.heap.obj_with_fields(addr);
                             for field in fields {
                                 self.stack.push(field);
@@ -284,8 +274,7 @@ impl Runtime {
                     self.frames.push(Frame {
                         ip: call_addr,
                     });
-                    // don't update ip - we did that manually and then pushed a new frame
-                    break;
+                    dst = call_addr;
                 }
                 Op::Construct { tag, fields } => {
                     let mut obj = self.heap.alloc_object(tag, fields);
@@ -297,6 +286,8 @@ impl Runtime {
                         }
                     }
                     self.stack.push(Value::Ptr(obj.addr));
+
+                    self.maybe_gc();
                 }
                 Op::Branch(ref branches) => {
                     let obj = match self.stack.pop() {
@@ -356,12 +347,16 @@ impl Runtime {
                     let obj = self.heap.alloc_bytes(concat.len() as u64 | STRING_TAG, concat.len() as u32);
                     obj.bytes[..concat.len()].copy_from_slice(&concat);
                     self.stack.push(Value::Ptr(obj.addr));
+
+                    self.maybe_gc();
                 }
                 Op::StringFromChar => {
                     let x = self.stack.pop_int();
                     let obj = self.heap.alloc_bytes(1 | STRING_TAG, 1);
                     obj.bytes[0] = (x & 0x7F) as u8;
                     self.stack.push(Value::Ptr(obj.addr));
+
+                    self.maybe_gc();
                 }
                 Op::IntToString => {
                     let x = self.stack.pop_int();
@@ -369,6 +364,8 @@ impl Runtime {
                     let obj = self.heap.alloc_bytes(s.len() as u64 | STRING_TAG, s.len() as u32);
                     obj.bytes[..s.len()].copy_from_slice(s.as_bytes());
                     self.stack.push(Value::Ptr(obj.addr));
+
+                    self.maybe_gc();
                 }
                 Op::StringSubstring => {
                     let s = self.stack.pop_ptr();
@@ -383,12 +380,29 @@ impl Runtime {
                     let obj = self.heap.alloc_bytes(bytes.len() as u64 | STRING_TAG, bytes.len() as u32);
                     obj.bytes[..bytes.len()].copy_from_slice(&bytes);
                     self.stack.push(Value::Ptr(obj.addr));
+
+                    self.maybe_gc();
+                }
+                Op::Exit => {
+                    return Ok(());
                 }
             }
             ip = dst;
-            // self.frames.last_mut().unwrap().ip = dst;
         }
-        Ok(())
+    }
+
+    fn maybe_gc(&mut self) {
+        if self.heap.allocated() > self.heap.capacity() / 2 {
+            self.gc();
+        }
+    }
+
+    fn gc(&mut self) {
+        self.heap.collect(self.stack.ptrs()
+            .chain(self.consts.iter_mut())
+            .chain(std::iter::once(&mut self.bools.t))
+            .chain(std::iter::once(&mut self.bools.f)),
+        );
     }
 }
 
@@ -414,15 +428,16 @@ pub(crate) enum Op {
     Return(usize),
     Call,
     Construct { tag: u64, fields: u32 },
-    Branch(Box<[Branch]>),
+    Branch(Box<Box<[Branch]>>),
     Const(usize),
-    Trap(Box<str>),
+    Trap(Box<Box<str>>),
     StringLen,
     StringConcat,
     StringCharAt,
     StringSubstring,
     StringFromChar,
     IntToString,
+    Exit,
 }
 
 #[derive(Debug, Clone)]
@@ -579,7 +594,6 @@ impl Compiler<'_> {
                 captures.retain(|c| c != n);
                 let entry = self.emit.fresh_label();
                 self.emit.op(asm::Op::Label(entry));
-                // println!("let rec captured {:?}", captures);
                 self.compile_function(&p, Some(*n), v, &captures);
                 self.emit.op(asm::Op::Label(over_label));
                 for &c in &captures {
@@ -619,7 +633,6 @@ impl Compiler<'_> {
         if let Some((p, rest)) = p.split_first() {
             self.emit.stack_size += 1;
             let env = env.define(p.name, self.emit);
-            // println!("within closure, param {:?} defined at {}", p.name, self.emit.stack_size - 1);
             let env = if rest.len() == 0 {
                 // slot for the function value that was called
                 self.emit.stack_size += 1;
@@ -635,10 +648,8 @@ impl Compiler<'_> {
         } else if let Some((c, rest)) = captures.split_first() {
             self.emit.stack_size += 1;
             let env = env.define(*c, self.emit);
-            // println!("within closure, capture {:?} defined at {}", c, self.emit.stack_size - 1);
             self.compile_function_inner(p, rec_name, e, rest, &env);
         } else {
-            // println!("compiling function, env: {:?}", env);
             self.compile_expr(e, env);
         }
     }
@@ -743,14 +754,13 @@ impl Emitter {
             asm::Op::IntToString => {}
             asm::Op::StringSubstring => self.stack_size -= 2,
             asm::Op::Label(_) => {}
+            asm::Op::Exit => self.stack_size -= 1,
         }
         self.ops.push(op);
     }
 
     fn pick_var(&mut self, env: &Env<'_>, name: ir::Name) {
-        // let at = env.find(name);
         let depth = self.stack_size - env.find(name) - 1;
-        // println!("picking {name:?}, at {at}, depth {depth}, stack {}", self.stack_size);
         self.op(asm::Op::Pick(depth));
     }
 
@@ -758,16 +768,6 @@ impl Emitter {
         let l = self.next_label;
         self.next_label.0 += 1;
         l
-    }
-}
-
-struct Placeholder(CodeAddr);
-
-impl Drop for Placeholder {
-    fn drop(&mut self) {
-        if !panicking() {
-            panic!("placeholder was not filled");
-        }
     }
 }
 

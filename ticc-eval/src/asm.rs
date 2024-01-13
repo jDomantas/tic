@@ -36,6 +36,7 @@ pub(crate) enum Op {
     StringFromChar,
     IntToString,
     Label(Label),
+    Exit,
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
@@ -86,21 +87,22 @@ pub(crate) fn link(ops: Vec<Op>) -> Vec<rt::Op> {
                 let addr = positions[&addr];
                 rt::Op::Construct { tag: addr.0 as u64 | rt::FN_TAG, fields }
             }
-            Op::Branch(brs) => rt::Op::Branch(brs
+            Op::Branch(brs) => rt::Op::Branch(Box::new(brs
                 .into_iter()
                 .map(|b| rt::Branch {
                     tag: b.tag,
                     dst: positions[&b.dst],
                 })
-                .collect()),
+                .collect())),
             Op::Const(x) => rt::Op::Const(x),
-            Op::Trap(msg) => rt::Op::Trap(msg),
+            Op::Trap(msg) => rt::Op::Trap(Box::new(msg)),
             Op::StringLen => rt::Op::StringLen,
             Op::StringConcat => rt::Op::StringConcat,
             Op::StringCharAt => rt::Op::StringCharAt,
             Op::StringSubstring => rt::Op::StringSubstring,
             Op::StringFromChar => rt::Op::StringFromChar,
             Op::IntToString => rt::Op::IntToString,
+            Op::Exit => rt::Op::Exit,
             Op::Label(_) => continue,
         });
     }
