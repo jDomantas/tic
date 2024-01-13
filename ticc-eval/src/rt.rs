@@ -735,7 +735,7 @@ impl Emitter {
             }
             asm::Op::Branch(_) => self.stack_size -= 1,
             asm::Op::Const(_) => self.stack_size += 1,
-            asm::Op::Trap(_) => {}
+            asm::Op::Trap(_) => self.stack_size += 1, // trap expr works as if it produces a value from compiler semantics, even though it just crashes the interpreter
             asm::Op::StringLen => {}
             asm::Op::StringCharAt => self.stack_size -= 1,
             asm::Op::StringConcat => self.stack_size -= 1,
