@@ -1,7 +1,7 @@
-mod asm;
 mod heap;
 mod rt;
 mod tagged;
+mod compile;
 
 use std::{
     collections::{HashMap, HashSet},

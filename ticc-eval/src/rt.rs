@@ -1,8 +1,8 @@
-use std::{collections::{HashSet, HashMap}, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 use ticc_core::ir;
 
-use crate::{heap::{Addr, Heap}, Trap, asm};
+use crate::{heap::{Addr, Heap}, Trap, compile};
 
 #[derive(Clone, Copy)]
 pub enum Value {
@@ -20,7 +20,7 @@ struct Runtime {
     ops: Vec<Op>,
     frames: Vec<Frame>,
     consts: Vec<Addr>,
-    tag_names: Vec<ir::Name>,
+    ctor_tags: CtorTags,
     bools: Bools,
 }
 
@@ -82,25 +82,10 @@ impl Stack {
 }
 
 pub fn eval_expr(expr: &ir::Expr) -> Result<crate::Value, Trap> {
-    let mut emitter = Emitter {
-        ops: Vec::new(),
-        stack_size: 0,
-        next_label: asm::Label(0),
-    };
     let mut heap = Heap::new();
     let mut consts = Vec::new();
-    let mut compiler = Compiler {
-        emit: &mut emitter,
-        consts: &mut consts,
-        heap: &mut heap,
-        tag_names: Vec::new(),
-        name_tags: HashMap::new(),
-    };
-    compiler.compile_expr(expr, &Env::Empty);
-    let tag_names = compiler.tag_names;
-    emitter.op(asm::Op::Exit);
-    assert_eq!(emitter.stack_size, 0);
-    let ops = emitter.ops;
+    let compile_ops = crate::compile::compile(expr);
+    let (ops, ctor_tags) = link(&mut heap, &mut consts, compile_ops);
     // println!("compiled code:");
     // for (i, op) in ops.iter().enumerate() {
     //     println!("{i:>3}  {op:?}");
@@ -110,12 +95,12 @@ pub fn eval_expr(expr: &ir::Expr) -> Result<crate::Value, Trap> {
     let mut runtime = Runtime {
         heap,
         stack: Stack::default(),
-        ops: asm::link(ops),
+        ops,
         frames: Vec::from([
             Frame { ip: CodeAddr(0) },
         ]),
         consts,
-        tag_names,
+        ctor_tags,
         bools: Bools {
             t: true_obj,
             f: false_obj,
@@ -153,8 +138,7 @@ impl Runtime {
                 crate::Value::String(s.into())
             } else if tag & !TAG_MASK == OBJ_TAG {
                 let (tag, fields) = rt.heap.obj_with_fields(ptr);
-                let idx = (tag & TAG_MASK) as usize;
-                let name = rt.tag_names[idx];
+                let name = rt.ctor_tags.tag_names[&tag];
                 let fields = fields.map(|v| go(rt, dedup, v)).collect::<Vec<_>>();
                 crate::Value::Composite(crate::Tagged::from_vec(name, fields))
             } else {
@@ -449,389 +433,99 @@ pub(crate) struct Branch {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CodeAddr(pub(crate) usize);
 
-struct Compiler<'a> {
-    emit: &'a mut Emitter,
-    consts: &'a mut Vec<Addr>,
-    heap: &'a mut Heap,
-    tag_names: Vec<ir::Name>,
-    name_tags: HashMap<ir::Name, u64>,
-}
-
 const STRING_TAG: u64 = 1 << 48;
 const OBJ_TAG: u64 = 2 << 48;
 pub(crate) const FN_TAG: u64 = 4 << 48;
 const TAG_MASK: u64 = (1 << 48) - 1;
 
-impl Compiler<'_> {
-    fn compile_expr(&mut self, expr: &ir::Expr, env: &Env<'_>) {
-        match expr {
-            ir::Expr::Bool(b) => self.emit.op(asm::Op::PushBool(*b)),
-            ir::Expr::Int(i) => self.emit.op(asm::Op::PushInt(*i)),
-            ir::Expr::String(s) => {
-                let need_bytes = s.len() + 256;
-                if self.heap.free_space() < need_bytes {
-                    self.heap.collect_and_grow(self.consts.iter_mut(), need_bytes as u32);
-                }
-                let obj = self.heap.alloc_bytes(s.len() as u64 | STRING_TAG, s.len() as u32);
-                obj.bytes[..s.as_bytes().len()].copy_from_slice(s.as_bytes());
-                self.consts.push(obj.addr);
-                self.emit.op(asm::Op::Const(self.consts.len() - 1));
-            }
-            ir::Expr::Name(n) => self.emit.pick_var(env, *n),
-            ir::Expr::Call(f, args) => {
-                for arg in args {
-                    self.compile_expr(arg, env);
-                }
-                self.compile_expr(f, env);
-                self.emit.op(asm::Op::Call);
-                // callee pops args, emitter does not get to see it
-                self.emit.stack_size -= args.len();
-            }
-            ir::Expr::If(c, t, e) => {
-                self.compile_expr(c, env);
-                let else_label = self.emit.fresh_label();
-                let end_label = self.emit.fresh_label();
-                self.emit.op(asm::Op::JumpIfFalse(else_label));
-                self.compile_expr(t, env);
-                self.emit.op(asm::Op::Jump(end_label));
-                self.emit.op(asm::Op::Label(else_label));
-                self.emit.stack_size -= 1;
-                self.compile_expr(e, env);
-                self.emit.op(asm::Op::Label(end_label));
-            }
-            ir::Expr::Op(a, op, b) => {
-                self.compile_expr(a, env);
-                self.compile_expr(b, env);
-                self.emit.op(match op {
-                    ir::Op::Add => asm::Op::Add,
-                    ir::Op::Subtract => asm::Op::Sub,
-                    ir::Op::Multiply => asm::Op::Mul,
-                    ir::Op::Divide => asm::Op::Div,
-                    ir::Op::Modulo => asm::Op::Mod,
-                    ir::Op::Less => asm::Op::Less,
-                    ir::Op::LessEq => asm::Op::LessEq,
-                    ir::Op::Greater => asm::Op::Greater,
-                    ir::Op::GreaterEq => asm::Op::GreaterEq,
-                    ir::Op::Equal => asm::Op::Eq,
-                    ir::Op::NotEqual => asm::Op::NotEq,
-                });
-            }
-            ir::Expr::Intrinsic(i, args) => {
-                for arg in args {
-                    self.compile_expr(arg, env);
-                }
-                match i {
-                    ir::Intrinsic::StringLen => self.emit.op(asm::Op::StringLen),
-                    ir::Intrinsic::StringConcat => self.emit.op(asm::Op::StringConcat),
-                    ir::Intrinsic::StringCharAt => self.emit.op(asm::Op::StringCharAt),
-                    ir::Intrinsic::StringSubstring => self.emit.op(asm::Op::StringSubstring),
-                    ir::Intrinsic::StringFromChar => self.emit.op(asm::Op::StringFromChar),
-                    ir::Intrinsic::IntToString => self.emit.op(asm::Op::IntToString),
-                }
-            }
-            ir::Expr::Lambda(p, e) => {
-                let over_label = self.emit.fresh_label();
-                self.emit.op(asm::Op::Jump(over_label));
-                let entry = self.emit.fresh_label();
-                self.emit.op(asm::Op::Label(entry));
-                let captures = free_variables(expr);
-                self.compile_function(&p, None, e, &captures);
-                self.emit.op(asm::Op::Label(over_label));
-                for &c in &captures {
-                    self.emit.pick_var(env, c);
-                }
-                self.emit.op(asm::Op::ConstructClosure { addr: entry, fields: captures.len() as u32 })
-            }
-            ir::Expr::Match(discr, branches) => {
-                self.compile_expr(discr, env);
-                let mut table = Vec::with_capacity(branches.len());
-                let end_label = self.emit.fresh_label();
-                let branch_labels = branches.iter().map(|_| self.emit.fresh_label()).collect::<Vec<_>>();
-                for (lbl, br) in std::iter::zip(&branch_labels, branches) {
-                    table.push(asm::Branch {
-                        tag: self.name_to_tag(br.ctor),
-                        dst: *lbl,
-                    })
-                }
-                self.emit.op(asm::Op::Branch(table.into()));
-                for (br, lbl) in std::iter::zip(branches, branch_labels) {
-                    self.emit.op(asm::Op::Label(lbl));
-                    with_local_list(env, &br.bindings, self.emit.stack_size, |env| {
-                        self.emit.stack_size += br.bindings.len();
-                        self.compile_expr(&br.value, &env);
-                        for _ in &br.bindings {
-                            self.emit.op(asm::Op::SwapPop);
-                        }
-                    });
-                    self.emit.op(asm::Op::Jump(end_label));
-                    self.emit.stack_size -= 1;
-                }
-                self.emit.op(asm::Op::Label(end_label));
-                self.emit.stack_size += 1;
-            }
-            ir::Expr::Construct(ctor, _, fields) => {
-                for field in fields {
-                    self.compile_expr(field, env);
-                }
-                let tag = self.name_to_tag(*ctor);
-                self.emit.op(asm::Op::Construct { tag, fields: fields.len() as u32 })
-            }
-            ir::Expr::Let(n, v, e) => {
-                self.compile_expr(v, env);
-                let env = env.define(*n, self.emit);
-                self.compile_expr(e, &env);
-                self.emit.op(asm::Op::SwapPop);
-            }
-            ir::Expr::LetRec(n, _, v, e) => {
-                let v = unwrap_pis(v);
-                let ir::Expr::Lambda(p, v) = v else {
-                    panic!("let rec value is not lambda");
-                };
-                // compile lambda value
-                let over_label = self.emit.fresh_label();
-                self.emit.op(asm::Op::Jump(over_label));
-                let mut captures = free_variables(expr);
-                captures.retain(|c| c != n);
-                let entry = self.emit.fresh_label();
-                self.emit.op(asm::Op::Label(entry));
-                self.compile_function(&p, Some(*n), v, &captures);
-                self.emit.op(asm::Op::Label(over_label));
-                for &c in &captures {
-                    self.emit.pick_var(env, c);
-                }
-                self.emit.op(asm::Op::ConstructClosure { addr: entry, fields: captures.len() as u32 });
-                // compile let
-                let env = env.define(*n, self.emit);
-                self.compile_expr(e, &env);
-                self.emit.op(asm::Op::SwapPop);
-            }
-            ir::Expr::Pi(_, e) => self.compile_expr(e, env),
-            ir::Expr::PiApply(e, _) => self.compile_expr(e, env),
-            ir::Expr::Trap(msg, _) => {
-                self.emit.op(asm::Op::Trap(msg.as_str().into()));
-            }
+fn link(heap: &mut Heap, consts: &mut Vec<Addr>, ops: Vec<compile::Op>) -> (Vec<Op>, CtorTags) {
+    let mut ctor_tags = CtorTags::default();
+    let mut label_addresses = HashMap::new();
+    let mut addr = CodeAddr(0);
+    for op in &ops {
+        if let compile::Op::Label(l) = *op {
+            label_addresses.insert(l, addr);
+        } else {
+            addr.0 += 1;
         }
     }
+    let mut linked = Vec::with_capacity(addr.0 as usize);
+    for op in ops {
+        linked.push(match op {
+            compile::Op::PushInt(x) => Op::PushInt(x),
+            compile::Op::PushBool(x) => Op::PushBool(x),
+            compile::Op::PushString(s) => {
+                // TODO: calculate size properly
+                let need_bytes = s.len() + 256;
+                if heap.free_space() < need_bytes {
+                    heap.collect_and_grow(consts.iter_mut(), need_bytes as u32);
+                }
+                let obj = heap.alloc_bytes(s.len() as u64 | STRING_TAG, s.len() as u32);
+                obj.bytes[..s.len()].copy_from_slice(&s);
+                consts.push(obj.addr);
+                Op::Const(consts.len() - 1)
+            }
+            compile::Op::Pick(x) => Op::Pick(x),
+            compile::Op::SwapPop => Op::SwapPop,
+            compile::Op::Add => Op::Add,
+            compile::Op::Sub => Op::Sub,
+            compile::Op::Mul => Op::Mul,
+            compile::Op::Div => Op::Div,
+            compile::Op::Mod => Op::Mod,
+            compile::Op::Less => Op::Less,
+            compile::Op::LessEq => Op::LessEq,
+            compile::Op::Greater => Op::Greater,
+            compile::Op::GreaterEq => Op::GreaterEq,
+            compile::Op::Eq => Op::Eq,
+            compile::Op::NotEq => Op::NotEq,
+            compile::Op::Jump(l) => Op::Jump(label_addresses[&l]),
+            compile::Op::JumpIfFalse(l) => Op::JumpIfFalse(label_addresses[&l]),
+            compile::Op::Return(x) => Op::Return(x),
+            compile::Op::Call => Op::Call,
+            compile::Op::Construct { ctor, fields } => {
+                let tag = ctor_tags.resolve(ctor);
+                Op::Construct { tag, fields: fields }
+            }
+            compile::Op::ConstructClosure { addr, fields } => {
+                let tag = (label_addresses[&addr].0 as u64) | FN_TAG;
+                Op::Construct { tag, fields }
+            }
+            compile::Op::Branch(br) => {
+                Op::Branch(Box::new(br
+                    .into_iter()
+                    .map(|b| Branch {
+                        tag: ctor_tags.resolve(b.ctor),
+                        dst: label_addresses[&b.dst],
+                    })
+                    .collect()))
+            }
+            compile::Op::Trap(x) => Op::Trap(Box::new(x)),
+            compile::Op::StringLen => Op::StringLen,
+            compile::Op::StringConcat => Op::StringConcat,
+            compile::Op::StringCharAt => Op::StringCharAt,
+            compile::Op::StringSubstring => Op::StringSubstring,
+            compile::Op::StringFromChar => Op::StringFromChar,
+            compile::Op::IntToString => Op::IntToString,
+            compile::Op::Label(_) => continue,
+            compile::Op::Exit => Op::Exit,
+        });
+    }
+    (linked, ctor_tags)
+}
 
-    fn name_to_tag(&mut self, name: ir::Name) -> u64 {
-        let tag_names = &mut self.tag_names;
-        *self.name_tags.entry(name).or_insert_with(|| {
-            let idx = tag_names.len() as u64;
-            tag_names.push(name);
-            idx | OBJ_TAG
+#[derive(Default)]
+struct CtorTags {
+    tags: HashMap<ir::Name, u64>,
+    tag_names: HashMap<u64, ir::Name>,
+}
+
+impl CtorTags {
+    fn resolve(&mut self, ctor: ir::Name) -> u64 {
+        let next_tag = (self.tags.len() as u64) | OBJ_TAG;
+        let names = &mut self.tag_names;
+        *self.tags.entry(ctor).or_insert_with(|| {
+            names.insert(next_tag, ctor);
+            next_tag
         })
     }
-
-    fn compile_function(&mut self, p: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name]) {
-        let old_stack = std::mem::replace(&mut self.emit.stack_size, 0);
-        self.compile_function_inner(p, rec_name, e, captures, &Env::Empty);
-        self.emit.op(asm::Op::Return(p.len() + captures.len() + 1));
-        self.emit.stack_size = old_stack;
-    }
-
-    fn compile_function_inner(&mut self, p: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name], env: &Env<'_>) {
-        if let Some((p, rest)) = p.split_first() {
-            self.emit.stack_size += 1;
-            let env = env.define(p.name, self.emit);
-            let env = if rest.len() == 0 {
-                // slot for the function value that was called
-                self.emit.stack_size += 1;
-                if let Some(rec) = rec_name {
-                    env.define(rec, &self.emit)
-                } else {
-                    env
-                }
-            } else {
-                env
-            };
-            self.compile_function_inner(rest, rec_name, e, captures, &env);
-        } else if let Some((c, rest)) = captures.split_first() {
-            self.emit.stack_size += 1;
-            let env = env.define(*c, self.emit);
-            self.compile_function_inner(p, rec_name, e, rest, &env);
-        } else {
-            self.compile_expr(e, env);
-        }
-    }
-}
-
-fn unwrap_pis(mut expr: &ir::Expr) -> &ir::Expr {
-    while let ir::Expr::Pi(_, e) = expr {
-        expr = e;
-    }
-    expr
-}
-
-fn with_local_list(env: &Env<'_>, names: &[ir::Name], stack_size: usize, f: impl FnOnce(&Env<'_>)) {
-    match names {
-        [] => f(env),
-        [x, xs @ ..] => {
-            let env = env.define_raw(*x, stack_size);
-            with_local_list(&env, xs, stack_size + 1, f);
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Env<'a> {
-    Empty,
-    Cons {
-        name: ir::Name,
-        stack_pos: usize,
-        parent: &'a Env<'a>,
-    },
-}
-
-impl<'a> Env<'a> {
-    fn define(&'a self, name: ir::Name, emitter: &Emitter) -> Env<'a> {
-        Env::Cons {
-            name,
-            stack_pos: emitter.stack_size - 1,
-            parent: self,
-        }
-    }
-
-    fn define_raw(&'a self, name: ir::Name, stack_size: usize) -> Env<'a> {
-        Env::Cons {
-            name,
-            stack_pos: stack_size,
-            parent: self,
-        }
-    }
-
-    fn find(&'a self, name: ir::Name) -> usize {
-        let mut cur = self;
-        while let Env::Cons { name: n, stack_pos, parent } = cur {
-            if *n == name {
-                return *stack_pos;
-            }
-            cur = parent;
-        }
-        unreachable!("could not find name {}_{}", name.idx, name.copy)
-    }
-}
-
-struct Emitter {
-    ops: Vec<asm::Op>,
-    stack_size: usize,
-    next_label: asm::Label,
-}
-
-impl Emitter {
-    fn op(&mut self, op: asm::Op) {
-        match op {
-            asm::Op::PushInt(_) |
-            asm::Op::PushBool(_) |
-            asm::Op::Pick(_) => self.stack_size += 1,
-            asm::Op::SwapPop |
-            asm::Op::Add |
-            asm::Op::Sub |
-            asm::Op::Mul |
-            asm::Op::Div |
-            asm::Op::Mod |
-            asm::Op::Less |
-            asm::Op::LessEq |
-            asm::Op::Greater |
-            asm::Op::GreaterEq |
-            asm::Op::Eq |
-            asm::Op::NotEq => self.stack_size -= 1,
-            asm::Op::Jump(_) => {}
-            asm::Op::JumpIfFalse(_) => self.stack_size -= 1,
-            asm::Op::Return(pops) => self.stack_size -= pops,
-            asm::Op::Call => {}
-            asm::Op::Construct { tag: _, fields } |
-            asm::Op::ConstructClosure { addr: _, fields } => {
-                self.stack_size -= fields as usize;
-                self.stack_size += 1;
-            }
-            asm::Op::Branch(_) => self.stack_size -= 1,
-            asm::Op::Const(_) => self.stack_size += 1,
-            asm::Op::Trap(_) => self.stack_size += 1, // trap expr works as if it produces a value from compiler semantics, even though it just crashes the interpreter
-            asm::Op::StringLen => {}
-            asm::Op::StringCharAt => self.stack_size -= 1,
-            asm::Op::StringConcat => self.stack_size -= 1,
-            asm::Op::StringFromChar => {}
-            asm::Op::IntToString => {}
-            asm::Op::StringSubstring => self.stack_size -= 2,
-            asm::Op::Label(_) => {}
-            asm::Op::Exit => self.stack_size -= 1,
-        }
-        self.ops.push(op);
-    }
-
-    fn pick_var(&mut self, env: &Env<'_>, name: ir::Name) {
-        let depth = self.stack_size - env.find(name) - 1;
-        self.op(asm::Op::Pick(depth));
-    }
-
-    fn fresh_label(&mut self) -> asm::Label {
-        let l = self.next_label;
-        self.next_label.0 += 1;
-        l
-    }
-}
-
-fn free_variables(expr: &ir::Expr) -> Vec<ir::Name> {
-    fn go(e: &ir::Expr, used: &mut Vec<ir::Name>, defined: &mut HashSet<ir::Name>) {
-        match e {
-            ir::Expr::Bool(_) |
-            ir::Expr::Int(_) |
-            ir::Expr::String(_) => {}
-            ir::Expr::Name(n) => used.push(*n),
-            ir::Expr::Call(a, bs) => {
-                go(a, used, defined);
-                for b in bs {
-                    go(b, used, defined);
-                }
-            }
-            ir::Expr::If(c, t, e) => {
-                go(c, used, defined);
-                go(t, used, defined);
-                go(e, used, defined);
-            }
-            ir::Expr::Op(a, _, b) => {
-                go(a, used, defined);
-                go(b, used, defined);
-            }
-            ir::Expr::Intrinsic(_, args) => {
-                for arg in args {
-                    go(arg, used, defined);
-                }
-            }
-            ir::Expr::Lambda(ps, e) => {
-                for p in ps {
-                    defined.insert(p.name);
-                }
-                go(e, used, defined);
-            }
-            ir::Expr::Match(d, branches) => {
-                go(d, used, defined);
-                for br in branches {
-                    for &v in &br.bindings {
-                        defined.insert(v);
-                    }
-                    go(&br.value, used, defined);
-                }
-            }
-            ir::Expr::Construct(_, _, xs) => {
-                for x in xs {
-                    go(x, used, defined);
-                }
-            }
-            ir::Expr::Let(x, v, e) |
-            ir::Expr::LetRec(x, _, v, e) => {
-                defined.insert(*x);
-                go(v, used, defined);
-                go(e, used, defined);
-            }
-            ir::Expr::Pi(_, e) |
-            ir::Expr::PiApply(e, _) => go(e, used, defined),
-            ir::Expr::Trap(_, _) => {}
-        }
-    }
-    let mut used = Vec::new();
-    let mut defined = HashSet::new();
-    go(expr, &mut used, &mut defined);
-    used.retain(|item| defined.insert(*item));
-    used
 }
