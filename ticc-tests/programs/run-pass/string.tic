@@ -11,3 +11,8 @@ export let d : int = str.charAt 4 a;
 -- EXPECT: d = 97
 export let e : string = str.substring 3 2 a;
 -- EXPECT: e = "ba"
+
+export let f : string = str.fromChar 145;
+-- EXPECT: f = "\x91"
+export let g : int = str.fromChar 145 |> str.length;
+-- EXPECT: g = 1

@@ -5,14 +5,14 @@ use std::{
     fmt,
     rc::{Rc, Weak},
 };
-use ticc_core::ir;
+use ticc_core::ir::{self, ByteString};
 use crate::tagged::Tagged;
 
 #[derive(Clone)]
 pub enum Value {
     Int(u64),
     Bool(bool),
-    String(Rc<str>),
+    String(ByteString),
     Composite(Tagged),
     Fn(Function),
 }
@@ -64,7 +64,7 @@ impl Value {
         }
     }
 
-    fn into_string(self) -> Rc<str> {
+    fn into_string(self) -> ByteString {
         if let Value::String(x) = self {
             x
         } else {
@@ -361,9 +361,9 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     Box::new(move |env| {
                         let s1 = s1(env)?.into_string();
                         let s2 = s2(env)?.into_string();
-                        let mut res = String::with_capacity(s1.len() + s2.len());
-                        res.push_str(&s1);
-                        res.push_str(&s2);
+                        let mut res = Vec::with_capacity(s1.len() + s2.len());
+                        res.extend(&s1[..]);
+                        res.extend(&s2[..]);
                         Ok(Value::String(res.into()))
                     })
                 }
@@ -373,7 +373,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                     Box::new(move |env| {
                         let idx = idx(env)?.into_int() as usize;
                         let s = s(env)?.into_string();
-                        let ch = s.as_bytes().get(idx).copied().unwrap_or(0);
+                        let ch = s.get(idx).copied().unwrap_or(0);
                         Ok(Value::Int(u64::from(ch)))
                     })
                 }
@@ -385,7 +385,7 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                         let start = start(env)?.into_int() as usize;
                         let len = len(env)?.into_int() as usize;
                         let s = s(env)?.into_string();
-                        let s = s.get(start..).unwrap_or("");
+                        let s = s.get(start..).unwrap_or(b"");
                         let s = s.get(..len).unwrap_or(s);
                         Ok(Value::String(s.into()))
                     })
@@ -393,15 +393,15 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
                 ir::Intrinsic::StringFromChar => {
                     let ch = compile_expr(&args[0], env);
                     Box::new(move |env| {
-                        let ch = ch(env)?.into_int() as u8 as char;
-                        Ok(Value::String(ch.to_string().into()))
+                        let ch = ch(env)?.into_int() as u8;
+                        Ok(Value::String(ByteString::from([ch].as_slice())))
                     })
                 }
                 ir::Intrinsic::IntToString => {
                     let arg = compile_expr(&args[0], env);
                     Box::new(move |env| {
                         let arg = arg(env)?.into_int();
-                        Ok(Value::String(arg.to_string().into()))
+                        Ok(Value::String(arg.to_string().as_bytes().into()))
                     })
                 }
             }

@@ -459,7 +459,7 @@ impl<'a, 'b> Generator<'a, 'b> {
                 let value = s.token().text();
                 // TODO: properly unescape
                 let value = &value[1..(value.len() - 1)];
-                cir::Expr::String(value.into())
+                cir::Expr::String(value.as_bytes().into())
             }
             node::Expr::Lambda(l) if l.is_fold() => {
                 // let rec fold : Ty a -> Folded = \(x : Ty a) ->

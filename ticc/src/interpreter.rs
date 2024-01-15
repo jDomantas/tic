@@ -24,7 +24,7 @@ pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
     Ok(output)
 }
 
-pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &str) -> Result<String, InterpretError> {
+pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &[u8]) -> Result<Vec<u8>, InterpretError> {
     let program = crate::codegen::emit_core(compilation);
     let mut main = None;
     for v in program.values.iter().rev() {
@@ -61,7 +61,7 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &str) -> Resul
         panic!("main exists but not function value was obtained");
     };
     match main_fn.call(&[Value::String(input.into())]) {
-        Ok(Value::String(output)) => Ok(output.as_ref().to_owned()),
+        Ok(Value::String(output)) => Ok(output[..].to_owned()),
         Ok(_) => panic!("main returned non-string"),
         Err(ticc_eval::Trap { message }) => Err(InterpretError::Trap(Trap { message })),
     }

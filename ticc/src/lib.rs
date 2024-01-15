@@ -78,7 +78,7 @@ impl CompilationUnit {
         interpreter::eval(self)
     }
 
-    pub fn interpret_main(&mut self, input: &str) -> Result<String, InterpretError> {
+    pub fn interpret_main(&mut self, input: &[u8]) -> Result<Vec<u8>, InterpretError> {
         interpreter::eval_main(self, input)
     }
 

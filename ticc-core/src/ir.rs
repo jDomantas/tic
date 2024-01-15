@@ -1,4 +1,4 @@
-use std::{fmt, rc::Rc};
+use std::{fmt::{self, Debug}, rc::Rc, ops::Deref};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
 pub struct Name {
@@ -9,7 +9,7 @@ pub struct Name {
 pub enum Expr {
     Bool(bool),
     Int(u64),
-    String(Rc<str>),
+    String(ByteString),
     Name(Name),
     Call(Box<Expr>, Vec<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
@@ -185,5 +185,74 @@ struct ShowName<'a> {
 impl fmt::Display for ShowName<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!("{}_{}", self.name, self.id))
+    }
+}
+
+#[derive(Hash, Clone)]
+pub struct ByteString {
+    bytes: Rc<[u8]>,
+}
+
+impl ByteString {
+    pub fn to_string_lossy(&self) -> String {
+        String::from_utf8_lossy(&self.bytes).into_owned()
+    }
+}
+
+impl From<&[u8]> for ByteString {
+    fn from(value: &[u8]) -> Self {
+        ByteString {
+            bytes: value.into(),
+        }
+    }
+}
+
+impl From<Vec<u8>> for ByteString {
+    fn from(value: Vec<u8>) -> Self {
+        ByteString {
+            bytes: value.into(),
+        }
+    }
+}
+
+impl Deref for ByteString {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.bytes
+    }
+}
+
+impl Debug for ByteString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn hex_digit(nibble: u8) -> u8 {
+            match nibble {
+                0..=9 => b'0' + nibble,
+                10..=15 => b'a' + (nibble - 10),
+                _ => b'?',
+            }
+        }
+
+        f.write_str("\"")?;
+        for &b in self.bytes.iter() {
+            let mut buf = [0u8; 4];
+            let s = match b {
+                32..=126 => {
+                    buf[0] = b;
+                    std::str::from_utf8(&buf[..1]).unwrap()
+                }
+                b'\r' => "\\r",
+                b'\n' => "\\n",
+                _ => {
+                    buf[0] = b'\\';
+                    buf[1] = b'x';
+                    buf[2] = hex_digit(b >> 4);
+                    buf[3] = hex_digit(b & 0xF);
+                    std::str::from_utf8(&buf).unwrap()
+                }
+            };
+            f.write_str(s)?;
+        }
+        f.write_str("\"")
     }
 }

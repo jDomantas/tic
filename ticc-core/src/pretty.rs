@@ -86,7 +86,7 @@ impl Format<'_> {
         glue_number(&mut self.builder, x);
     }
 
-    fn write_string(&mut self, x: &str) {
+    fn write_string(&mut self, x: &ir::ByteString) {
         self.builder.add_token(&format!("{x:?}"));
     }
 

@@ -89,7 +89,7 @@ pub(crate) enum TokenKind {
     Hole,
     #[regex("[0-9][a-zA-Z0-9_]*")]
     Number,
-    #[regex("\"[^\"\\n]*\"")]
+    #[regex("\"[^\"\\n\\\\]*\"")]
     String,
     #[regex(" +")]
     Space,

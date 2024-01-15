@@ -11,7 +11,7 @@ type Cell = Empty | UpLeft | DownLeft | SplitH | SplitV;
 let parseCell : int -> Result Cell string =
     let dot = strings.charAt 0 ".";
     let slash = strings.charAt 0 "/";
-    let backslash = strings.charAt 0 "\";
+    let backslash = 92;
     let dash = strings.charAt 0 "-";
     let pipe = strings.charAt 0 "|";
     \c ->

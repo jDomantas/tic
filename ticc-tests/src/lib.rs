@@ -369,9 +369,9 @@ impl Test {
                 }
             }
             TestKind::RunHeavy { input, output } => {
-                let res = run_with_stack(2048, move || compilation.interpret_main(&input));
+                let res = run_with_stack(2048, move || compilation.interpret_main(input.as_bytes()));
                 let actual_output = match res {
-                    Ok(r) => r,
+                    Ok(r) => String::from_utf8(r).expect("program produced invalid utf-8"),
                     Err(e) => format!("error: {e}"),
                 };
                 match output {

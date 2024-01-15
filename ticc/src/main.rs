@@ -1,4 +1,4 @@
-use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap};
+use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap, io::Read};
 use codespan_reporting as cr;
 use structopt::StructOpt;
 use ticc::{CompleteUnit, Diagnostic, CompilationUnit, Severity, ModuleResolver};
@@ -117,13 +117,15 @@ fn main() {
     } else if let Some(input) = opt.run {
         let start = std::time::Instant::now();
         let input = if input == Path::new("-") {
-            std::io::read_to_string(std::io::stdin()).unwrap_or_else(|e| {
+            let mut stdin = Vec::new();
+            std::io::stdin().read_to_end(&mut stdin).unwrap_or_else(|e| {
                 eprintln!("error: cannot read stdin");
                 eprintln!("    {}", e);
                 std::process::exit(1);
-            })
+            });
+            stdin
         } else {
-            std::fs::read_to_string(&input).unwrap_or_else(|e| {
+            std::fs::read(&input).unwrap_or_else(|e| {
                 eprintln!("error: cannot read {}", input.display());
                 eprintln!("    {}", e);
                 std::process::exit(1);
@@ -132,13 +134,16 @@ fn main() {
         let res = run_with_stack(opt.stack, move || compilation.interpret_main(&input));
         let result = match res {
             Ok(output) => output,
-            Err(e) => format!("error: {e}"),
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
         };
         let output_file = opt.output.unwrap_or_else(|| "-".into());
         if output_file == Path::new("-") {
-            println!("{}", result);
+            println!("{}", String::from_utf8_lossy(&result));
         } else {
-            std::fs::write(&output_file, result.as_bytes()).unwrap_or_else(|e| {
+            std::fs::write(&output_file, result).unwrap_or_else(|e| {
                 eprintln!("error: cannot write {}", path.display());
                 eprintln!("    {}", e);
                 std::process::exit(1);
