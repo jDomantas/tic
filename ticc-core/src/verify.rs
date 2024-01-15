@@ -3,7 +3,7 @@ use crate::ir;
 
 pub fn assert_valid(program: &ir::Program<'_>) {
     let names = Names {
-        max_idx: program.names.max_idx(),
+        max_id: program.names.max_id(),
         defined: HashSet::new(),
         in_scope: HashSet::new(),
         defined_ty: HashSet::new(),
@@ -28,7 +28,7 @@ pub fn assert_valid(program: &ir::Program<'_>) {
 }
 
 struct Names {
-    max_idx: u64,
+    max_id: u64,
     defined: HashSet<ir::Name>,
     in_scope: HashSet<ir::Name>,
     defined_ty: HashSet<ir::TyVar>,
@@ -37,8 +37,8 @@ struct Names {
 
 impl Names {
     fn enter(&mut self, name: ir::Name) {
-        if name.idx > self.max_idx {
-            panic!("name idx is not valid");
+        if name.id > self.max_id {
+            panic!("name id is not valid");
         }
         if !self.defined.insert(name) {
             panic!("name {:?} defined twice", name);

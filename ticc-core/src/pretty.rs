@@ -66,14 +66,7 @@ impl Format<'_> {
     }
 
     fn write_name(&mut self, name: &ir::Name) {
-        let debug = self.names.debug_info(*name);
-        self.builder.add_token(debug);
-        self.builder.add_sticky_token("_", Sticky::Both);
-        self.write_number(name.idx);
-        if name.copy > 0 {
-            self.builder.add_sticky_token("_", Sticky::Both);
-            self.write_number(name.copy);
-        }
+        self.builder.add_token(&self.names.show_debug(*name).to_string());
     }
 
     fn write_ctor(&mut self, ctor: &ir::Name) {

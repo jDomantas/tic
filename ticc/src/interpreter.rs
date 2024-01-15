@@ -82,7 +82,7 @@ fn write_value(value: &Value, atom: bool, names: &ir::NameGenerator<'_>, into: &
             if atom && tagged.fields().len() > 0 {
                 into.push('(');
             }
-            into.push_str(names.debug_info(tagged.tag()));
+            into.push_str(names.original_name(tagged.tag()));
             for field in tagged.fields().iter() {
                 into.push(' ');
                 write_value(field, true, names, into);

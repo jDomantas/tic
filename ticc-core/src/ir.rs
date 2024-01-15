@@ -1,7 +1,9 @@
-use std::rc::Rc;
+use std::{fmt, rc::Rc};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone, Copy)]
-pub struct Name { pub idx: u64, pub copy: u64 }
+pub struct Name {
+    pub(crate) id: u64,
+}
 
 #[derive(Debug, Hash, Clone)]
 pub enum Expr {
@@ -117,38 +119,43 @@ impl<'a> Program<'a> {
 
 #[derive(Debug, Hash, Clone)]
 pub struct NameGenerator<'a> {
-    names: Vec<(u64, &'a str)>,
+    names: Vec<&'a str>,
 }
 
 impl<'a> NameGenerator<'a> {
     pub fn new() -> NameGenerator<'a> {
         NameGenerator {
-            names: vec![
-                (0, "$"),
-            ],
+            names: vec![],
         }
     }
 
     pub fn next_synthetic(&mut self) -> Name {
-        self.new_copy(Name { idx: 0, copy: 0 })
+        self.new_fresh("$")
     }
 
     pub fn new_fresh(&mut self, debug_name: &'a str) -> Name {
-        self.names.push((1, debug_name));
-        Name { idx: self.names.len() as u64 - 1, copy: 0 }
+        self.names.push(debug_name);
+        let id = self.names.len() as u64 - 1;
+        Name { id }
     }
 
     pub fn new_copy(&mut self, original: Name) -> Name {
-        let idx = original.idx as usize;
-        self.names[idx].0 += 1;
-        Name { idx: original.idx, copy: self.names[idx].0 }
+        let idx = original.id as usize;
+        self.new_fresh(self.names[idx])
     }
 
-    pub fn debug_info(&self, name: Name) -> &'a str {
-        self.names[name.idx as usize].1
+    pub fn show_debug(&self, name: Name) -> impl fmt::Display + 'a {
+        ShowName {
+            name: self.names[name.id as usize],
+            id: name.id,
+        }
     }
 
-    pub(crate) fn max_idx(&self) -> u64 {
+    pub fn original_name(&self, name: Name) -> &'a str {
+        self.names[name.id as usize]
+    }
+
+    pub(crate) fn max_id(&self) -> u64 {
         self.names.len() as u64 - 1
     }
 }
@@ -167,5 +174,16 @@ impl TyGenerator {
         let ty = self.next;
         self.next.0 += 1;
         ty
+    }
+}
+
+struct ShowName<'a> {
+    name: &'a str,
+    id: u64,
+}
+
+impl fmt::Display for ShowName<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}_{}", self.name, self.id))
     }
 }
