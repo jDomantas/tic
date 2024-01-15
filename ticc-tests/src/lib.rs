@@ -1,6 +1,6 @@
 mod util;
 
-use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span, ModuleResolver, CompleteUnit};
+use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span, ModuleResolver, CompleteUnit, Runner};
 use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap};
 
 #[derive(Clone)]
@@ -207,6 +207,7 @@ pub enum TestKind {
         expected_output: Vec<String>,
     },
     RunHeavy {
+        runner: Runner,
         input: String,
         output: HeavyOutput,
     },
@@ -216,19 +217,6 @@ pub enum TestKind {
 pub enum HeavyOutput {
     Expected(String),
     Missing(PathBuf),
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub enum Runner {
-    Interpreter,
-}
-
-impl std::fmt::Display for Runner {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            Runner::Interpreter => "interpreter",
-        })
-    }
 }
 
 #[derive(Clone)]
@@ -247,14 +235,14 @@ impl Test {
         let mut tests = Vec::new();
         let mut add_test_case = |optimize: bool, kind: TestKind| {
             let mut tags = Vec::new();
-            if optimize {
-                tags.push("optimized".to_owned());
-            }
             match kind {
                 TestKind::Compile { .. } => {},
                 TestKind::Run { runner, .. } => tags.push(runner.to_string()),
-                TestKind::RunHeavy { .. } => {}
+                TestKind::RunHeavy { runner, .. } => tags.push(runner.to_string()),
             };
+            if optimize {
+                tags.push("optimized".to_owned());
+            }
             let suffix = if tags.len() > 0 {
                 format!(" ({})", tags.join(", "))
             } else {
@@ -282,7 +270,7 @@ impl Test {
             TestDefKind::Run => {
                 modules.extract_expected_errors(false);
                 let expected_output = modules.extract_expected_outputs(true);
-                for runner in [Runner::Interpreter] {
+                for runner in [Runner::Lambda, Runner::Bytecode] {
                     for optimize in [false, true] {
                         add_test_case(optimize, TestKind::Run {
                             runner,
@@ -292,9 +280,11 @@ impl Test {
                 }
             }
             TestDefKind::RunHeavy { input, output } => {
-                modules.extract_expected_errors(false);
-                modules.extract_expected_outputs(false);
-                add_test_case(true, TestKind::RunHeavy { input, output });
+                for runner in [Runner::Lambda, Runner::Bytecode] {
+                    modules.extract_expected_errors(false);
+                    modules.extract_expected_outputs(false);
+                    add_test_case(true, TestKind::RunHeavy { runner, input: input.clone(), output: output.clone() });
+                }
             }
         }
         tests
@@ -368,8 +358,8 @@ impl Test {
                     TestOutcome::BadRun(run_outcome)
                 }
             }
-            TestKind::RunHeavy { input, output } => {
-                let res = run_with_stack(2048, move || compilation.interpret_main(input.as_bytes()));
+            TestKind::RunHeavy { runner, input, output } => {
+                let res = run_with_stack(2048, move || compilation.interpret_main(runner, input.as_bytes()));
                 let actual_output = match res {
                     Ok(r) => String::from_utf8(r).expect("program produced invalid utf-8"),
                     Err(e) => format!("error: {e}"),
@@ -420,13 +410,9 @@ fn run_with_stack<T: Send + 'static>(stack: usize, f: impl (FnOnce() -> T) + Sen
 }
 
 fn run_program(mut compilation: CompilationUnit, runner: Runner) -> Vec<String> {
-    match runner {
-        Runner::Interpreter => {
-            match compilation.interpret() {
-                Ok(output) => output.trim().lines().map(str::to_owned).collect(),
-                Err(trap) => vec![format!("trap: {}", trap.message)],
-            }
-        }
+    match compilation.interpret(runner) {
+        Ok(output) => output.trim().lines().map(str::to_owned).collect(),
+        Err(trap) => vec![format!("trap: {}", trap.message)],
     }
 }
 

@@ -1,9 +1,18 @@
 use std::fmt::Write;
 use ticc_core::ir;
 use ticc_eval::Value;
-use crate::{CompilationUnit, Trap, InterpretError};
+use crate::{CompilationUnit, Trap, InterpretError, Runner};
 
-pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
+type ExecFn<F> = fn(&ir::Program<'_>, &[ir::Expr]) -> Result<Vec<Value<F>>, ticc_eval::Trap>;
+
+pub(crate) fn eval(compilation: &mut CompilationUnit, runner: Runner) -> Result<String, Trap> {
+    match runner {
+        Runner::Lambda => do_eval(compilation, ticc_eval::lambda::eval),
+        Runner::Bytecode => do_eval(compilation, ticc_eval::bytecode::eval),
+    }
+}
+
+fn do_eval<F>(compilation: &mut CompilationUnit, runner: ExecFn<F>) -> Result<String, Trap> {
     let program = crate::codegen::emit_core(compilation);
     let mut export_names = Vec::new();
     let mut expor_exprs = Vec::new();
@@ -13,7 +22,7 @@ pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
             expor_exprs.push(ir::Expr::Name(v.name));
         }
     }
-    match ticc_eval::lambda::eval(&program, &expor_exprs) {
+    match runner(&program, &expor_exprs) {
         Ok(values) => {
             let mut output = String::new();
             for (n, v) in std::iter::zip(export_names, values) {
@@ -28,7 +37,14 @@ pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
     }
 }
 
-pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &[u8]) -> Result<Vec<u8>, InterpretError> {
+pub(crate) fn eval_main(compilation: &mut CompilationUnit, runner: Runner, input: &[u8]) -> Result<Vec<u8>, InterpretError> {
+    match runner {
+        Runner::Lambda => do_eval_main(compilation, ticc_eval::lambda::eval, input),
+        Runner::Bytecode => do_eval_main(compilation, ticc_eval::bytecode::eval, input),
+    }
+}
+
+fn do_eval_main<F>(compilation: &mut CompilationUnit, runner: ExecFn<F>, input: &[u8]) -> Result<Vec<u8>, InterpretError> {
     let verify = compilation.options.verify;
     let program = crate::codegen::emit_core(compilation);
     let mut main = None;
@@ -58,7 +74,7 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &[u8]) -> Resu
     if verify {
         ticc_core::assert_valid_with_values(&program, &[(expr.clone(), ir::Ty::String)]);
     }
-    match ticc_eval::lambda::eval(&program, &[expr]) {
+    match runner(&program, &[expr]) {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {

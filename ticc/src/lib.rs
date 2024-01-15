@@ -10,6 +10,7 @@ pub(crate) mod api;
 
 use std::collections::HashMap;
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 use compiler::{DefSet, Scope, ir, parser};
 pub use ticc_syntax::{Pos, Span};
@@ -74,12 +75,12 @@ impl CompilationUnit {
         codegen::emit_ir(self)
     }
 
-    pub fn interpret(&mut self) -> Result<String, Trap> {
-        interpreter::eval(self)
+    pub fn interpret(&mut self, runner: Runner) -> Result<String, Trap> {
+        interpreter::eval(self, runner)
     }
 
-    pub fn interpret_main(&mut self, input: &[u8]) -> Result<Vec<u8>, InterpretError> {
-        interpreter::eval_main(self, input)
+    pub fn interpret_main(&mut self, runner: Runner, input: &[u8]) -> Result<Vec<u8>, InterpretError> {
+        interpreter::eval_main(self, runner, input)
     }
 
     pub fn complete(mut self) -> CompleteUnit {
@@ -228,4 +229,31 @@ pub struct Diagnostic {
 #[derive(Debug, Clone)]
 pub struct Trap {
     pub message: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Runner {
+    Lambda,
+    Bytecode,
+}
+
+impl FromStr for Runner {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "lambda" => Ok(Runner::Lambda),
+            "bytecode" => Ok(Runner::Bytecode),
+            _ => Err("invalid runner"),
+        }
+    }
+}
+
+impl fmt::Display for Runner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Runner::Lambda => "lambda",
+            Runner::Bytecode => "bytecode",
+        })
+    }
 }

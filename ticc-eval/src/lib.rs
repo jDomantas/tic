@@ -1,3 +1,6 @@
+pub mod bytecode;
+mod compile;
+mod heap;
 pub mod lambda;
 mod tagged;
 

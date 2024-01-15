@@ -1,7 +1,7 @@
 use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap, io::Read};
 use codespan_reporting as cr;
 use structopt::StructOpt;
-use ticc::{CompleteUnit, Diagnostic, CompilationUnit, Severity, ModuleResolver};
+use ticc::{CompleteUnit, Diagnostic, CompilationUnit, Severity, ModuleResolver, Runner};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -26,6 +26,9 @@ struct Opt {
     /// Run main function with input file
     #[structopt(long)]
     run: Option<PathBuf>,
+    /// Runner to use: lambda, bytecode
+    #[structopt(long)]
+    runner: Option<Runner>,
     /// Enable optimizations
     #[structopt(long)]
     optimize: bool,
@@ -84,6 +87,8 @@ fn main() {
         return;
     }
 
+    let runner = opt.runner.unwrap_or(Runner::Bytecode);
+
     if opt.emit_ir {
         let ir = compilation.emit_ir();
         let output_file = opt.output.unwrap_or_else(|| path.with_extension("cir"));
@@ -98,7 +103,7 @@ fn main() {
         }
     } else if opt.eval {
         let start = std::time::Instant::now();
-        let res = run_with_stack(opt.stack, move || compilation.interpret());
+        let res = run_with_stack(opt.stack, move || compilation.interpret(runner));
         let result = match res {
             Ok(output) => output,
             Err(trap) => format!("error: {}", trap.message),
@@ -131,7 +136,7 @@ fn main() {
                 std::process::exit(1);
             })
         };
-        let res = run_with_stack(opt.stack, move || compilation.interpret_main(&input));
+        let res = run_with_stack(opt.stack, move || compilation.interpret_main(runner, &input));
         let result = match res {
             Ok(output) => output,
             Err(e) => {
