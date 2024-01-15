@@ -4,7 +4,7 @@ use ticc_core::ir;
 
 use crate::{heap::{Addr, Heap}, Trap, compile};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Value {
     Int(u64),
     Ptr(Addr),
@@ -82,6 +82,11 @@ impl Stack {
 }
 
 pub fn eval_expr(expr: &ir::Expr) -> Result<crate::Value, Trap> {
+    let ops = crate::compile::compile(expr);
+    crate::asm::exec(&ops)
+}
+
+pub fn eval_expr2(expr: &ir::Expr) -> Result<crate::Value, Trap> {
     let mut heap = Heap::new();
     let mut consts = Vec::new();
     let compile_ops = crate::compile::compile(expr);
@@ -234,31 +239,28 @@ impl Runtime {
                         dst = d;
                     }
                 }
-                Op::Return(pops) => {
+                Op::Return { params, captures } => {
                     let return_value = self.stack.pop();
-                    for _ in 0..pops {
+                    for _ in 0..captures {
+                        self.stack.pop();
+                    }
+                    dst = CodeAddr(self.stack.pop_int() as usize);
+                    self.stack.pop();
+                    for _ in 0..params {
                         self.stack.pop();
                     }
                     self.stack.push(return_value);
-                    self.frames.pop();
-                    dst = self.frames.last().unwrap().ip;
                 }
                 Op::Call => {
-                    let call_addr = match self.stack.peek() {
-                        Value::Ptr(addr) => {
-                            let (tag, fields) = self.heap.obj_with_fields(addr);
-                            for field in fields {
-                                self.stack.push(field);
-                            }
-                            CodeAddr((tag  & TAG_MASK) as usize)
-                        }
-                        _ => unreachable!(),
+                    let Value::Ptr(closure_addr) = self.stack.peek() else {
+                        unreachable!();
                     };
-                    self.frames.last_mut().unwrap().ip = dst;
-                    self.frames.push(Frame {
-                        ip: call_addr,
-                    });
-                    dst = call_addr;
+                    self.stack.push(Value::Int(dst.0 as u64));
+                    let (tag, fields) = self.heap.obj_with_fields(closure_addr);
+                    for field in fields {
+                        self.stack.push(field);
+                    }
+                    dst = CodeAddr((tag  & TAG_MASK) as usize);
                 }
                 Op::Construct { tag, fields } => {
                     let mut obj = self.heap.alloc_object(tag, fields);
@@ -409,7 +411,7 @@ pub(crate) enum Op {
     NotEq,
     Jump(CodeAddr),
     JumpIfFalse(CodeAddr),
-    Return(usize),
+    Return { captures: u32, params: u32 },
     Call,
     Construct { tag: u64, fields: u32 },
     Branch(Box<Box<[Branch]>>),
@@ -480,7 +482,7 @@ fn link(heap: &mut Heap, consts: &mut Vec<Addr>, ops: Vec<compile::Op>) -> (Vec<
             compile::Op::NotEq => Op::NotEq,
             compile::Op::Jump(l) => Op::Jump(label_addresses[&l]),
             compile::Op::JumpIfFalse(l) => Op::JumpIfFalse(label_addresses[&l]),
-            compile::Op::Return(x) => Op::Return(x),
+            compile::Op::Return { params, captures } => Op::Return { params, captures },
             compile::Op::Call => Op::Call,
             compile::Op::Construct { ctor, fields } => {
                 let tag = ctor_tags.resolve(ctor);

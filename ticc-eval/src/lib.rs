@@ -1,7 +1,9 @@
+
+mod asm;
+mod compile;
 mod heap;
 mod rt;
 mod tagged;
-mod compile;
 
 use std::{
     collections::{HashMap, HashSet},

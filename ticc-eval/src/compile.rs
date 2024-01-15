@@ -22,7 +22,7 @@ pub(crate) enum Op {
     NotEq,
     Jump(Label),
     JumpIfFalse(Label),
-    Return(usize),
+    Return { params: u32, captures: u32 },
     Call,
     Construct { ctor: ir::Name, fields: u32 },
     ConstructClosure { addr: Label, fields: u32 },
@@ -265,7 +265,7 @@ impl FunctionCompiler<'_> {
     fn compile_function(mut self, p: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name]) {
         self.op(Op::Label(self.entry), 0);
         self.compile_function_inner(p, rec_name, e, captures);
-        self.op(Op::Return(p.len() + captures.len() + 1), -((p.len() + captures.len() + 1) as isize));
+        self.op(Op::Return { captures: captures.len() as u32, params: p.len() as u32 }, -((p.len() + captures.len() + 2) as isize));
         assert_eq!(self.stack_size, 1); // return value
         self.compiler.functions.push(self.ops);
     }
@@ -280,6 +280,8 @@ impl FunctionCompiler<'_> {
                 if let Some(rec) = rec_name {
                     self.define_local(rec)
                 }
+                // slot for return address
+                self.stack_size += 1;
             }
             self.compile_function_inner(rest, rec_name, e, captures);
         } else if let Some((c, rest)) = captures.split_first() {

@@ -1,4 +1,3 @@
-// TODO: make field not pub
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Addr(u64);
 
