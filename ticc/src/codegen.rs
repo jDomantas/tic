@@ -1,5 +1,4 @@
 mod gen_core;
-mod gen_js;
 mod opt;
 
 use ticc_core::ir;
@@ -24,12 +23,6 @@ pub(crate) fn emit_ir(compilation: &mut CompilationUnit) -> String {
     let program = emit_core(compilation);
     let pretty = ticc_core::pretty_print(&program);
     pretty
-}
-
-pub(crate) fn emit_js(compilation: &mut CompilationUnit) -> String {
-    let program = emit_core(compilation);
-    let js = gen_js::generate_js(program);
-    js
 }
 
 pub(crate) fn emit_core(compilation: &mut CompilationUnit) -> ir::Program<'_> {

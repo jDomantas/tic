@@ -5,21 +5,13 @@ type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 fn main() {
-    let mut node = true;
-    let mut no_node = true;
     let mut optimized = true;
     let mut unoptimized = true;
     let mut filters = Vec::new();
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
-            "--no-node" => node = false,
-            "--only-node" => no_node = false,
             "--no-opt" => optimized = false,
             "--only-opt" => unoptimized = false,
-            "--fast" => {
-                node = false;
-                unoptimized = false;
-            }
             flag if flag.starts_with("-") => {
                 panic!("unrecognized flag: {:?}", arg);
             }
@@ -31,10 +23,6 @@ fn main() {
 
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("programs");
-
-    if node {
-        ticc_tests::verify_node_is_present();
-    }
 
     let tests = ticc_tests::get_tests(&dir, true);
     let mut total_tests = 0;
@@ -53,12 +41,6 @@ fn main() {
             if filters.iter().all(|f| !test.key.contains(f.as_str())) {
                 continue;
             }
-        }
-        if matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !node {
-            continue;
-        }
-        if !matches!(test.kind, ticc_tests::TestKind::Run { runner: ticc_tests::Runner::Node, .. }) && !no_node {
-            continue;
         }
         tests_ran += 1;
         print!("test {}", test.key);

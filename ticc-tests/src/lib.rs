@@ -1,7 +1,7 @@
 mod util;
 
 use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span, ModuleResolver, CompleteUnit};
-use std::{path::{Path, PathBuf}, io::{Write, Read}, sync::{Arc, Mutex}, collections::HashMap};
+use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap};
 
 #[derive(Clone)]
 pub struct ModuleSource {
@@ -221,14 +221,12 @@ pub enum HeavyOutput {
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Runner {
     Interpreter,
-    Node,
 }
 
 impl std::fmt::Display for Runner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Runner::Interpreter => "interpreter",
-            Runner::Node => "node",
         })
     }
 }
@@ -284,7 +282,7 @@ impl Test {
             TestDefKind::Run => {
                 modules.extract_expected_errors(false);
                 let expected_output = modules.extract_expected_outputs(true);
-                for runner in [Runner::Interpreter, Runner::Node] {
+                for runner in [Runner::Interpreter] {
                     for optimize in [false, true] {
                         add_test_case(optimize, TestKind::Run {
                             runner,
@@ -429,79 +427,7 @@ fn run_program(mut compilation: CompilationUnit, runner: Runner) -> Vec<String> 
                 Err(trap) => vec![format!("trap: {}", trap.message)],
             }
         }
-        Runner::Node => {
-            let js = compilation.emit_js();
-            let code = format!("
-            function initModule() {{
-                {js}
-                return {{
-                    'export_list': $export_list,
-                    'exports': $exports,
-                }}
-            }};
-            function formatValue(value, wrap) {{
-                if (typeof value === 'number' || typeof value === 'boolean') {{
-                    return '' + value;
-                }} else if (typeof value === 'string') {{
-                    return '\"' + value.replaceAll('\\r', '\\\\r').replaceAll('\\n', '\\\\n') + '\"';
-                }} else if (typeof value === 'object') {{
-                    let res = value[0];
-                    for (let i = 1; i < value.length; i++) {{
-                        res += ' ' + formatValue(value[i], true);
-                    }}
-                    if (wrap && value.length > 1) {{
-                        return '(' + res + ')';
-                    }} else {{
-                        return res;
-                    }}
-                }} else {{
-                    throw new Error('bad value: ' + value);
-                }}
-            }}
-
-            let module = {{ 'export_list': [] }};
-            try {{
-                module = initModule();
-            }} catch (e) {{
-                console.log('trap:', e.message);
-            }}
-            for (const ex of module.export_list) {{
-                console.log(ex, '=', formatValue(module.exports[ex], false));
-            }}
-            ");
-            let output = run_node(code);
-            output.trim().lines().map(str::to_owned).collect()
-        }
     }
-}
-
-fn run_node(input: String) -> String {
-    let mut child = std::process::Command::new("node")
-        .arg("-")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("failed to run node");
-    let mut stdin = child.stdin.take().unwrap();
-    let mut stdout = child.stdout.take().unwrap();
-    let output = std::thread::scope(|s| {
-        s.spawn(|| {
-            stdin.write_all(input.as_bytes()).expect("failed to write code to stdin");
-            stdin.flush().expect("failed to write code to stdin");
-            drop(stdin);
-        });
-        s.spawn(|| {
-            let status = child.wait().expect("failed to wait for status");
-            if !status.success() {
-                panic!("node exited with an error");
-            }
-        });
-        let mut output = String::new();
-        stdout.read_to_string(&mut output).expect("failed to read output");
-        output
-    });
-    output
 }
 
 fn get_tests_in_dir(root: &Path, dir: &str, kind: TestDefKind) -> Vec<Test> {
@@ -649,16 +575,6 @@ fn matches(expected: &Diagnostic, actual: &Diagnostic) -> bool {
     }
 }
 
-pub fn verify_node_is_present() {
-    let output = std::process::Command::new("node")
-        .arg("--version")
-        .output()
-        .expect("failed to check `node --version`");
-    if !output.status.success() {
-        panic!("node exited with an error");
-    }
-}
-
 #[cfg(test)]
 fn run_tests(dir_name: &str, def_kind: TestDefKind) {
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -688,7 +604,6 @@ fn compile_fail_tests() {
 
 #[test]
 fn run_pass_tests() {
-    verify_node_is_present();
     run_tests("run-pass", TestDefKind::Run);
 }
 

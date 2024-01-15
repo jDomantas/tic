@@ -74,10 +74,6 @@ impl CompilationUnit {
         codegen::emit_ir(self)
     }
 
-    pub fn emit_js(&mut self) -> String {
-        codegen::emit_js(self)
-    }
-
     pub fn interpret(&mut self) -> Result<String, Trap> {
         interpreter::eval(self)
     }
