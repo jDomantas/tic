@@ -3,6 +3,7 @@ mod compile;
 mod heap;
 pub mod lambda;
 mod tagged;
+pub mod treewalk;
 
 use std::fmt;
 use ticc_core::ir::ByteString;

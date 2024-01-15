@@ -3,6 +3,8 @@ mod util;
 use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span, ModuleResolver, CompleteUnit, Runner};
 use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap};
 
+const ALL_RUNNERS: [Runner; 3] = [Runner::Bytecode, Runner::Lambda, Runner::Treewalk];
+
 #[derive(Clone)]
 pub struct ModuleSource {
     pub path: PathBuf,
@@ -270,7 +272,7 @@ impl Test {
             TestDefKind::Run => {
                 modules.extract_expected_errors(false);
                 let expected_output = modules.extract_expected_outputs(true);
-                for runner in [Runner::Lambda, Runner::Bytecode] {
+                for runner in ALL_RUNNERS {
                     for optimize in [false, true] {
                         add_test_case(optimize, TestKind::Run {
                             runner,
@@ -280,7 +282,7 @@ impl Test {
                 }
             }
             TestDefKind::RunHeavy { input, output } => {
-                for runner in [Runner::Lambda, Runner::Bytecode] {
+                for runner in ALL_RUNNERS {
                     modules.extract_expected_errors(false);
                     modules.extract_expected_outputs(false);
                     add_test_case(true, TestKind::RunHeavy { runner, input: input.clone(), output: output.clone() });

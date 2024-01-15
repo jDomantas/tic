@@ -9,6 +9,7 @@ pub(crate) fn eval(compilation: &mut CompilationUnit, runner: Runner) -> Result<
     match runner {
         Runner::Lambda => do_eval(compilation, ticc_eval::lambda::eval),
         Runner::Bytecode => do_eval(compilation, ticc_eval::bytecode::eval),
+        Runner::Treewalk => do_eval(compilation, ticc_eval::treewalk::eval),
     }
 }
 
@@ -41,6 +42,7 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, runner: Runner, input
     match runner {
         Runner::Lambda => do_eval_main(compilation, ticc_eval::lambda::eval, input),
         Runner::Bytecode => do_eval_main(compilation, ticc_eval::bytecode::eval, input),
+        Runner::Treewalk => do_eval_main(compilation, ticc_eval::treewalk::eval, input),
     }
 }
 

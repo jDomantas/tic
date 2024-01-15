@@ -235,6 +235,7 @@ pub struct Trap {
 pub enum Runner {
     Lambda,
     Bytecode,
+    Treewalk,
 }
 
 impl FromStr for Runner {
@@ -244,6 +245,7 @@ impl FromStr for Runner {
         match s {
             "lambda" => Ok(Runner::Lambda),
             "bytecode" => Ok(Runner::Bytecode),
+            "treewalk" => Ok(Runner::Treewalk),
             _ => Err("invalid runner"),
         }
     }
@@ -254,6 +256,7 @@ impl fmt::Display for Runner {
         f.write_str(match self {
             Runner::Lambda => "lambda",
             Runner::Bytecode => "bytecode",
+            Runner::Treewalk => "treewalk",
         })
     }
 }
