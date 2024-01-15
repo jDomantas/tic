@@ -6,7 +6,7 @@ use ticc_core::ir;
 use crate::codegen::opt;
 
 pub(crate) fn optimize(program: &mut ir::Program) {
-    for v in &mut program.values {
+    for v in &mut program.defs {
         opt::walk_expressions_postorder_mut(&mut v.value, optimize_expr);
     }
 }

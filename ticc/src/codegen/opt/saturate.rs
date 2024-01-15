@@ -12,7 +12,7 @@ pub(crate) fn optimize(program: &mut ir::Program) {
     let mut rewrites = HashMap::new();
     let names = &mut program.names;
     let types = &mut program.ty;
-    for v in &mut program.values {
+    for v in &mut program.defs {
         if let Some(rewrite) = check_for_rewrite(&mut v.ty, &mut v.value) {
             rewrites.insert(v.name, rewrite);
         }

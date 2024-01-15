@@ -5,29 +5,34 @@ use crate::{CompilationUnit, Trap, InterpretError};
 
 pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
     let program = crate::codegen::emit_core(compilation);
-    let mut env = ticc_eval::Env::new();
-    let mut output = String::new();
-    for v in &program.values {
-        match ticc_eval::eval(env.clone(), &v.value) {
-            Ok(value) => {
-                if let Some(name) = &v.export_name {
-                    output.push_str(name);
-                    output.push_str(" = ");
-                    write_value(&value, false, &program.names, &mut output);
-                    output.push('\n');
-                }
-                env.add(v.name, value);
-            }
-            Err(ticc_eval::Trap { message }) => return Err(Trap { message }),
+    let mut export_names = Vec::new();
+    let mut expor_exprs = Vec::new();
+    for v in &program.defs {
+        if let Some(name) = &v.export_name {
+            export_names.push(name);
+            expor_exprs.push(ir::Expr::Name(v.name));
         }
     }
-    Ok(output)
+    match ticc_eval::eval(&program, &expor_exprs) {
+        Ok(values) => {
+            let mut output = String::new();
+            for (n, v) in std::iter::zip(export_names, values) {
+                output.push_str(n);
+                output.push_str(" = ");
+                write_value(&v, false, &program.names, &mut output);
+                output.push('\n');
+            }
+            Ok(output)
+        }
+        Err(ticc_eval::Trap { message }) => return Err(Trap { message }),
+    }
 }
 
 pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &[u8]) -> Result<Vec<u8>, InterpretError> {
+    let verify = compilation.options.verify;
     let program = crate::codegen::emit_core(compilation);
     let mut main = None;
-    for v in program.values.iter().rev() {
+    for v in program.defs.iter().rev() {
         if v.export_name.as_deref() == Some("main") {
             match &v.ty {
                 ir::Ty::Fn(a, b) => match (a.as_slice(), &**b) {
@@ -44,25 +49,23 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &[u8]) -> Resu
         Some(m) => m,
         None => return Err(InterpretError::NoMain),
     };
-    let mut env = ticc_eval::Env::new();
-    let mut main_to_run = None;
-    for v in &program.values {
-        match ticc_eval::eval(env.clone(), &v.value) {
-            Ok(value) => {
-                if v.name == main {
-                    main_to_run = Some(value.clone());
-                }
-                env.add(v.name, value);
-            }
-            Err(ticc_eval::Trap { message }) => return Err(InterpretError::Trap(Trap { message })),
-        }
+    let expr = ir::Expr::Call(
+        Box::new(ir::Expr::Name(main)),
+        Vec::from([
+            ir::Expr::String(input.into()),
+        ]),
+    );
+    if verify {
+        ticc_core::assert_valid_with_values(&program, &[(expr.clone(), ir::Ty::String)]);
     }
-    let Some(Value::Fn(main_fn)) = main_to_run else {
-        panic!("main exists but not function value was obtained");
-    };
-    match main_fn.call(&[Value::String(input.into())]) {
-        Ok(Value::String(output)) => Ok(output[..].to_owned()),
-        Ok(_) => panic!("main returned non-string"),
+    match ticc_eval::eval(&program, &[expr]) {
+        Ok(v) => {
+            assert_eq!(v.len(), 1);
+            match &v[0] {
+                Value::String(x) => Ok(x[..].to_owned()),
+                _ => unreachable!(),
+            }
+        }
         Err(ticc_eval::Trap { message }) => Err(InterpretError::Trap(Trap { message })),
     }
 }

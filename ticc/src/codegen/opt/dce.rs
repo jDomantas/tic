@@ -8,12 +8,12 @@ pub(crate) fn optimize(program: &mut ir::Program) {
     let mut used = HashSet::new();
     let mut pending = Vec::new();
     let mut all_defs = HashMap::new();
-    for value in &program.values {
+    for value in &program.defs {
         if value.export_name.is_some() {
             pending.push(value.name);
         }
     }
-    for v in &program.values {
+    for v in &program.defs {
         all_defs.insert(v.name, &v.value);
         opt::walk_expressions(&v.value, |e| {
             match e {
@@ -34,8 +34,8 @@ pub(crate) fn optimize(program: &mut ir::Program) {
             });
         }
     }
-    program.values.retain(|n| used.contains(&n.name));
-    for v in &mut program.values {
+    program.defs.retain(|n| used.contains(&n.name));
+    for v in &mut program.defs {
         remove_unused_locals(&mut v.value, &used);
     }
 }

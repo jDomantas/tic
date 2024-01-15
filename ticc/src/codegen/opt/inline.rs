@@ -15,7 +15,7 @@ pub(crate) fn optimize(program: &mut ir::Program) {
         rewrite_names: HashMap::new(),
         rewrite_types: HashMap::new(),
     };
-    for v in &mut program.values {
+    for v in &mut program.defs {
         walk_expressions(&mut v.value, |x| inline_functions(x, &mut names, &mut inlinables));
         if let Some(calls) = check_inlinable(&v.value, false) {
             inlinables.insert(v.name, Inlinable::new(&v.value, calls));

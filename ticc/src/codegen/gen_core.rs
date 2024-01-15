@@ -243,7 +243,7 @@ impl<'a, 'b> Generator<'a, 'b> {
                 );
             }
             if !functor {
-                self.program.values.push(cir::ValueDef {
+                self.program.defs.push(cir::ValueDef {
                     name: ctor_cir_name,
                     ty: ctor_ty,
                     export_name: None,
@@ -320,7 +320,7 @@ impl<'a, 'b> Generator<'a, 'b> {
             }
             value
         };
-        self.program.values.push(cir::ValueDef { name, ty, export_name, value });
+        self.program.defs.push(cir::ValueDef { name, ty, export_name, value });
     }
 
     fn gen_name(&mut self, name: node::Name<'a>) -> cir::Name {

@@ -3,7 +3,7 @@ use crate::ir;
 
 pub fn pretty_print(program: &ir::Program<'_>) -> String {
     let mut result = String::new();
-    for def in &program.values {
+    for def in &program.defs {
         let mut format = Format {
             builder: FormatBuilder::new(),
             names: &program.names,

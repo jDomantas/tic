@@ -2,6 +2,10 @@ use std::collections::{HashMap, HashSet};
 use crate::ir;
 
 pub fn assert_valid(program: &ir::Program<'_>) {
+    assert_valid_with_values(program, &[]);
+}
+
+pub fn assert_valid_with_values(program: &ir::Program<'_>, values: &[(ir::Expr, ir::Ty)]) {
     let names = Names {
         max_id: program.names.max_id(),
         defined: HashSet::new(),
@@ -18,12 +22,16 @@ pub fn assert_valid(program: &ir::Program<'_>) {
     for ty_def in &program.types {
         validator.check_ty_def(ty_def);
     }
-    for def in &program.values {
+    for def in &program.defs {
         validator.check_ty(&def.ty);
         let ty = validator.check_expr(&def.value);
         assert_fits(&ty, &def.ty);
         validator.names.enter(def.name);
         validator.types.insert(def.name, ty);
+    }
+    for (e, ty) in values {
+        let t = validator.check_expr(e);
+        assert_fits(&t, ty);
     }
 }
 

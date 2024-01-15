@@ -103,7 +103,7 @@ pub struct Program<'a> {
     pub names: NameGenerator<'a>,
     pub ty: TyGenerator,
     pub types: Vec<TyDef>,
-    pub values: Vec<ValueDef>,
+    pub defs: Vec<ValueDef>,
 }
 
 impl<'a> Program<'a> {
@@ -112,7 +112,7 @@ impl<'a> Program<'a> {
             names: NameGenerator::new(),
             ty: TyGenerator::new(),
             types: Vec::new(),
-            values: Vec::new(),
+            defs: Vec::new(),
         }
     }
 }

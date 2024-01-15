@@ -196,7 +196,21 @@ impl EnvResolver {
     }
 }
 
-pub fn eval(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
+pub fn eval(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Result<Vec<Value>, Trap> {
+    let mut env = Env::default();
+    for def in &program.defs {
+        let v = eval_expr(env.clone(), &def.value)?;
+        env.add(def.name, v);
+    }
+    let mut results = Vec::new();
+    for e in exprs {
+        let v = eval_expr(env.clone(), e)?;
+        results.push(v);
+    }
+    Ok(results)
+}
+
+fn eval_expr(env: Env, expr: &ir::Expr) -> Result<Value, Trap> {
     let mut compact_env = CompactEnv::default();
     let mut resolver = EnvResolver::from_env(&env);
     let compiled = compile_expr(expr, &mut resolver);
