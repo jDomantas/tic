@@ -3,8 +3,8 @@ use ticc_core::ir;
 use crate::Value;
 
 #[derive(Clone)]
-pub struct Tagged {
-    alloc: Rc<TaggedAlloc<[Value]>>,
+pub struct Tagged<F> {
+    alloc: Rc<TaggedAlloc<[Value<F>]>>,
 }
 
 struct TaggedAlloc<T: ?Sized> {
@@ -12,8 +12,8 @@ struct TaggedAlloc<T: ?Sized> {
     values: T,
 }
 
-impl Tagged {
-    pub(crate) fn from_array<const N: usize>(tag: ir::Name, arr: [Value; N]) -> Tagged {
+impl<F> Tagged<F> {
+    pub(crate) fn from_array<const N: usize>(tag: ir::Name, arr: [Value<F>; N]) -> Tagged<F> {
         let alloc = Rc::new(TaggedAlloc {
             tag,
             values: arr,
@@ -21,7 +21,7 @@ impl Tagged {
         Tagged { alloc }
     }
 
-    pub(crate) fn from_vec(tag: ir::Name, values: Vec<Value>) -> Tagged {
+    pub(crate) fn from_vec(tag: ir::Name, values: Vec<Value<F>>) -> Tagged<F> {
         match values.len() {
             0 => Tagged::from_array::<0>(tag, []),
             1 => Tagged::from_array::<1>(tag, values.try_into().unwrap()),
@@ -41,7 +41,7 @@ impl Tagged {
         self.alloc.tag
     }
 
-    pub fn fields(&self) -> &[Value] {
+    pub fn fields(&self) -> &[Value<F>] {
         &self.alloc.values
     }
 }

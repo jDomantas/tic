@@ -13,7 +13,7 @@ pub(crate) fn eval(compilation: &mut CompilationUnit) -> Result<String, Trap> {
             expor_exprs.push(ir::Expr::Name(v.name));
         }
     }
-    match ticc_eval::eval(&program, &expor_exprs) {
+    match ticc_eval::lambda::eval(&program, &expor_exprs) {
         Ok(values) => {
             let mut output = String::new();
             for (n, v) in std::iter::zip(export_names, values) {
@@ -58,7 +58,7 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &[u8]) -> Resu
     if verify {
         ticc_core::assert_valid_with_values(&program, &[(expr.clone(), ir::Ty::String)]);
     }
-    match ticc_eval::eval(&program, &[expr]) {
+    match ticc_eval::lambda::eval(&program, &[expr]) {
         Ok(v) => {
             assert_eq!(v.len(), 1);
             match &v[0] {
@@ -70,7 +70,7 @@ pub(crate) fn eval_main(compilation: &mut CompilationUnit, input: &[u8]) -> Resu
     }
 }
 
-fn write_value(value: &Value, atom: bool, names: &ir::NameGenerator<'_>, into: &mut String) {
+fn write_value<F>(value: &Value<F>, atom: bool, names: &ir::NameGenerator<'_>, into: &mut String) {
     match value {
         Value::Int(i) => {
             write!(into, "{}", i).unwrap();
