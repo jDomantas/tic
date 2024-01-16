@@ -73,6 +73,10 @@ pub fn eval(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Result<Vec<crate::
     let mut consts = Vec::new();
     let compile_ops = crate::compile::compile(program, exprs);
     let (ops, ctor_tags) = link(&mut heap, &mut consts, compile_ops);
+    // println!("ops:");
+    // for op in &ops {
+    //     println!("  {op:?}");
+    // }
     let false_obj = heap.alloc_object(0, 0).addr;
     let true_obj = heap.alloc_object(1, 0).addr;
     let mut runtime = Runtime {
@@ -235,11 +239,16 @@ impl Runtime {
                         unreachable!();
                     };
                     self.stack.push(Value::Int(dst.0 as u64));
-                    let (tag, fields) = self.heap.obj_with_fields(closure_addr);
-                    for field in fields {
+                    let (tag, _) = self.heap.obj_with_fields(closure_addr);
+                    dst = CodeAddr((tag  & TAG_MASK) as usize);
+                }
+                Op::UnpackUpvalues => {
+                    let Value::Ptr(closure_addr) = self.stack.pick(1) else {
+                        unreachable!();
+                    };
+                    for field in self.heap.obj_with_fields(closure_addr).1 {
                         self.stack.push(field);
                     }
-                    dst = CodeAddr((tag  & TAG_MASK) as usize);
                 }
                 Op::Construct { tag, fields } => {
                     let mut obj = self.heap.alloc_object(tag, fields);
@@ -392,6 +401,7 @@ pub(crate) enum Op {
     JumpIfFalse(CodeAddr),
     Return { captures: u32, params: u32 },
     Call,
+    UnpackUpvalues,
     Construct { tag: u64, fields: u32 },
     Branch(Box<Box<[Branch]>>),
     Const(usize),
@@ -463,6 +473,7 @@ fn link(heap: &mut Heap, consts: &mut Vec<Addr>, ops: Vec<compile::Op>) -> (Vec<
             compile::Op::JumpIfFalse(l) => Op::JumpIfFalse(label_addresses[&l]),
             compile::Op::Return { params, captures } => Op::Return { params, captures },
             compile::Op::Call => Op::Call,
+            compile::Op::UnpackUpvalues(_) => Op::UnpackUpvalues,
             compile::Op::Construct { ctor, fields } => {
                 let tag = ctor_tags.resolve(ctor);
                 Op::Construct { tag, fields: fields }

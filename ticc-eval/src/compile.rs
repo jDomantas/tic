@@ -24,6 +24,7 @@ pub(crate) enum Op {
     JumpIfFalse(Label),
     Return { params: u32, captures: u32 },
     Call,
+    UnpackUpvalues(u32),
     Construct { ctor: ir::Name, fields: u32 },
     ConstructClosure { addr: Label, fields: u32 },
     Branch(Box<[Branch]>),
@@ -45,6 +46,7 @@ pub(crate) struct Label(pub(crate) u32);
 pub(crate) struct Branch {
     pub(crate) ctor: ir::Name,
     pub(crate) dst: Label,
+    pub(crate) bindings: usize,
 }
 
 pub(crate) fn compile(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Vec<Op> {
@@ -188,6 +190,7 @@ impl FunctionCompiler<'_> {
                     table.push(Branch {
                         ctor: br.ctor,
                         dst: *lbl,
+                        bindings: br.bindings.len(),
                     })
                 }
                 self.op(Op::Branch(table.into()), -1);
@@ -268,35 +271,31 @@ impl FunctionCompiler<'_> {
         self.local_depths.insert(name, at);
     }
 
-    fn compile_function(mut self, p: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name]) {
+    fn compile_function(mut self, params: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name]) {
         self.op(Op::Label(self.entry), 0);
-        self.compile_function_inner(p, rec_name, e, captures);
-        self.op(Op::Return { captures: captures.len() as u32, params: p.len() as u32 }, -((p.len() + captures.len() + 2) as isize));
-        assert_eq!(self.stack_size, 1); // return value
-        self.compiler.functions.push(self.ops);
-    }
-
-    fn compile_function_inner(&mut self, p: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name]) {
-        if let Some((p, rest)) = p.split_first() {
+        for p in params {
             self.stack_size += 1;
             self.define_local(p.name);
-            if rest.len() == 0 {
-                // slot for the function value that was called
-                self.stack_size += 1;
-                if let Some(rec) = rec_name {
-                    self.define_local(rec)
-                }
-                // slot for return address
-                self.stack_size += 1;
-            }
-            self.compile_function_inner(rest, rec_name, e, captures);
-        } else if let Some((c, rest)) = captures.split_first() {
-            self.stack_size += 1;
-            self.define_local(*c);
-            self.compile_function_inner(p, rec_name, e, rest);
-        } else {
-            self.compile_expr(e);
         }
+        // slot for the function value that was called
+        self.stack_size += 1;
+        if let Some(rec) = rec_name {
+            self.define_local(rec);
+        }
+        // slot for return address
+        self.stack_size += 1;
+        for &c in captures {
+            self.stack_size += 1;
+            self.define_local(c);
+        }
+        if captures.len() > 0 {
+            // no stack diff - we already added stack slots when defining locals
+            self.op(Op::UnpackUpvalues(captures.len() as u32), 0);
+        }
+        self.compile_expr(e);
+        self.op(Op::Return { captures: captures.len() as u32, params: params.len() as u32 }, -((params.len() + captures.len() + 2) as isize));
+        assert_eq!(self.stack_size, 1); // return value
+        self.compiler.functions.push(self.ops);
     }
 }
 

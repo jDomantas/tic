@@ -6,3 +6,5 @@ edition = "2018"
 
 [dependencies]
 ticc-core = { path = "../ticc-core" }
+memmap2 = "0.9.3"
+iced-x86 = { version = "1.20.0", features = ["code_asm"] }

@@ -159,6 +159,10 @@ impl Heap {
     pub(crate) fn free_space(&self) -> usize {
         self.capacity() - self.allocated()
     }
+
+    pub(crate) fn base(&mut self) -> *mut () {
+        self.bytes.raw.as_mut_ptr().cast::<()>()
+    }
 }
 
 struct HeapBytes {
