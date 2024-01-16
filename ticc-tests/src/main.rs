@@ -38,7 +38,7 @@ fn main() {
             continue;
         }
         if filters.len() > 0 {
-            if filters.iter().all(|f| !test.key.contains(f.as_str())) {
+            if filters.iter().any(|f| !test.key.contains(f.as_str())) {
                 continue;
             }
         }

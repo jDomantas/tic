@@ -236,6 +236,7 @@ pub enum Runner {
     Lambda,
     Bytecode,
     Treewalk,
+    Jit,
 }
 
 impl FromStr for Runner {
@@ -246,6 +247,7 @@ impl FromStr for Runner {
             "lambda" => Ok(Runner::Lambda),
             "bytecode" => Ok(Runner::Bytecode),
             "treewalk" => Ok(Runner::Treewalk),
+            "jit" => Ok(Runner::Jit),
             _ => Err("invalid runner"),
         }
     }
@@ -257,6 +259,7 @@ impl fmt::Display for Runner {
             Runner::Lambda => "lambda",
             Runner::Bytecode => "bytecode",
             Runner::Treewalk => "treewalk",
+            Runner::Jit => "jit",
         })
     }
 }

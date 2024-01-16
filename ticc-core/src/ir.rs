@@ -155,8 +155,8 @@ impl<'a> NameGenerator<'a> {
         self.names[name.id as usize]
     }
 
-    pub(crate) fn max_id(&self) -> u64 {
-        self.names.len() as u64 - 1
+    pub(crate) fn id_limit(&self) -> u64 {
+        self.names.len() as u64
     }
 }
 

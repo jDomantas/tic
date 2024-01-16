@@ -1,6 +1,7 @@
 pub mod bytecode;
 mod compile;
 mod heap;
+pub mod jit;
 pub mod lambda;
 mod tagged;
 pub mod treewalk;

@@ -7,7 +7,7 @@ pub fn assert_valid(program: &ir::Program<'_>) {
 
 pub fn assert_valid_with_values(program: &ir::Program<'_>, values: &[(ir::Expr, ir::Ty)]) {
     let names = Names {
-        max_id: program.names.max_id(),
+        id_limit: program.names.id_limit(),
         defined: HashSet::new(),
         in_scope: HashSet::new(),
         defined_ty: HashSet::new(),
@@ -36,7 +36,7 @@ pub fn assert_valid_with_values(program: &ir::Program<'_>, values: &[(ir::Expr, 
 }
 
 struct Names {
-    max_id: u64,
+    id_limit: u64,
     defined: HashSet<ir::Name>,
     in_scope: HashSet<ir::Name>,
     defined_ty: HashSet<ir::TyVar>,
@@ -45,7 +45,7 @@ struct Names {
 
 impl Names {
     fn enter(&mut self, name: ir::Name) {
-        if name.id > self.max_id {
+        if name.id >= self.id_limit {
             panic!("name id is not valid");
         }
         if !self.defined.insert(name) {

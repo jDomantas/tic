@@ -3,7 +3,7 @@ mod util;
 use ticc::{CompilationUnit, Diagnostic, Options, Pos, Severity, Span, ModuleResolver, CompleteUnit, Runner};
 use std::{path::{Path, PathBuf}, sync::{Arc, Mutex}, collections::HashMap};
 
-const ALL_RUNNERS: [Runner; 3] = [Runner::Bytecode, Runner::Lambda, Runner::Treewalk];
+const ALL_RUNNERS: [Runner; 4] = [Runner::Bytecode, Runner::Lambda, Runner::Treewalk, Runner::Jit];
 
 #[derive(Clone)]
 pub struct ModuleSource {
