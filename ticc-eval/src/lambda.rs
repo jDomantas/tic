@@ -497,31 +497,6 @@ fn compile_expr(expr: &ir::Expr, env: &mut EnvResolver) -> Box<dyn Fn(&mut Compa
             let n = *n;
             let v = strip_pis(v);
             if let ir::Expr::Lambda(params, body) = v {
-                // let params = Rc::new(params.clone());
-                // let body = Rc::new(compile_expr(&body, env));
-                // let r = compile_expr(r, env);
-                // Box::new(move |env| {
-                //     let original = env.clone();
-                //     let env = env.clone();
-                //     let params = params.clone();
-                //     let body = body.clone();
-                //     let f = Rc::new_cyclic(move |this| {
-                //         let this: Weak<_> = this.clone();
-                //         let this: Weak<dyn Fn(&[Value]) -> Result<Value, Trap>> = unsize(this);
-                //         move |args: &[Value]| -> Result<Value, Trap> {
-                //             assert_eq!(params.len(), args.len());
-                //             let mut env = env.clone();
-                //             for (p, a) in params.iter().zip(args) {
-                //                 env = add(env, p.name, a.clone());
-                //             }
-                //             env = add(env, n, Value::Fn(this.upgrade().unwrap()));
-                //             body(&env)
-                //         }
-                //     });
-                //     let env = add(original, n, Value::Fn(f));
-                //     r(&env)
-                // })
-
                 let mut captured_names = HashSet::new();
                 free_names(v, &mut captured_names);
                 captured_names.remove(&n);

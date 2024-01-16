@@ -2,15 +2,10 @@ use std::collections::HashMap;
 use ticc_core::ir;
 use crate::{heap::{Addr, Heap, Value}, Trap, compile};
 
-struct Frame {
-    ip: CodeAddr,
-}
-
 struct Runtime {
     heap: Heap,
     stack: Stack,
     ops: Vec<Op>,
-    frames: Vec<Frame>,
     consts: Vec<Addr>,
     ctor_tags: CtorTags,
     bools: Bools,
@@ -84,9 +79,6 @@ pub fn eval(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Result<Vec<crate::
         heap,
         stack: Stack::default(),
         ops,
-        frames: Vec::from([
-            Frame { ip: CodeAddr(0) },
-        ]),
         consts,
         ctor_tags,
         bools: Bools {
@@ -143,7 +135,7 @@ impl Runtime {
     }
 
     fn run(&mut self) -> Result<(), Trap> {
-        let mut ip = self.frames.last().unwrap().ip;
+        let mut ip = CodeAddr(0);
         loop {
             let mut dst = CodeAddr(ip.0 + 1);
             // println!("executing op at {}: {:?}", ip.0, self.ops[ip.0]);
