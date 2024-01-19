@@ -56,6 +56,10 @@ impl Stack {
         *self.0.iter().rev().nth(depth).unwrap()
     }
 
+    fn set(&mut self, depth: usize, value: Value) {
+        *self.0.iter_mut().rev().nth(depth).unwrap() = value;
+    }
+
     fn push(&mut self, value: Value) {
         self.0.push(value);
     }
@@ -149,6 +153,15 @@ impl Runtime {
                 Op::Pick(depth) => {
                     let value = self.stack.pick(depth);
                     self.stack.push(value);
+                }
+                Op::Set(depth) => {
+                    let value = self.stack.pop();
+                    self.stack.set(depth, value);
+                }
+                Op::PopN(n) => {
+                    for _ in 0..n {
+                        self.stack.pop();
+                    }
                 }
                 Op::SwapPop => {
                     let top = self.stack.pop();
@@ -381,6 +394,8 @@ pub(crate) enum Op {
     PushInt(u64),
     PushBool(bool),
     Pick(usize),
+    Set(usize),
+    PopN(usize),
     SwapPop,
     Add,
     Sub,
@@ -453,6 +468,8 @@ fn link(heap: &mut Heap, consts: &mut Vec<Addr>, ops: Vec<compile::Op>) -> (Vec<
                 Op::Const(consts.len() - 1)
             }
             compile::Op::Pick(x) => Op::Pick(x),
+            compile::Op::Set(x) => Op::Set(x),
+            compile::Op::PopN(x) => Op::PopN(x),
             compile::Op::SwapPop => Op::SwapPop,
             compile::Op::Add => Op::Add,
             compile::Op::Sub => Op::Sub,

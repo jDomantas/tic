@@ -17,7 +17,7 @@ pub(crate) fn optimize(program: &mut ir::Program) {
     };
     for v in &mut program.defs {
         walk_expressions(&mut v.value, |x| inline_functions(x, &mut names, &mut inlinables));
-        if let Some(calls) = check_inlinable(&v.value, false) {
+        if let Some(calls) = check_inlinable(&v.value, false).or_else(|| check_small_inlinable(&v.value)) {
             inlinables.insert(v.name, Inlinable::new(&v.value, calls));
         }
     }
@@ -305,6 +305,22 @@ fn check_inlinable(expr: &ir::Expr, allow_complex_value: bool) -> Option<usize> 
     }
 }
 
+fn check_small_inlinable(expr: &ir::Expr) -> Option<usize> {
+    match expr {
+        ir::Expr::Lambda(_, e) => {
+            let inner = check_small_inlinable(e)?;
+            Some(inner + 1)
+        }
+        ir::Expr::Lambda(_, _) => None,
+        ir::Expr::Pi(_, e) => check_small_inlinable(e),
+        _ => if size(expr) <= 30 {
+            Some(0)
+        } else {
+            None
+        }
+    }
+}
+
 fn count_uses(e: &ir::Expr, name: &ir::Name, singular_lambda: bool) -> usize {
     match e {
         ir::Expr::Bool(_) |
@@ -330,5 +346,26 @@ fn count_uses(e: &ir::Expr, name: &ir::Name, singular_lambda: bool) -> usize {
         ir::Expr::Construct(_, _, a) => a.iter().map(|e| count_uses(e, name, false)).sum(),
         ir::Expr::Pi(_, a) |
         ir::Expr::PiApply(a, _) => count_uses(a, name, false),
+    }
+}
+
+fn size(expr: &ir::Expr) -> usize {
+    match expr {
+        ir::Expr::Bool(_) |
+        ir::Expr::Int(_) |
+        ir::Expr::String(_) |
+        ir::Expr::Name(_) => 1,
+        ir::Expr::Call(f, args) => size(f) + args.iter().map(size).sum::<usize>() + 1,
+        ir::Expr::If(a, b, c) => size(a) + size(b) + size(c) + 1,
+        ir::Expr::Op(a, _, b) => size(a) + size(b) + 1,
+        ir::Expr::Intrinsic(_, args) => args.iter().map(size).sum::<usize>() + 1,
+        ir::Expr::Lambda(params, e) => params.len() + size(e) + 1,
+        ir::Expr::Match(e, br) => size(e) + br.iter().map(|b| b.bindings.len() + size(&b.value) + 1).sum::<usize>() + 1,
+        ir::Expr::Construct(_, _, args) => args.iter().map(size).sum::<usize>() + 1,
+        ir::Expr::Let(_, v, e) => size(v) + size(e) + 1,
+        ir::Expr::LetRec(_, _, v, e) => size(v) + size(e) + 1,
+        ir::Expr::Pi(_, e) => size(e) + 1,
+        ir::Expr::PiApply(e, _) => size(e) + 1,
+        ir::Expr::Trap(_, _) => 1,
     }
 }

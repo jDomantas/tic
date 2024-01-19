@@ -8,6 +8,8 @@ pub(crate) enum Op {
     PushBool(bool),
     PushString(ByteString),
     Pick(usize),
+    Set(usize),
+    PopN(usize),
     SwapPop,
     Add,
     Sub,
@@ -57,16 +59,20 @@ pub(crate) fn compile(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Vec<Op> 
     let mut fn_compiler = FunctionCompiler {
         compiler: &mut compiler,
         stack_size: 0,
+        entry_stack_size: 0,
         ops: Vec::new(),
         entry: Label(0),
+        tail_call_entry: Label(0),
         local_depths: HashMap::new(),
+        params: &[],
+        rec: None,
     };
     for def in &program.defs {
-        fn_compiler.compile_expr(&def.value);
+        fn_compiler.compile_expr(&def.value, false);
         fn_compiler.define_local(def.name);
     }
     for e in exprs {
-        fn_compiler.compile_expr(e);
+        fn_compiler.compile_expr(e, false);
     }
     fn_compiler.op(Op::Exit, 0);
     assert_eq!(fn_compiler.stack_size, program.defs.len() + exprs.len());
@@ -92,9 +98,13 @@ impl Compiler {
 struct FunctionCompiler<'a> {
     compiler: &'a mut Compiler,
     stack_size: usize,
+    entry_stack_size: usize,
     ops: Vec<Op>,
     entry: Label,
+    tail_call_entry: Label,
     local_depths: HashMap<ir::Name, usize>,
+    params: &'a [ir::LambdaParam],
+    rec: Option<ir::Name>,
 }
 
 impl FunctionCompiler<'_> {
@@ -107,7 +117,7 @@ impl FunctionCompiler<'_> {
         }
     }
 
-    fn compile_expr(&mut self, expr: &ir::Expr) {
+    fn compile_expr(&mut self, expr: &ir::Expr, is_tail_position: bool) {
         match expr {
             ir::Expr::Bool(b) => self.op(Op::PushBool(*b), 1),
             ir::Expr::Int(i) => self.op(Op::PushInt(*i), 1),
@@ -117,27 +127,46 @@ impl FunctionCompiler<'_> {
             }
             ir::Expr::Call(f, args) => {
                 for arg in args {
-                    self.compile_expr(arg);
+                    self.compile_expr(arg, false);
                 }
-                self.compile_expr(f);
-                // args+fn get replaced with result
-                self.op(Op::Call, -(args.len() as isize));
+                'compile_call: {
+                    if let ir::Expr::Name(n) = **f {
+                        if is_tail_position && self.rec == Some(n) {
+                            // println!("gonna compile rec call");
+                            for p in self.params.iter().rev() {
+                                self.set_var(p.name);
+                            }
+                            let to_pop = self.stack_size - self.entry_stack_size;
+                            if to_pop > 0 {
+                                // keep stack size as if this is a call that
+                                // returned normally - and we already popped args
+                                self.op(Op::PopN(to_pop), 0);
+                            }
+                            // +1 for return value
+                            self.op(Op::Jump(self.tail_call_entry), 1);
+                            break 'compile_call;
+                        }
+                    }
+                    self.compile_expr(f, false);
+                    // args+fn get replaced with result
+                    self.op(Op::Call, -(args.len() as isize));
+                }
             }
             ir::Expr::If(c, t, e) => {
-                self.compile_expr(c);
+                self.compile_expr(c, false);
                 let else_label = self.fresh_label();
                 let end_label = self.fresh_label();
                 self.op(Op::JumpIfFalse(else_label), -1);
-                self.compile_expr(t);
+                self.compile_expr(t, is_tail_position);
                 self.op(Op::Jump(end_label), 0);
                 self.op(Op::Label(else_label), 0);
                 self.stack_size -= 1;
-                self.compile_expr(e);
+                self.compile_expr(e, is_tail_position);
                 self.op(Op::Label(end_label), 0);
             }
             ir::Expr::Op(a, op, b) => {
-                self.compile_expr(a);
-                self.compile_expr(b);
+                self.compile_expr(a, false);
+                self.compile_expr(b, false);
                 self.op(match op {
                     ir::Op::Add => Op::Add,
                     ir::Op::Subtract => Op::Sub,
@@ -154,7 +183,7 @@ impl FunctionCompiler<'_> {
             }
             ir::Expr::Intrinsic(i, args) => {
                 for arg in args {
-                    self.compile_expr(arg);
+                    self.compile_expr(arg, false);
                 }
                 match i {
                     ir::Intrinsic::StringLen => self.op(Op::StringLen, 0),
@@ -169,11 +198,15 @@ impl FunctionCompiler<'_> {
                 let captures = free_variables(expr);
                 let entry = self.fresh_label();
                 let lambda_compiler = FunctionCompiler {
+                    tail_call_entry: self.fresh_label(),
                     compiler: self.compiler,
                     stack_size: 0,
+                    entry_stack_size: 0,
                     ops: Vec::new(),
                     entry,
                     local_depths: HashMap::new(),
+                    params: p,
+                    rec: None,
                 };
                 lambda_compiler.compile_function(p, None, e, &captures);
                 for &c in &captures {
@@ -182,7 +215,7 @@ impl FunctionCompiler<'_> {
                 self.op(Op::ConstructClosure { addr: entry, fields: captures.len() as u32 }, -(captures.len() as isize) + 1);
             }
             ir::Expr::Match(discr, branches) => {
-                self.compile_expr(discr);
+                self.compile_expr(discr, false);
                 let mut table = Vec::with_capacity(branches.len());
                 let end_label = self.fresh_label();
                 let branch_labels = branches.iter().map(|_| self.fresh_label()).collect::<Vec<_>>();
@@ -200,7 +233,7 @@ impl FunctionCompiler<'_> {
                         self.stack_size += 1;
                         self.define_local(b);
                     }
-                    self.compile_expr(&br.value);
+                    self.compile_expr(&br.value, is_tail_position);
                     for _ in &br.bindings {
                         self.op(Op::SwapPop, -1);
                     }
@@ -212,14 +245,14 @@ impl FunctionCompiler<'_> {
             }
             ir::Expr::Construct(ctor, _, fields) => {
                 for field in fields {
-                    self.compile_expr(field);
+                    self.compile_expr(field, false);
                 }
                 self.op(Op::Construct { ctor: *ctor, fields: fields.len() as u32 }, -(fields.len() as isize) + 1);
             }
             ir::Expr::Let(n, v, e) => {
-                self.compile_expr(v);
+                self.compile_expr(v, false);
                 self.define_local(*n);
-                self.compile_expr(e);
+                self.compile_expr(e, is_tail_position);
                 self.op(Op::SwapPop, -1);
             }
             ir::Expr::LetRec(n, _, v, e) => {
@@ -232,11 +265,15 @@ impl FunctionCompiler<'_> {
                 captures.retain(|c| c != n);
                 let entry = self.fresh_label();
                 let lambda_compiler = FunctionCompiler {
+                    tail_call_entry: self.fresh_label(),
                     compiler: self.compiler,
                     stack_size: 0,
+                    entry_stack_size: 0,
                     ops: Vec::new(),
                     entry,
                     local_depths: HashMap::new(),
+                    params: p,
+                    rec: Some(*n),
                 };
                 lambda_compiler.compile_function(p, Some(*n), v, &captures);
                 for &c in &captures {
@@ -245,11 +282,11 @@ impl FunctionCompiler<'_> {
                 self.op(Op::ConstructClosure { addr: entry, fields: captures.len() as u32 }, -(captures.len() as isize) + 1);
                 // compile let
                 self.define_local(*n);
-                self.compile_expr(e);
+                self.compile_expr(e, is_tail_position);
                 self.op(Op::SwapPop, -1);
             }
-            ir::Expr::Pi(_, e) => self.compile_expr(e),
-            ir::Expr::PiApply(e, _) => self.compile_expr(e),
+            ir::Expr::Pi(_, e) => self.compile_expr(e, is_tail_position),
+            ir::Expr::PiApply(e, _) => self.compile_expr(e, is_tail_position),
             ir::Expr::Trap(msg, _) => {
                 self.op(Op::Trap(msg.as_str().into()), 1);
             }
@@ -260,6 +297,13 @@ impl FunctionCompiler<'_> {
         let at = self.local_depths[&name];
         let depth = self.stack_size - at - 1;
         self.op(Op::Pick(depth), 1);
+    }
+
+    fn set_var(&mut self, name: ir::Name) {
+        let at = self.local_depths[&name];
+        // given depth is after popping value on top of the stack
+        let depth = self.stack_size - at - 1 - 1;
+        self.op(Op::Set(depth), -1);
     }
 
     fn fresh_label(&mut self) -> Label {
@@ -291,8 +335,12 @@ impl FunctionCompiler<'_> {
         if captures.len() > 0 {
             // no stack diff - we already added stack slots when defining locals
             self.op(Op::UnpackUpvalues(captures.len() as u32), 0);
+            self.op(Op::Label(self.tail_call_entry), 0);
+        } else {
+            self.tail_call_entry = self.entry;
         }
-        self.compile_expr(e);
+        self.entry_stack_size = self.stack_size;
+        self.compile_expr(e, true);
         self.op(Op::Return { captures: captures.len() as u32, params: params.len() as u32 }, -((params.len() + captures.len() + 2) as isize));
         assert_eq!(self.stack_size, 1); // return value
         self.compiler.functions.push(self.ops);

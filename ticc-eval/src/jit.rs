@@ -307,6 +307,22 @@ fn assemble(ops: &[compile::Op], heap: &mut Heap) -> Result<Assembled, iced_x86:
                 asm.mov(qword_ptr(stack_ptr - 8), tmp2)?;
                 asm.mov(qword_ptr(stack_ptr), tmp1)?;
             }
+            compile::Op::Set(n) => {
+                let offset: u32 = (n + 1).try_into().unwrap();
+                let offset = offset.checked_mul(16).unwrap();
+                asm.mov(tmp1, qword_ptr(stack_ptr))?;
+                asm.mov(tmp2, qword_ptr(stack_ptr - 8))?;
+                asm.mov(qword_ptr(stack_ptr - offset), tmp1)?;
+                asm.mov(qword_ptr(stack_ptr - (offset + 8)), tmp2)?;
+                asm.sub(stack_ptr, 16)?;
+            }
+            compile::Op::PopN(n) => {
+                if *n > 0 {
+                    let d: i32 = (*n).try_into().unwrap();
+                    let d = d.checked_mul(16).unwrap();
+                    asm.sub(stack_ptr, d)?;
+                }
+            }
             compile::Op::SwapPop => {
                 asm.mov(tmp1, qword_ptr(stack_ptr))?;
                 asm.mov(tmp2, qword_ptr(stack_ptr - 8))?;
