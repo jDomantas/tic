@@ -5,22 +5,6 @@ use ticc_core::ir;
 
 use crate::{compile, heap::{Heap, Addr}};
 
-struct NativeStack {
-    raw: Vec<u64>,
-}
-
-impl NativeStack {
-    fn new() -> NativeStack {
-        NativeStack {
-            raw: Vec::with_capacity(4096 * 4096 * 16),
-        }
-    }
-
-    fn next_slot_ptr(&mut self) -> *mut u64 {
-        unsafe { self.raw.as_mut_ptr().offset(self.raw.len() as isize) }
-    }
-}
-
 pub fn eval(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Result<Vec<crate::Value<()>>, crate::Trap> {
     let ops = crate::compile::compile(program, exprs);
     let values = exec(&ops, exprs.len())?;
@@ -34,12 +18,18 @@ fn exec(ops: &[compile::Op], pick: usize) -> Result<Vec<crate::Value<()>>, crate
 }
 
 fn exec_in_heap(ops: &[compile::Op], heap: &mut Heap, pick: usize) -> Result<Vec<crate::Value<()>>, crate::Trap> {
+    if !(cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") && cfg!(target_env = "msvc") && cfg!(target_pointer_width = "64")) {
+        return Err(crate::Trap {
+            message: "jit is only supported on x86_64-pc-windows-msvc".to_owned(),
+        });
+    }
+
     let mut assebmled = assemble(ops, heap).unwrap();
     let (_exec_mmap, exec) = make_executable(&assebmled.code);
 
-    let mut stack = NativeStack::new();
+    let mut stack = Vec::<u64>::with_capacity(16 * 16);
     let mut functions = Vec::with_capacity(assebmled.functions);
-    let stack_start = stack.next_slot_ptr() as usize as u64;
+    let stack_start = stack.as_mut_ptr() as usize as u64;
     let initial_stack_ptr = stack_start.wrapping_sub(8);
     let false_obj = heap.alloc_object(0, 0).addr;
     let true_obj = heap.alloc_object(1, 0).addr;
@@ -51,18 +41,24 @@ fn exec_in_heap(ops: &[compile::Op], heap: &mut Heap, pick: usize) -> Result<Vec
         function_entrypoints: functions.as_mut_ptr(),
         consts: assebmled.consts.as_mut_ptr().cast::<u64>(),
         trap: u64::MAX,
+        stack_check: initial_stack_ptr,
+        stack_capacity: stack.capacity() as u64 / 8,
         heap_base: heap.base(),
         heap,
         num_consts: assebmled.consts.len(),
+        stack_reserve: assebmled.max_stack_reserve as u64,
     };
+    std::mem::forget(stack);
     let final_stack = unsafe { exec(&mut state) };
-    assert!(final_stack >= initial_stack_ptr);
-    let diff = final_stack - initial_stack_ptr;
+    let mut stack = unsafe { Vec::from_raw_parts(state.stack_start as usize as *mut u64, 0, state.stack_capacity as usize) };
+    let start_stack_ptr = state.stack_start - 8;
+    assert!(final_stack >= start_stack_ptr);
+    let diff = final_stack - start_stack_ptr;
     assert_eq!(diff % 16, 0);
     let stack_size = diff / 16;
     if state.trap == u64::MAX {
         let mut values = Vec::new();
-        unsafe { stack.raw.set_len(stack_size as usize * 2) };
+        unsafe { stack.set_len(stack_size as usize * 2) };
         assert!(stack_size >= pick as u64);
         let ctx = DecodeCtx {
             heap: unsafe { &*state.heap },
@@ -71,18 +67,18 @@ fn exec_in_heap(ops: &[compile::Op], heap: &mut Heap, pick: usize) -> Result<Vec
             ctor_tags: assebmled.ctor_tags.tag_names,
         };
         for i in (stack_size - pick as u64)..stack_size {
-            let tag = stack.raw[i as usize * 2];
+            let tag = stack[i as usize * 2];
             let value = if tag == INT_STACK_TAG as u64 {
-                crate::Value::Int(stack.raw[i as usize * 2 + 1])
+                crate::Value::Int(stack[i as usize * 2 + 1])
             } else {
-                let ptr = unsafe { std::mem::transmute::<u64, Addr>(stack.raw[i as usize * 2 + 1]) };
+                let ptr = unsafe { std::mem::transmute::<u64, Addr>(stack[i as usize * 2 + 1]) };
                 decode_value(&ctx, ptr)
             };
             values.push(value);
         }
         Ok(values)
     } else {
-        unsafe { stack.raw.set_len(stack_size as usize * 2) };
+        unsafe { stack.set_len(stack_size as usize * 2) };
         let compile::Op::Trap(trap) = &ops[state.trap as usize] else {
             unreachable!();
         };
@@ -114,9 +110,12 @@ struct ExecState {
     function_entrypoints: *mut u64,
     consts: *mut u64,
     trap: u64,
+    stack_check: u64,
+    stack_capacity: u64,
     stack_start: u64,
     heap: *mut Heap,
     num_consts: usize,
+    stack_reserve: u64,
 }
 
 impl ExecState {
@@ -127,6 +126,7 @@ impl ExecState {
     const FUNCTION_ENTRYPOINTS_OFFSET: i32 = 32;
     const CONSTS_OFFSET: i32 = 40;
     const TRAP_OFFSET: i32 = 48;
+    const STACK_CHECK_OFFSET: i32 = 56;
 
     fn pick_ptr(&self, nth: usize) -> Addr {
         unsafe {
@@ -205,6 +205,7 @@ struct Assembled {
     functions: usize,
     ctor_tags: CtorTags,
     consts: Vec<Addr>,
+    max_stack_reserve: u32,
 }
 
 fn assemble(ops: &[compile::Op], heap: &mut Heap) -> Result<Assembled, iced_x86::IcedError> {
@@ -222,6 +223,7 @@ fn assemble(ops: &[compile::Op], heap: &mut Heap) -> Result<Assembled, iced_x86:
     let false_addr = r15;
     let heap_base = rdi;
     let function_entrypoints = rsi;
+    let stack_check = rbp;
     // must save odd number of registers to keep stack aligned
     let saved_registers = [
         stack_ptr,
@@ -230,8 +232,9 @@ fn assemble(ops: &[compile::Op], heap: &mut Heap) -> Result<Assembled, iced_x86:
         exec_state,
         heap_base,
         function_entrypoints,
-        function_entrypoints,
+        stack_check,
     ];
+    assert!(saved_registers.len() % 2 == 1);
     for reg in saved_registers {
         asm.push(reg)?;
     }
@@ -241,6 +244,7 @@ fn assemble(ops: &[compile::Op], heap: &mut Heap) -> Result<Assembled, iced_x86:
     asm.mov(false_addr, qword_ptr(exec_state + ExecState::FALSE_ADDR_OFFSET))?;
     asm.mov(heap_base, qword_ptr(exec_state + ExecState::HEAP_BASE_OFFSET))?;
     asm.mov(function_entrypoints, qword_ptr(exec_state + ExecState::FUNCTION_ENTRYPOINTS_OFFSET))?;
+    asm.mov(stack_check, qword_ptr(exec_state + ExecState::STACK_CHECK_OFFSET))?;
     let mut labels = HashMap::new();
     let mut initialized_labels = HashSet::new();
     let mut function_indices = HashMap::new();
@@ -260,6 +264,9 @@ fn assemble(ops: &[compile::Op], heap: &mut Heap) -> Result<Assembled, iced_x86:
     }
 
     let alloc_fn_ptr = unsafe { std::mem::transmute::<extern "C" fn (&mut ExecState, u64, u64), u64>(alloc_obj) };
+    let grow_stack_fn_ptr = unsafe { std::mem::transmute::<extern "C" fn (&mut ExecState), u64>(grow_stack) };
+
+    let mut max_stack_reserve = 0u32;
 
     for (idx, op) in ops.iter().enumerate() {
         asm.nop()?;
@@ -476,21 +483,37 @@ fn assemble(ops: &[compile::Op], heap: &mut Heap) -> Result<Assembled, iced_x86:
                 asm.jmp(tmp2)?;
                 asm.set_label(&mut return_label)?;
             }
-            compile::Op::UnpackUpvalues(count) => {
-                // calculate closure object address (skip top stack slot due to return address)
-                asm.mov(tmp1, qword_ptr(stack_ptr - 16))?;
-                asm.add(tmp1, heap_base)?;
-                // get pointer bitset
-                asm.mov(tmp2, qword_ptr(tmp1 + 8))?;
-                // push fields to stack
-                for field in 0..(*count) {
-                    asm.mov(tmp3, tmp2)?;
-                    asm.and(tmp3, 1)?;
-                    asm.shr(tmp2, 1)?;
-                    asm.add(stack_ptr, 16)?;
-                    asm.mov(qword_ptr(stack_ptr - 8), tmp3)?;
-                    asm.mov(tmp3, qword_ptr(tmp1 + (field * 8 + 24)))?;
-                    asm.mov(qword_ptr(stack_ptr), tmp3)?;
+            compile::Op::EnterFunction { upvalues, stack_usage } => {
+                max_stack_reserve = max_stack_reserve.max(*stack_usage);
+
+                let mut skip_label = asm.create_label();
+                asm.cmp(stack_ptr, stack_check)?;
+                asm.jb(skip_label)?;
+
+                asm.mov(qword_ptr(exec_state + ExecState::STACK_PTR_OFFSET), stack_ptr)?;
+                asm.mov(rcx, exec_state)?;
+                asm.mov(tmp2, grow_stack_fn_ptr)?;
+                asm.call(tmp2)?;
+                asm.mov(stack_ptr, qword_ptr(exec_state + ExecState::STACK_PTR_OFFSET))?;
+                asm.mov(stack_check, qword_ptr(exec_state + ExecState::STACK_CHECK_OFFSET))?;
+
+                asm.set_label(&mut skip_label)?;
+                if *upvalues > 0 {
+                    // calculate closure object address (skip top stack slot due to return address)
+                    asm.mov(tmp1, qword_ptr(stack_ptr - 16))?;
+                    asm.add(tmp1, heap_base)?;
+                    // get pointer bitset
+                    asm.mov(tmp2, qword_ptr(tmp1 + 8))?;
+                    // push fields to stack
+                    for field in 0..(*upvalues) {
+                        asm.mov(tmp3, tmp2)?;
+                        asm.and(tmp3, 1)?;
+                        asm.shr(tmp2, 1)?;
+                        asm.add(stack_ptr, 16)?;
+                        asm.mov(qword_ptr(stack_ptr - 8), tmp3)?;
+                        asm.mov(tmp3, qword_ptr(tmp1 + (field * 8 + 24)))?;
+                        asm.mov(qword_ptr(stack_ptr), tmp3)?;
+                    }
                 }
             }
             compile::Op::Construct { ctor, fields } => {
@@ -649,6 +672,7 @@ fn assemble(ops: &[compile::Op], heap: &mut Heap) -> Result<Assembled, iced_x86:
         functions: function_indices.len(),
         ctor_tags,
         consts,
+        max_stack_reserve,
     })
 }
 
@@ -683,6 +707,19 @@ extern "C" fn alloc_obj(state: &mut ExecState, tag: u64, fields: u64) {
     }
 
     state.maybe_gc();
+}
+
+extern "C" fn grow_stack(state: &mut ExecState) {
+    let ptr_diff = state.stack_ptr.wrapping_sub(state.stack_start);
+    let mut stack = unsafe {
+        Vec::from_raw_parts(state.stack_start as usize as *mut u64, state.stack_capacity as usize, state.stack_capacity as usize)
+    };
+    stack.reserve(stack.len().max(state.stack_reserve as usize * 2));
+    state.stack_start = stack.as_mut_ptr() as usize as u64;
+    state.stack_capacity = stack.capacity() as u64;
+    state.stack_ptr = state.stack_start.wrapping_add(ptr_diff);
+    state.stack_check = state.stack_start as u64 + ((state.stack_capacity as u64 & !1) * 8) - (state.stack_reserve + 1) * 16;
+    std::mem::forget(stack);
 }
 
 fn intrinsic_address(i: extern "C" fn(&mut ExecState)) -> u64 {

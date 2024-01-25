@@ -26,7 +26,10 @@ pub(crate) enum Op {
     JumpIfFalse(Label),
     Return { params: u32, captures: u32 },
     Call,
-    UnpackUpvalues(u32),
+    EnterFunction {
+        upvalues: u32,
+        stack_usage: u32,
+    },
     Construct { ctor: ir::Name, fields: u32 },
     ConstructClosure { addr: Label, fields: u32 },
     Branch(Box<[Branch]>),
@@ -59,6 +62,7 @@ pub(crate) fn compile(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Vec<Op> 
     let mut fn_compiler = FunctionCompiler {
         compiler: &mut compiler,
         stack_size: 0,
+        max_stack_size: 0,
         entry_stack_size: 0,
         ops: Vec::new(),
         entry: Label(0),
@@ -67,6 +71,7 @@ pub(crate) fn compile(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Vec<Op> 
         params: &[],
         rec: None,
     };
+    fn_compiler.op(Op::EnterFunction { upvalues: 0, stack_usage: 0 }, 0);
     for def in &program.defs {
         fn_compiler.compile_expr(&def.value, false);
         fn_compiler.define_local(def.name);
@@ -75,6 +80,10 @@ pub(crate) fn compile(program: &ir::Program<'_>, exprs: &[ir::Expr]) -> Vec<Op> 
         fn_compiler.compile_expr(e, false);
     }
     fn_compiler.op(Op::Exit, 0);
+    match &mut fn_compiler.ops[0] {
+        Op::EnterFunction { stack_usage, .. } => *stack_usage = fn_compiler.max_stack_size as u32,
+        _ => unreachable!(),
+    }
     assert_eq!(fn_compiler.stack_size, program.defs.len() + exprs.len());
     let mut ops = Vec::new();
     ops.extend(fn_compiler.ops);
@@ -99,6 +108,7 @@ struct FunctionCompiler<'a> {
     compiler: &'a mut Compiler,
     stack_size: usize,
     entry_stack_size: usize,
+    max_stack_size: usize,
     ops: Vec<Op>,
     entry: Label,
     tail_call_entry: Label,
@@ -110,11 +120,7 @@ struct FunctionCompiler<'a> {
 impl FunctionCompiler<'_> {
     fn op(&mut self, op: Op, stack_change: isize) {
         self.ops.push(op);
-        if stack_change >= 0 {
-            self.stack_size += stack_change as usize;
-        } else {
-            self.stack_size -= (-stack_change) as usize;
-        }
+        self.change_stack_size(stack_change);
     }
 
     fn compile_expr(&mut self, expr: &ir::Expr, is_tail_position: bool) {
@@ -148,6 +154,9 @@ impl FunctionCompiler<'_> {
                         }
                     }
                     self.compile_expr(f, false);
+                    // call will push return address to stack - add and remove it for max stack size tracking
+                    self.change_stack_size(1);
+                    self.change_stack_size(-1);
                     // args+fn get replaced with result
                     self.op(Op::Call, -(args.len() as isize));
                 }
@@ -160,7 +169,7 @@ impl FunctionCompiler<'_> {
                 self.compile_expr(t, is_tail_position);
                 self.op(Op::Jump(end_label), 0);
                 self.op(Op::Label(else_label), 0);
-                self.stack_size -= 1;
+                self.change_stack_size(-1);
                 self.compile_expr(e, is_tail_position);
                 self.op(Op::Label(end_label), 0);
             }
@@ -202,6 +211,7 @@ impl FunctionCompiler<'_> {
                     compiler: self.compiler,
                     stack_size: 0,
                     entry_stack_size: 0,
+                    max_stack_size: 0,
                     ops: Vec::new(),
                     entry,
                     local_depths: HashMap::new(),
@@ -230,7 +240,7 @@ impl FunctionCompiler<'_> {
                 for (br, lbl) in std::iter::zip(branches, branch_labels) {
                     self.op(Op::Label(lbl), 0);
                     for &b in &br.bindings {
-                        self.stack_size += 1;
+                        self.change_stack_size(1);
                         self.define_local(b);
                     }
                     self.compile_expr(&br.value, is_tail_position);
@@ -238,10 +248,10 @@ impl FunctionCompiler<'_> {
                         self.op(Op::SwapPop, -1);
                     }
                     self.op(Op::Jump(end_label), 0);
-                    self.stack_size -= 1;
+                    self.change_stack_size(-1);
                 }
                 self.op(Op::Label(end_label), 0);
-                self.stack_size += 1;
+                self.change_stack_size(1);
             }
             ir::Expr::Construct(ctor, _, fields) => {
                 for field in fields {
@@ -269,6 +279,7 @@ impl FunctionCompiler<'_> {
                     compiler: self.compiler,
                     stack_size: 0,
                     entry_stack_size: 0,
+                    max_stack_size: 0,
                     ops: Vec::new(),
                     entry,
                     local_depths: HashMap::new(),
@@ -318,32 +329,44 @@ impl FunctionCompiler<'_> {
     fn compile_function(mut self, params: &[ir::LambdaParam], rec_name: Option<ir::Name>, e: &ir::Expr, captures: &[ir::Name]) {
         self.op(Op::Label(self.entry), 0);
         for p in params {
-            self.stack_size += 1;
+            self.change_stack_size(1);
             self.define_local(p.name);
         }
         // slot for the function value that was called
-        self.stack_size += 1;
+        self.change_stack_size(1);
         if let Some(rec) = rec_name {
             self.define_local(rec);
         }
         // slot for return address
-        self.stack_size += 1;
+        self.change_stack_size(1);
         for &c in captures {
-            self.stack_size += 1;
+            self.change_stack_size(1);
             self.define_local(c);
         }
-        if captures.len() > 0 {
-            // no stack diff - we already added stack slots when defining locals
-            self.op(Op::UnpackUpvalues(captures.len() as u32), 0);
-            self.op(Op::Label(self.tail_call_entry), 0);
-        } else {
-            self.tail_call_entry = self.entry;
-        }
+        let entry_op_index = self.ops.len();
         self.entry_stack_size = self.stack_size;
+        self.op(Op::EnterFunction {
+            upvalues: captures.len() as u32,
+            stack_usage: 0,
+        }, 0);
+        self.op(Op::Label(self.tail_call_entry), 0);
         self.compile_expr(e, true);
         self.op(Op::Return { captures: captures.len() as u32, params: params.len() as u32 }, -((params.len() + captures.len() + 2) as isize));
         assert_eq!(self.stack_size, 1); // return value
+        match &mut self.ops[entry_op_index] {
+            Op::EnterFunction { stack_usage, .. } => *stack_usage = (self.max_stack_size - self.entry_stack_size + captures.len()) as u32,
+            _ => unreachable!(),
+        }
         self.compiler.functions.push(self.ops);
+    }
+
+    fn change_stack_size(&mut self, delta: isize) {
+        if delta >= 0 {
+            self.stack_size += delta as usize;
+        } else {
+            self.stack_size -= (-delta) as usize;
+        }
+        self.max_stack_size = self.max_stack_size.max(self.stack_size);
     }
 }
 

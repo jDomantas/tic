@@ -447,6 +447,8 @@ fn link(heap: &mut Heap, consts: &mut Vec<Addr>, ops: Vec<compile::Op>) -> (Vec<
     for op in &ops {
         if let compile::Op::Label(l) = *op {
             label_addresses.insert(l, addr);
+        } else if let compile::Op::EnterFunction { upvalues: 0, .. } = op {
+            continue;
         } else {
             addr.0 += 1;
         }
@@ -486,7 +488,8 @@ fn link(heap: &mut Heap, consts: &mut Vec<Addr>, ops: Vec<compile::Op>) -> (Vec<
             compile::Op::JumpIfFalse(l) => Op::JumpIfFalse(label_addresses[&l]),
             compile::Op::Return { params, captures } => Op::Return { params, captures },
             compile::Op::Call => Op::Call,
-            compile::Op::UnpackUpvalues(_) => Op::UnpackUpvalues,
+            compile::Op::EnterFunction { upvalues: 0, .. } => continue,
+            compile::Op::EnterFunction { .. } => Op::UnpackUpvalues,
             compile::Op::Construct { ctor, fields } => {
                 let tag = ctor_tags.resolve(ctor);
                 Op::Construct { tag, fields: fields }
