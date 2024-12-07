@@ -1,0 +1,136 @@
+import ints from "std/int";
+import option from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import (Result) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Rule = Rule int int;
+
+type Input = Input (List Rule) (List (List int));
+
+let takeWhile : (a -> bool) -> List a -> List a =
+    \cond -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs ->
+            if cond x then
+                Cons x xs
+            else
+                Nil
+        end;
+
+let parseRule : string -> Result Rule string =
+    \line ->
+        parse.ok Rule
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal "|")
+        |> parse.apply parse.integer
+        |> parse.run line;
+
+let parseList : string -> Result (List int) string =
+    \line ->
+        line
+        |> strings.split (strings.charAt 0 ",")
+        |> list.map ints.parse
+        |> list.allOk
+        |> result.mapErr (\_ -> "bad int");
+
+let parseInput : string -> Result Input string =
+    \input ->
+        let lines = strings.lines input;
+        lines
+        |> takeWhile (\x -> strings.length x > 0)
+        |> list.map parseRule
+        |> list.allOk
+        |> result.andThen (\rules ->
+            let lists = list.skip (list.length rules + 1) lines;
+            lists
+            |> list.map parseList
+            |> list.allOk
+            |> result.map (\lists -> Input rules lists));
+
+let tails : List a -> List (List a) =
+    \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons (Cons x Nil) Nil
+            | Cons y _ -> Cons (Cons x y) xs
+            end
+        end;
+
+let isValid : List Rule -> List int -> bool =
+    \rules -> \list ->
+        let validPair : int -> int -> bool =
+            \a -> \b ->
+                rules
+                |> list.map (\r ->
+                    match r with
+                    | Rule p q ->
+                        if p == b then
+                            q != a
+                        else
+                            true
+                    end)
+                |> list.all;
+        let checkTail = \tail ->
+            match tail with
+            | Nil -> true
+            | Cons x xs ->
+                xs
+                |> list.map (\i -> validPair x i)
+                |> list.all
+            end;
+        list
+        |> tails
+        |> list.map checkTail
+        |> list.all;
+
+let middle : List int -> int =
+    \l ->
+        l
+        |> list.skip (list.length l / 2)
+        |> list.head
+        |> option.unwrapOr 0;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input rules lists ->
+            lists
+            |> list.filter (isValid rules)
+            |> list.map middle
+            |> list.sum
+            |> ints.toString
+        end;
+
+let compareByRules : List Rule -> int -> int -> bool =
+    \rules -> \a -> \b ->
+        rules
+        |> list.map (\r ->
+            match r with
+            | Rule p q ->
+                if p == a then
+                    b == q
+                else
+                    false
+            end)
+        |> list.any;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input rules lists ->
+            lists
+            |> list.filter (\x -> if isValid rules x then false else true)
+            |> list.map (list.sortBy (compareByRules rules))
+            |> list.map middle
+            |> list.sum
+            |> ints.toString
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

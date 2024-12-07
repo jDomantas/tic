@@ -1,0 +1,109 @@
+import ints from "std/int";
+import option from "std/option";
+import strings from "std/string";
+import list from "std/list";
+import (Result, Ok) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+
+let parseInput : string -> Result (Array (Array int)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map array.fromList
+        |> array.fromList
+        |> Ok;
+
+let isXmasWithDir : Array (Array int) -> int -> int -> int -> int -> bool =
+    let x = strings.charAt 0 "X";
+    let m = strings.charAt 0 "M";
+    let a = strings.charAt 0 "A";
+    let s = strings.charAt 0 "S";
+    \grid -> \sx -> \sy -> \dx -> \dy ->
+        let get = \x -> \y ->
+            grid
+            |> array.get y
+            |> option.unwrapOr array.empty
+            |> array.get x
+            |> option.unwrapOr 0;
+        if get sx sy == x then
+            if get (sx + dx) (sy + dy) == m then
+                if get (sx + 2 * dx) (sy + 2 * dy) == a then
+                    get (sx + 3 * dx) (sy + 3 * dy) == s
+                else
+                    false
+            else
+                false
+        else
+            false;
+
+let countXmasAtPoint : Array (Array int) -> int -> int -> int =
+    let incIf = \c -> \x -> if c then x + 1 else x;
+    \grid -> \x -> \y ->
+        0
+        |> incIf (isXmasWithDir grid x y 0 (0-1))
+        |> incIf (isXmasWithDir grid x y (0-1) 0)
+        |> incIf (isXmasWithDir grid x y 0 1)
+        |> incIf (isXmasWithDir grid x y 1 0)
+        |> incIf (isXmasWithDir grid x y (0-1) (0-1))
+        |> incIf (isXmasWithDir grid x y 1 (0-1))
+        |> incIf (isXmasWithDir grid x y (0-1) 1)
+        |> incIf (isXmasWithDir grid x y 1 1);
+
+let part1 : Array (Array int) -> string =
+    \grid ->
+        let width = array.get 0 grid |> option.unwrapOr array.empty |> array.length;
+        let height = array.length grid;
+        list.range 0 width
+        |> list.flatMap (\x ->
+            list.range 0 height
+            |> list.map (\y ->
+                countXmasAtPoint grid x y))
+        |> list.sum
+        |> ints.toString;
+
+let isXofMas : Array (Array int) -> int -> int -> bool =
+    let a = strings.charAt 0 "A";
+    let m = strings.charAt 0 "M";
+    let s = strings.charAt 0 "S";
+    let goodPair = \p -> \q ->
+        if p == m then
+            q == s
+        else if p == s then
+            q == m
+        else
+            false;
+    \grid -> \x -> \y ->
+        let get = \x -> \y ->
+            grid
+            |> array.get y
+            |> option.unwrapOr array.empty
+            |> array.get x
+            |> option.unwrapOr 0;
+        if get x y != a then
+            false
+        else
+            let a = get (x - 1) (y - 1);
+            let b = get (x + 1) (y - 1);
+            let c = get (x + 1) (y + 1);
+            let d = get (x - 1) (y + 1);
+            if goodPair a c then
+                goodPair b d
+            else
+                false;
+
+let part2 : Array (Array int) -> string =
+    \grid ->
+        let width = array.get 0 grid |> option.unwrapOr array.empty |> array.length;
+        let height = array.length grid;
+        list.range 0 width
+        |> list.map (\x ->
+            list.range 0 height
+            |> list.filter (\y ->
+                isXofMas grid x y)
+            |> list.length)
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
