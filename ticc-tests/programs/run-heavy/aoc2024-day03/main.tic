@@ -1,0 +1,69 @@
+import ints from "std/int";
+import option from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Instr = Mul int int | Do | Dont;
+
+let parseMul : Parse Instr =
+    parse.ok Mul
+    |> parse.ignore (parse.literal "mul(")
+    |> parse.apply parse.integer
+    |> parse.ignore (parse.literal ",")
+    |> parse.apply parse.integer
+    |> parse.ignore (parse.literal ")");
+
+let parseInstr : string -> Result Instr string =
+    \line ->
+        parseMul
+        |> parse.or (parse.literal "do()" |> parse.map (\_ -> Do))
+        |> parse.or (parse.literal "don't()" |> parse.map (\_ -> Dont))
+        |> parse.ignore parse.remainder
+        |> parse.run line;
+
+let parseInput : string -> Result (List Instr) string =
+    \input ->
+        list.range 0 (strings.length input)
+        -- 6 for mul( , )
+        -- 2*10 for numbers
+        -- do() and don't() are shorter
+        |> list.map (\idx -> strings.substring idx 26 input)
+        |> list.map parseInstr
+        |> list.filterMap result.ok
+        |> Ok;
+
+let part1 : List Instr -> string =
+    \lists ->
+        lists
+        |> list.map (\x ->
+            match x with
+            | Mul a b -> a * b
+            | Do -> 0
+            | Dont -> 0
+            end)
+        |> list.sum
+        |> ints.toString;
+
+let part2 : List Instr -> string =
+    let go = \fold instrs -> \enabled ->
+        match instrs with
+        | Nil -> 0
+        | Cons x xs ->
+            match x with
+            | Mul a b ->
+                if enabled then
+                    a * b + (xs enabled)
+                else
+                    xs enabled
+            | Do -> xs true
+            | Dont -> xs false
+            end
+        end;
+    \instrs ->
+        go instrs true
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

@@ -1,0 +1,69 @@
+import ints from "std/int";
+import option from "std/option";
+import result(Result, Ok, Err) from "std/result";
+import list(List, Nil, Cons) from "std/list";
+import strings from "std/string";
+import utils from "../shared/aoc-utils.tic";
+
+type Pair a b = Pair a b;
+
+let parseLine : string -> Result (List int) string =
+    \line ->
+        line
+        |> strings.split 32
+        |> list.map ints.parse
+        |> list.allOk
+        |> result.mapErr (\_ -> "bad int");
+
+let parseInput : string -> Result (List (List int)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parseLine
+        |> list.allOk;
+
+let safeInc : int -> int -> bool =
+    \a -> \b ->
+        if a < b then
+            b <= a + 3
+        else
+            false;
+
+let isSafeInc : List int -> bool =
+    \x ->
+        let tail = list.tail x |> option.unwrapOr Nil;
+        list.zip safeInc x tail
+        |> list.all;
+
+let isSafe : List int -> bool =
+    \x ->
+        if isSafeInc x then
+            true
+        else
+            isSafeInc (list.reverse x);
+
+let part1 : List (List int) -> string =
+    \lists ->
+        lists
+        |> list.filter isSafe
+        |> list.length
+        |> ints.toString;
+
+let isMostlySafe : List int -> bool =
+    \l ->
+        list.range 0 (list.length l)
+        |> list.map (\idx ->
+            let before = list.take idx l;
+            let after = list.skip (idx + 1) l;
+            list.concat before after
+            |> isSafe)
+        |> list.any;
+
+let part2 : List (List int) -> string =
+    \lists ->
+        lists
+        |> list.filter isMostlySafe
+        |> list.length
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
