@@ -11,7 +11,7 @@ fn semantic_tokens(
 ) -> Option<lsp_types::SemanticTokensResult> {
     let key = FileKey::from(params.text_document.uri);
     let compilation = server.compilations.get_mut(&key).unwrap();
-    let tokens = crate::semantic_tokens::get_semantic_tokens(compilation);
+    let tokens = crate::semantic_tokens::get_semantic_tokens(&mut compilation.unit);
     Some(lsp_types::SemanticTokensResult::Tokens(lsp_types::SemanticTokens {
         result_id: None,
         data: tokens,
@@ -25,7 +25,7 @@ fn go_to_definition(
     let key = FileKey::from(params.text_document_position_params.text_document.uri);
     let compilation = server.compilations.get_mut(&key).unwrap();
     let pos = params.text_document_position_params.position;
-    if let Some(range) = crate::go_to_definition::find_definition(compilation, pos) {
+    if let Some(range) = crate::go_to_definition::find_definition(&mut compilation.unit, pos) {
         Some(lsp_types::GotoDefinitionResponse::Scalar(lsp_types::Location {
             uri: key.0,
             range,
@@ -42,7 +42,7 @@ fn find_references(
     let key = FileKey::from(params.text_document_position.text_document.uri);
     let compilation = server.compilations.get_mut(&key).unwrap();
     let pos = params.text_document_position.position;
-    let references = crate::find_references::find_references(compilation, pos)?;
+    let references = crate::find_references::find_references(&mut compilation.unit, pos)?;
     let mut references = references
         .into_iter()
         .map(|range| lsp_types::Location {
@@ -51,7 +51,7 @@ fn find_references(
         })
         .collect::<Vec<_>>();
     if params.context.include_declaration {
-        if let Some(range) = crate::go_to_definition::find_definition(compilation, pos) {
+        if let Some(range) = crate::go_to_definition::find_definition(&mut compilation.unit, pos) {
             references.push(lsp_types::Location {
                 uri: key.0.clone(),
                 range,
@@ -68,7 +68,7 @@ fn hover(
     let key = FileKey::from(params.text_document_position_params.text_document.uri);
     let compilation = server.compilations.get_mut(&key).unwrap();
     let pos = params.text_document_position_params.position;
-    crate::hover::hover(compilation, pos)
+    crate::hover::hover(&mut compilation.unit, pos)
 }
 
 fn completions(
@@ -78,7 +78,7 @@ fn completions(
     let key = FileKey::from(params.text_document_position.text_document.uri);
     let compilation = server.compilations.get_mut(&key).unwrap();
     let pos = params.text_document_position.position;
-    crate::completions::completions(compilation, pos)
+    crate::completions::completions(&mut compilation.unit, pos)
 }
 
 fn on_open(
@@ -95,7 +95,7 @@ fn on_change(
     params: lsp_types::DidChangeTextDocumentParams,
 ) {
     let key = FileKey::from(params.text_document.uri);
-    server.compilations.set_source(key.clone(), &params.content_changes[0].text);
+    server.files.set(key.clone(), &params.content_changes[0].text);
     on_file_update(server, key);
 }
 
@@ -110,9 +110,19 @@ fn on_close(
 
 fn on_file_update(
     server: &mut TicServer,
-    file: FileKey,
+    _file: FileKey,
 ) {
-    send_diagnostics(server, file);
+    let mut to_update = Vec::new();
+    for (key, comp) in &mut server.compilations.compilations {
+        if comp.refresh() {
+            eprintln!("will resend diagnostics for {}", comp.key.0);
+            to_update.push(key.clone());
+        }
+    }
+    to_update.sort();
+    for key in to_update {
+        send_diagnostics(server, key);
+    }
 }
 
 fn send_diagnostics(
@@ -120,7 +130,7 @@ fn send_diagnostics(
     file: FileKey,
 ) {
     let compilation = server.compilations.get_mut(&file).unwrap();
-    let diagnostics = crate::diagnostics::get_diagnostics(compilation);
+    let diagnostics = crate::diagnostics::get_diagnostics(&mut compilation.unit);
     server.sender.send(lsp_server::Message::Notification(lsp_server::Notification {
         method: notification::PublishDiagnostics::METHOD.to_owned(),
         params: serde_json::to_value(lsp_types::PublishDiagnosticsParams {

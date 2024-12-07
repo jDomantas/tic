@@ -7,13 +7,16 @@ mod hover;
 mod semantic_tokens;
 mod utils;
 
-use std::collections::HashMap;
+#[cfg(test)]
+mod tests;
+
+use std::{collections::{hash_map::Entry, HashMap}, path::Path, sync::{Arc, Mutex}};
 use crossbeam_channel::Sender;
 use lsp_types::{
     CompletionOptions,
     DeclarationCapability,
-    InitializeParams,
     HoverProviderCapability,
+    InitializeParams,
     OneOf,
     SemanticTokensFullOptions,
     SemanticTokensLegend,
@@ -24,12 +27,14 @@ use lsp_types::{
     WorkDoneProgressOptions,
 };
 use lsp_server::{Connection, Message};
-use ticc::CompilationUnit;
+use ticc::{CompilationUnit, CompleteUnit, ModuleResolver, NoopModuleResolver};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(PartialEq, Eq, Debug, Hash, Clone)]
+type ReadFile = Arc<dyn Fn(&Path) -> Result<String, std::io::Error> + Send + Sync>;
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Clone)]
 struct FileKey(lsp_types::Url);
 
 impl From<lsp_types::Url> for FileKey {
@@ -38,27 +43,26 @@ impl From<lsp_types::Url> for FileKey {
     }
 }
 
-#[derive(Default)]
 struct CompilationSet {
-    compilations: HashMap<FileKey, CompilationUnit>,
+    files: FileSet,
+    compilations: HashMap<FileKey, Compilation>,
 }
 
 impl CompilationSet {
-    fn get_mut(&mut self, file: &FileKey) -> Option<&mut CompilationUnit> {
+    fn get_mut(&mut self, file: &FileKey) -> Option<&mut Compilation> {
         self.compilations.get_mut(file)
     }
 
     fn add_file(&mut self, file: FileKey, source: &str) {
-        let compilation = CompilationUnit::new(
-            source,
-            ticc::Options::default(),
-            ticc::NoopModuleResolver::new(),
-        );
+        self.files.set(file.clone(), source);
+        let compilation = Compilation {
+            key: file.clone(),
+            files: self.files.clone(),
+            source_version: 0,
+            unit: CompilationUnit::new("", Default::default(), NoopModuleResolver::new()),
+            dependencies: Default::default(),
+        };
         self.compilations.insert(file, compilation);
-    }
-
-    fn set_source(&mut self, file: FileKey, source: &str) {
-        self.add_file(file, source);
     }
 
     fn remove_file(&mut self, file: &FileKey) {
@@ -69,6 +73,7 @@ impl CompilationSet {
 struct TicServer {
     sender: Sender<Message>,
     compilations: CompilationSet,
+    files: FileSet,
 }
 
 struct RequestHandler {
@@ -183,17 +188,25 @@ impl Handlers {
 fn main() -> Result<()> {
     let (connection, io_threads) = Connection::stdio();
 
-    // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
-    let server_capabilities = serde_json::to_value(&server_capabilities()).unwrap();
-    let initialization_params = connection.initialize(server_capabilities)?;
-    if let Err(e) = main_loop(&connection, initialization_params) {
-        eprintln!("error, aborting: {}", e);
-    }
-    io_threads.join()?;
+    run(connection, Arc::new(|path| std::fs::read_to_string(path)));
 
-    // Shut down gracefully.
+    io_threads.join()?;
     eprintln!("shutting down server");
     Ok(())
+}
+
+fn run(conn: Connection, read_file: ReadFile) {
+    let server_capabilities = serde_json::to_value(&server_capabilities()).unwrap();
+    let initialization_params = match conn.initialize(server_capabilities) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("error while initializing: {}", e);
+            return;
+        }
+    };
+    if let Err(e) = main_loop(&conn, initialization_params, read_file) {
+        eprintln!("error, aborting: {}", e);
+    }
 }
 
 fn server_capabilities() -> ServerCapabilities {
@@ -232,11 +245,20 @@ fn server_capabilities() -> ServerCapabilities {
 fn main_loop(
     connection: &Connection,
     params: serde_json::Value,
+    read_file: ReadFile,
 ) -> Result<()> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
+    let files = FileSet {
+        files: Default::default(),
+        read_file,
+    };
     let mut server = TicServer {
         sender: connection.sender.clone(),
-        compilations: CompilationSet::default(),
+        compilations: CompilationSet {
+            files: files.clone(),
+            compilations: Default::default(),
+        },
+        files,
     };
     let mut handlers = crate::handlers::handlers();
     for msg in &connection.receiver {
@@ -259,4 +281,169 @@ fn main_loop(
     }
     eprintln!("stopping main loop");
     Ok(())
+}
+
+#[derive(Clone)]
+struct FileSet {
+    files: Arc<Mutex<HashMap<FileKey, FileContent>>>,
+    read_file: ReadFile,
+}
+
+#[derive(Clone)]
+struct FileContent {
+    content: Result<Arc<str>, std::io::ErrorKind>,
+    version: u64,
+}
+
+impl FileSet {
+    fn set(&self, key: FileKey, new_content: &str) {
+        self.files
+            .lock()
+            .unwrap()
+            .entry(key.clone())
+            .and_modify(|c| {
+                c.content = Ok(new_content.into());
+                c.version += 1;
+            })
+            .or_insert_with(|| {
+                FileContent {
+                    content: Ok(new_content.into()),
+                    version: 1,
+                }
+            });
+    }
+
+    fn get(&self, key: &FileKey) -> FileContent {
+        let x = self.files
+            .lock()
+            .unwrap()
+            .entry(key.clone())
+            .or_insert_with(|| {
+                FileContent {
+                    content: self.read_file(key).map(Into::into).map_err(|e| e.kind()),
+                    version: 1,
+                }
+            })
+            .clone();
+        x
+    }
+
+    fn read_file(&self, url: &FileKey) -> Result<String, std::io::Error> {
+        if url.0.scheme() != "file" {
+            return Err(std::io::ErrorKind::NotFound.into());
+        }
+        match url.0.to_file_path() {
+            Ok(path) => (self.read_file)(&path),
+            Err(()) => Err(std::io::ErrorKind::NotFound.into())
+        }
+    }
+}
+
+struct Dependency {
+    unit: Option<CompleteUnit>,
+    source_version: u64,
+}
+
+struct Compilation {
+    key: FileKey,
+    files: FileSet,
+    source_version: u64,
+    unit: CompilationUnit,
+    dependencies: Arc<Mutex<HashMap<FileKey, Dependency>>>,
+}
+
+impl Compilation {
+    fn is_any_dependency_stale(&self) -> bool {
+        self.dependencies.lock().unwrap().iter().any(|(file, dep)| self.files.get(file).version > dep.source_version)
+    }
+
+    fn refresh(&mut self) -> bool {
+        let mut modified = false;
+        if self.is_any_dependency_stale() {
+            self.dependencies.lock().unwrap().clear();
+            modified = true;
+        }
+
+        let source = self.files.get(&self.key);
+        if modified || self.source_version < source.version {
+            let source_text = source.content.ok().unwrap_or_default();
+
+            self.source_version = source.version;
+            self.dependencies.lock().unwrap().clear();
+            self.unit = CompilationUnit::new(
+                &source_text,
+                ticc::Options::default(),
+                Arc::new(CompilationModuleResolver {
+                    current_key: self.key.clone(),
+                    dependencies: self.dependencies.clone(),
+                    files: self.files.clone(),
+                }),
+            );
+
+            modified = true;
+        }
+
+        modified
+    }
+}
+
+struct CompilationModuleResolver {
+    current_key: FileKey,
+    dependencies: Arc<Mutex<HashMap<FileKey, Dependency>>>,
+    files: FileSet,
+}
+
+impl CompilationModuleResolver {
+    fn name_to_key(&self, name: &str) -> Option<FileKey> {
+        self.current_key.0.join(name).ok().map(FileKey)
+    }
+}
+
+impl ModuleResolver for CompilationModuleResolver {
+    fn lookup(self: Arc<Self>, name: &str) -> std::result::Result<CompleteUnit, ticc::ImportError> {
+        let Some(key) = self.name_to_key(name) else {
+            return Err(ticc::ImportError::DoesNotExist);
+        };
+
+        let source = self.files.get(&key);
+
+        match self.dependencies.lock().unwrap().entry(key.clone()) {
+            Entry::Occupied(e) => match e.get().unit.clone() {
+                None => {
+                    return Err(ticc::ImportError::ImportCycle);
+                }
+                Some(unit) => {
+                    return Ok(unit.clone())
+                }
+            }
+            Entry::Vacant(e) => {
+                e.insert(Dependency {
+                    unit: None,
+                    source_version: source.version,
+                });
+            }
+        }
+
+        let source_text = match source.content {
+            Ok(text) => text,
+            Err(std::io::ErrorKind::NotFound) => return Err(ticc::ImportError::DoesNotExist),
+            Err(other) => return Err(ticc::ImportError::Io(other.into())),
+        };
+
+        let subresolver = Arc::new(CompilationModuleResolver {
+            current_key: key.clone(),
+            dependencies: self.dependencies.clone(),
+            files: self.files.clone(),
+        });
+
+        let unit =  CompilationUnit::new(
+            &source_text,
+            Default::default(),
+            subresolver,
+        ).complete();
+
+        self.dependencies.lock().unwrap().get_mut(&key).unwrap().unit = Some(unit.clone());
+
+        Ok(unit)
+    }
 }
