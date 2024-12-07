@@ -500,7 +500,7 @@ fn link(heap: &mut Heap, consts: &mut Vec<Addr>, ops: Vec<compile::Op>) -> (Vec<
             }
             compile::Op::Branch(br) => {
                 Op::Branch(Box::new(br
-                    .into_iter()
+                    .iter()
                     .map(|b| Branch {
                         tag: ctor_tags.resolve(b.ctor),
                         dst: label_addresses[&b.dst],

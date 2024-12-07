@@ -1,7 +1,7 @@
 pub(crate) mod node;
 
 pub use ticc_syntax::{NodeId, SyntaxKind, TokenKind, TriviaKind};
-pub use ticc_syntax::cursor::{SyntaxNode, SyntaxToken, TriviaToken};
+pub use ticc_syntax::cursor::{SyntaxNode, SyntaxToken};
 use ticc_syntax::SyntaxTree;
 
 pub(crate) trait AstNode<'a>: Sized {
