@@ -73,6 +73,7 @@ pub(crate) struct Def {
     pub(crate) vis: Visibility,
     pub(crate) span: Span,
     pub(crate) node: NodeId,
+    pub(crate) has_name: bool,
 }
 
 impl Def {
@@ -90,6 +91,7 @@ impl Def {
             vis,
             span: name.token().span(),
             node: name.syntax().id(),
+            has_name: true,
         }
     }
 

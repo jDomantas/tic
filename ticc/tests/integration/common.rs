@@ -1,6 +1,8 @@
 #![allow(unused)]
 
-use ticc::{Pos, Span};
+use std::sync::Arc;
+
+use ticc::{CompleteUnit, ModuleResolver, Pos, Span};
 
 pub fn single_file_compilation(source: &str) -> ticc::CompilationUnit {
     ticc::CompilationUnit::new(
@@ -8,6 +10,32 @@ pub fn single_file_compilation(source: &str) -> ticc::CompilationUnit {
         ticc::Options::default(),
         ticc::NoopModuleResolver::new(),
     )
+}
+
+pub fn compilation_with_dep(source: &str, dep_source: &str) -> ticc::CompilationUnit {
+    let dep = ticc::CompilationUnit::new(
+        dep_source,
+        ticc::Options::default(),
+        ticc::NoopModuleResolver::new(),
+    ).complete();
+    ticc::CompilationUnit::new(
+        source,
+        ticc::Options::default(),
+        Arc::new(DepResolver { dep }),
+    )
+}
+
+struct DepResolver {
+    dep: CompleteUnit,
+}
+
+impl ModuleResolver for DepResolver {
+    fn lookup(self: std::sync::Arc<Self>, name: &str) -> Result<CompleteUnit, ticc::ImportError> {
+        if name == "dep" {
+            return Ok(self.dep.clone());
+        }
+        Err(ticc::ImportError::DoesNotExist)
+    }
 }
 
 pub fn extract_spans(source: &str) -> (String, Vec<Span>) {

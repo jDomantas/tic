@@ -38,6 +38,9 @@ impl<'a> Scope<'a> {
             if def.vis == ir::Visibility::Local && !include_local {
                 continue;
             }
+            if !def.has_name {
+                continue;
+            }
             let span = def.span;
             let name = &source[span.start().source_pos()..span.end().source_pos()];
             match &def.kind {

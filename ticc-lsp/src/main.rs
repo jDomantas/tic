@@ -234,7 +234,7 @@ fn server_capabilities() -> ServerCapabilities {
     capabilities.completion_provider = Some(CompletionOptions {
         all_commit_characters: None,
         resolve_provider: Some(false),
-        trigger_characters: Some(vec![" ".to_owned()]),
+        trigger_characters: Some(vec![" ".to_owned(), ".".to_owned()]),
         work_done_progress_options: WorkDoneProgressOptions {
             work_done_progress: Some(false),
         },

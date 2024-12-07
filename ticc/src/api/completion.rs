@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ticc_syntax::Pos;
-use crate::{CompilationUnit, RawDiagnostic};
+use crate::{CompilationUnit, CompleteUnit, RawDiagnostic};
 use crate::compiler::{Scope, ir, resolve, syntax::{AstNode, node}};
 
 pub struct Completion {
@@ -43,29 +43,50 @@ impl resolve::ResolveSink for Resolver {
 
     fn record_error(&mut self, _err: RawDiagnostic) {}
 
-    fn on_name(&mut self, name: node::Name<'_>, usage: resolve::NameUsage, scope: &Scope<'_>) {
+    fn on_name(&mut self, name: node::Name<'_>, usage: resolve::NameUsage, scope: &Scope<'_>, namespace: resolve::Namespace) {
         let span = name.syntax().span();
         if self.pos < span.start() || span.end() < self.pos {
             return;
         }
         let mut completions = Vec::new();
         let mut scope = Some(scope);
-        let empty = HashMap::new();
         while let Some(current) = scope {
-            let map = match usage {
-                resolve::NameUsage::Type => &current.types,
-                resolve::NameUsage::Value => &current.values,
-                resolve::NameUsage::Ctor => &current.ctors,
-                resolve::NameUsage::Module => &empty, // TODO: autocomplete for module names
+            if let resolve::Namespace::None = namespace {
+                add_keys_from(&mut completions, &current.modules);
+            }
+            match (&namespace, usage) {
+                (resolve::Namespace::None, resolve::NameUsage::Type) => add_keys_from(&mut completions, &current.types),
+                (resolve::Namespace::None, resolve::NameUsage::Value) => add_keys_from(&mut completions, &current.values),
+                (resolve::Namespace::None, resolve::NameUsage::Ctor) => add_keys_from(&mut completions, &current.ctors),
+                (resolve::Namespace::None, resolve::NameUsage::Module) => {},
+                (resolve::Namespace::Module(m), usage) => add_exports(&mut completions, m, usage),
+                (resolve::Namespace::UnresolvedModule, _) => {}
             };
-            completions.extend(map
-                .keys()
-                .copied()
-                .map(|k| Completion { name: k.to_owned() }));
             scope = current.parent;
         }
         completions.sort_by(|a, b| a.name.cmp(&b.name));
         completions.dedup_by(|a, b| a.name == b.name);
         self.results = Some(completions);
+    }
+}
+
+fn add_keys_from<T>(completions: &mut Vec<Completion>, map: &HashMap<&str, T>) {
+    completions.extend(map
+        .keys()
+        .copied()
+        .map(|k| Completion { name: k.to_owned() }));
+}
+
+fn add_exports(completions: &mut Vec<Completion>, unit: &CompleteUnit, for_usage: resolve::NameUsage) {
+    for (name, def) in &unit.props.exports {
+        let kind = match def.kind {
+            ir::DefKind::Value {.. } => resolve::NameUsage::Value,
+            ir::DefKind::Ctor { .. } => resolve::NameUsage::Ctor,
+            ir::DefKind::Type { .. } => resolve::NameUsage::Type,
+            ir::DefKind::Module { .. } => resolve::NameUsage::Module,
+        };
+        if kind == for_usage {
+            completions.push(Completion { name: name.clone() })
+        }
     }
 }

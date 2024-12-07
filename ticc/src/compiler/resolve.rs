@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{ModuleResolver, RawDiagnostic, Severity, ImportError, ModuleKey};
+use crate::{CompleteUnit, ImportError, ModuleKey, ModuleResolver, RawDiagnostic, Severity};
 use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope};
 
 use super::syntax::AstNode;
@@ -35,15 +35,21 @@ pub(crate) trait ResolveSink {
     fn record_def(&mut self, def: ir::Def);
     fn record_ref(&mut self, r: ir::Ref);
     fn record_error(&mut self, err: RawDiagnostic);
-    fn on_name(&mut self, name: node::Name<'_>, usage: NameUsage, scope: &Scope<'_>);
+    fn on_name(&mut self, name: node::Name<'_>, usage: NameUsage, scope: &Scope<'_>, namespace: Namespace);
 }
 
-#[derive(Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub(crate) enum NameUsage {
     Type,
     Value,
     Ctor,
     Module,
+}
+
+pub(crate) enum Namespace {
+    None,
+    Module(CompleteUnit),
+    UnresolvedModule,
 }
 
 struct Resolver<'a> {
@@ -65,7 +71,7 @@ impl<'a> ResolveSink for Resolver<'a> {
         self.diagnostics.push(err);
     }
 
-    fn on_name(&mut self, _name: node::Name<'_>, _usage: NameUsage, _scope: &Scope<'_>) {}
+    fn on_name(&mut self, _name: node::Name<'_>, _usage: NameUsage, _scope: &Scope<'_>, _namespace: Namespace) {}
 }
 
 fn resolve_item(sink: &mut impl ResolveSink, module: ModuleKey, item: node::Item<'_>, scope: &Scope<'_>, module_resolver: Arc<dyn ModuleResolver>) {
@@ -127,6 +133,7 @@ fn resolve_import_item(sink: &mut impl ResolveSink, module: ModuleKey, item: nod
             vis: ir::Visibility::Module,
             span: name.token().span(),
             node: name.syntax().id(),
+            has_name: true,
         });
     } else {
         // TODO: don't create this fake def (currently needed for codegen to pick up the module)
@@ -137,6 +144,7 @@ fn resolve_import_item(sink: &mut impl ResolveSink, module: ModuleKey, item: nod
             vis: ir::Visibility::Module,
             span: item.syntax().span(),
             node: item.syntax().id(),
+            has_name: false,
         });
     }
 
@@ -180,6 +188,7 @@ fn resolve_type_item(sink: &mut impl ResolveSink, module: ModuleKey, item: node:
                 vis: ir::Visibility::Local,
                 span: param.token().span(),
                 node: param.syntax.id(),
+                has_name: true,
             });
             scope.types.insert(param.token().text(), symbol);
         }
@@ -304,9 +313,9 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
         node::Type::Named(ty) => {
             let symbol = match (ty.namespace(), ty.name()) {
                 (Some(namespace), Some(name)) => {
-                    sink.on_name(namespace, NameUsage::Module, scope);
-                    sink.on_name(name, NameUsage::Value, scope);
+                    sink.on_name(namespace, NameUsage::Module, scope, Namespace::None);
                     if let Some(module) = scope.lookup_module(namespace.token().text()) {
+                        sink.on_name(name, NameUsage::Value, scope, Namespace::Module(module.clone()));
                         // TODO: sink.record_ref for the module usage
                         if let Some(def) = module.props.exports.get(name.token().text()) {
                             sink.record_ref(ir::Ref::new(def.symbol, name));
@@ -320,6 +329,7 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
                             None
                         }
                     } else {
+                        sink.on_name(name, NameUsage::Value, scope, Namespace::UnresolvedModule);
                         sink.record_error(RawDiagnostic {
                             span: namespace.token().span(),
                             severity: Severity::Error,
@@ -329,7 +339,7 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
                     }
                 }
                 (None, Some(name)) =>{
-                    sink.on_name(name, NameUsage::Type, scope);
+                    sink.on_name(name, NameUsage::Type, scope, Namespace::None);
                     if let Some(symbol) = scope.lookup_type(name.token().text()) {
                         sink.record_ref(ir::Ref::new(symbol, name));
                         Some(symbol)
@@ -382,9 +392,9 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, module: ModuleKey, ty
         node::Type::Named(ty) => {
             let symbol = match (ty.namespace(), ty.name()) {
                 (Some(namespace), Some(name)) => {
-                    sink.on_name(namespace, NameUsage::Module, scope);
-                    sink.on_name(name, NameUsage::Value, scope);
+                    sink.on_name(namespace, NameUsage::Module, scope, Namespace::None);
                     if let Some(module) = scope.lookup_module(namespace.token().text()) {
+                        sink.on_name(name, NameUsage::Value, scope, Namespace::Module(module.clone()));
                         // TODO: sink.record_ref for the module usage
                         if let Some(def) = module.props.exports.get(name.token().text()) {
                             sink.record_ref(ir::Ref::new(def.symbol, name));
@@ -398,6 +408,7 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, module: ModuleKey, ty
                             None
                         }
                     } else {
+                        sink.on_name(name, NameUsage::Value, scope, Namespace::UnresolvedModule);
                         sink.record_error(RawDiagnostic {
                             span: namespace.token().span(),
                             severity: Severity::Error,
@@ -407,7 +418,7 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, module: ModuleKey, ty
                     }
                 }
                 (None, Some(name)) =>{
-                    sink.on_name(name, NameUsage::Type, scope);
+                    sink.on_name(name, NameUsage::Type, scope, Namespace::None);
                     if let Some(symbol) = scope.lookup_type(name.token().text()) {
                         sink.record_ref(ir::Ref::new(symbol, name));
                         Some(symbol)
@@ -490,7 +501,7 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
     match expr {
         node::Expr::Name(expr) => {
             if let Some(name) = expr.name() {
-                sink.on_name(name, NameUsage::Value, scope);
+                sink.on_name(name, NameUsage::Value, scope, Namespace::None);
                 if let Some(symbol) = scope.lookup_value(name.token().text()) {
                     sink.record_ref(ir::Ref::new(symbol, name));
                 } else {
@@ -504,9 +515,9 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
         }
         node::Expr::NamespacedName(expr) => {
             if let (Some(namespace), Some(name)) = (expr.namespace(), expr.name()) {
-                sink.on_name(namespace, NameUsage::Module, scope);
-                sink.on_name(name, NameUsage::Value, scope);
+                sink.on_name(namespace, NameUsage::Module, scope, Namespace::None);
                 if let Some(module) = scope.lookup_module(namespace.token().text()) {
+                    sink.on_name(name, NameUsage::Value, scope, Namespace::Module(module.clone()));
                     // TODO: sink.record_ref for the module usage
                     if let Some(def) = module.props.exports.get(name.token().text()) {
                         sink.record_ref(ir::Ref::new(def.symbol, name))
@@ -518,6 +529,7 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
                         });
                     }
                 } else {
+                    sink.on_name(name, NameUsage::Value, scope, Namespace::UnresolvedModule);
                     sink.record_error(RawDiagnostic {
                         span: namespace.token().span(),
                         severity: Severity::Error,
@@ -626,9 +638,9 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
 fn resolve_match_case(sink: &mut impl ResolveSink, module: ModuleKey, case: node::MatchCase, scope: &Scope<'_>) {
     match (case.namespace(), case.ctor()) {
         (Some(namespace), Some(name)) => {
-            sink.on_name(namespace, NameUsage::Module, scope);
-            sink.on_name(name, NameUsage::Ctor, scope);
+            sink.on_name(namespace, NameUsage::Module, scope, Namespace::None);
             if let Some(module) = scope.lookup_module(namespace.token().text()) {
+                sink.on_name(name, NameUsage::Ctor, scope, Namespace::Module(module.clone()));
                 // TODO: sink.record_ref for the module usage
                 if let Some(def) = module.props.exports.get(name.token().text()) {
                     sink.record_ref(ir::Ref::new(def.symbol, name));
@@ -640,6 +652,7 @@ fn resolve_match_case(sink: &mut impl ResolveSink, module: ModuleKey, case: node
                     });
                 }
             } else {
+                sink.on_name(name, NameUsage::Ctor, scope, Namespace::UnresolvedModule);
                 sink.record_error(RawDiagnostic {
                     span: namespace.token().span(),
                     severity: Severity::Error,
@@ -648,7 +661,7 @@ fn resolve_match_case(sink: &mut impl ResolveSink, module: ModuleKey, case: node
             }
         }
         (None, Some(name)) =>{
-            sink.on_name(name, NameUsage::Ctor, scope);
+            sink.on_name(name, NameUsage::Ctor, scope, Namespace::None);
             if let Some(symbol) = scope.lookup_ctor(name.token().text()) {
                 sink.record_ref(ir::Ref::new(symbol, name));
             } else {
