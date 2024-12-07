@@ -63,26 +63,68 @@ let tails : List a -> List (List a) =
             end
         end;
 
-let isValid : List Rule -> List int -> bool =
-    \rules -> \list ->
-        let validPair : int -> int -> bool =
-            \a -> \b ->
-                rules
-                |> list.map (\r ->
-                    match r with
-                    | Rule p q ->
-                        if p == b then
-                            q != a
+type RuleGroup = RuleGroup int (List int);
+
+let groupRules : List Rule -> List RuleGroup =
+    let groupSorted = \fold rules ->
+        match rules with
+        | Nil -> Nil
+        | Cons x xs ->
+            match x with
+            | Rule p q ->
+                match xs with
+                | Nil -> Cons (RuleGroup p (Cons q Nil)) Nil
+                | Cons g gs ->
+                    match g with
+                    | RuleGroup t l ->
+                        if p == t then
+                            Cons (RuleGroup p (Cons q l)) gs
                         else
-                            true
-                    end)
-                |> list.all;
+                            Cons (RuleGroup p (Cons q Nil)) xs
+                    end
+                end
+            end
+        end;
+    let first = \r ->
+        match r with
+        | Rule a _ -> a
+        end;
+    \rules ->
+        rules
+        |> list.sortBy (\a -> \b -> first a < first b)
+        |> groupSorted;
+
+let contains : List int -> int -> bool =
+    \fold l ->
+        match l with
+        | Nil -> \_ -> false
+        | Cons x xs -> \a -> if a == x then true else xs a
+        end;
+
+let pairChecker : List RuleGroup -> int -> int -> bool =
+    \fold rules ->
+        match rules with
+        | Nil -> \_ -> \_ -> false
+        | Cons x xs ->
+            match x with
+            | RuleGroup p q ->
+                let q = contains q;
+                \a -> \b ->
+                    if a == p then
+                        q b
+                    else
+                        xs a b
+            end
+        end;
+
+let isValid : (int -> int -> bool) -> List int -> bool =
+    \rules -> \list ->
         let checkTail = \tail ->
             match tail with
             | Nil -> true
             | Cons x xs ->
                 xs
-                |> list.map (\i -> validPair x i)
+                |> list.map (\i -> rules x i)
                 |> list.all
             end;
         list
@@ -101,8 +143,9 @@ let part1 : Input -> string =
     \input ->
         match input with
         | Input rules lists ->
+            let check = pairChecker (groupRules rules);
             lists
-            |> list.filter (isValid rules)
+            |> list.filter (isValid check)
             |> list.map middle
             |> list.sum
             |> ints.toString
@@ -125,8 +168,9 @@ let part2 : Input -> string =
     \input ->
         match input with
         | Input rules lists ->
+            let check = pairChecker (groupRules rules);
             lists
-            |> list.filter (\x -> if isValid rules x then false else true)
+            |> list.filter (\x -> if isValid check x then false else true)
             |> list.map (list.sortBy (compareByRules rules))
             |> list.map middle
             |> list.sum
