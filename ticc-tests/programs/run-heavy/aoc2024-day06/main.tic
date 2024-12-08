@@ -1,0 +1,132 @@
+import ints from "std/int";
+import option(Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import array(Array) from "std/array";
+import (Result, Ok, Err) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Cell = Empty | Guard | Wall | Visited | Outside;
+
+let parseCell : int -> Result Cell string =
+    let wall = strings.charAt 0 "#";
+    let empty = strings.charAt 0 ".";
+    let guard = strings.charAt 0 "^";
+    \c ->
+        if c == wall then
+            Ok Wall
+        else if c == empty then
+            Ok Empty
+        else if c == guard then
+            Ok Guard
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (List (List Cell)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk;
+
+type State =
+    | Walking int int (Array (Array Cell)) int int int int
+    | Done (Array (Array Cell));
+
+let get : int -> int -> Array (Array Cell) -> Cell =
+    \x -> \y -> \grid ->
+        grid
+        |> array.get y
+        |> option.andThen (\row ->
+            row
+            |> array.get x)
+        |> option.unwrapOr Outside;
+
+let markVisited : int -> int -> Array (Array Cell) -> Array (Array Cell) =
+    \x -> \y -> \cells ->
+        array.mapIdx y (array.mapIdx x (\_ -> Visited)) cells;
+
+let step : State -> State =
+    \state ->
+        match state with
+        | Done _ -> state
+        | Walking w h cells x y dx dy ->
+            let nextX = x + dx;
+            let nextY = y + dy;
+            let marked = markVisited nextX nextY cells;
+            match get nextX nextY cells with
+            | Empty ->
+                Walking w h marked nextX nextY dx dy
+            | Wall ->
+                Walking w h cells x y (0 - dy) dx
+            | Visited ->
+                Walking w h marked nextX nextY dx dy
+            | Guard ->
+                Walking w h marked nextX nextY dx dy
+            | Outside ->
+                Done cells
+            end
+        end;
+
+let countVisited : Array (Array Cell) -> int =
+    \cells ->
+        cells
+        |> array.toList
+        |> list.map array.toList
+        |> list.flatten
+        |> list.filter (\c ->
+            match c with
+            | Empty -> false
+            | Guard -> true
+            | Wall -> false
+            | Visited -> true
+            | Outside -> false
+            end)
+        |> list.length;
+
+let solveState : State -> int =
+    \state ->
+        match state with
+        | Walking w h _ _ _ _ _ ->
+            let maxSteps = w * h * 4;
+            let endState = ints.iterate maxSteps step state;
+            match endState with
+            | Walking _ _ c _ _ _ _ -> countVisited c
+            | Done c -> countVisited c
+            end
+        | Done cells ->
+            countVisited cells
+        end;
+
+
+let part1 : List (List Cell) -> string =
+    \grid ->
+        let width = list.head grid |> option.unwrapOr Nil |> list.length;
+        let height = list.length grid;
+        let grid = grid |> list.map array.fromList |> array.fromList;
+        list.range 0 width
+        |> list.flatMap (\x ->
+            list.range 0 height
+            |> list.filterMap (\y ->
+                match get x y grid with
+                | Guard -> Some (Walking width height grid x y 0 (0-1))
+                | Empty -> None
+                | Wall -> None
+                | Visited -> None
+                | Outside -> None
+                end))
+        |> list.head
+        |> option.map solveState
+        |> result.okOr "no guard"
+        |> result.map ints.toString
+        |> result.join;
+
+let part2 : List (List Cell) -> string =
+    \grid ->
+        "todo";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
