@@ -1,0 +1,101 @@
+import ints from "std/int";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Equation = Equation int (List int);
+
+let parseList : Parse (List int) =
+    parse.remainder
+    |> parse.andThen (\s ->
+        s
+        |> strings.split 32
+        |> list.map ints.parse
+        |> list.allOk
+        |> result.mapErr (\_ -> "bad int"));
+
+let parseEquation : string -> Result Equation string =
+    \line ->
+        parse.ok Equation
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ": ")
+        |> parse.apply parseList
+        |> parse.run line;
+
+let parseInput : string -> Result (List Equation) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parseEquation
+        |> list.allOk;
+
+let concat : int -> int -> int =
+    \a -> \b ->
+        let len = strings.length (ints.toString b);
+        ints.iterate len (\x -> x * 10) a + b;
+
+let check : int -> List int -> bool =
+    \total -> \nums ->
+        let go = \fold list -> \acc ->
+            match list with
+            | Nil -> acc == total
+            | Cons x xs ->
+                if xs (acc + x) then
+                    true
+                else
+                    xs (acc * x)
+            end;
+        match nums with
+        | Nil -> false
+        | Cons x xs -> go xs x
+        end;
+
+let isValid : Equation -> bool =
+    \eq ->
+        match eq with
+        | Equation total nums -> check total nums
+        end;
+
+let part1 : List Equation -> string =
+    \input ->
+        input
+        |> list.filter isValid
+        |> list.map (\e -> match e with | Equation x _ -> x end)
+        |> list.sum
+        |> ints.toString;
+
+let check2 : int -> List int -> bool =
+    \total -> \nums ->
+        let go = \fold list -> \acc ->
+            match list with
+            | Nil -> acc == total
+            | Cons x xs ->
+                if xs (acc + x) then
+                    true
+                else if xs (acc * x) then
+                    true
+                else
+                    xs (concat acc x)
+            end;
+        match nums with
+        | Nil -> false
+        | Cons x xs -> go xs x
+        end;
+
+let isValid2 : Equation -> bool =
+    \eq ->
+        match eq with
+        | Equation total nums -> check2 total nums
+        end;
+
+let part2 : List Equation -> string =
+    \input ->
+        input
+        |> list.filter isValid2
+        |> list.map (\e -> match e with | Equation x _ -> x end)
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
