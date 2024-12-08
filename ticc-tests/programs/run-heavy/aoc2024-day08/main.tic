@@ -1,0 +1,196 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import array(Array) from "std/array";
+import (Result, Ok, Err) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+let parseCell : int -> Option int =
+    let empty = strings.charAt 0 ".";
+    \c ->
+        if c == empty then
+            None
+        else
+            Some c;
+
+let parseInput : string -> Result (List (List (Option int))) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> Ok;
+
+type Pos = Pos int int;
+
+let positions : int -> List (List (Option int)) -> List Pos =
+    \ch -> \grid ->
+        let getRow = \y -> \fold list -> \x ->
+            match list with
+            | Nil -> Nil
+            | Cons p ps ->
+                let rest = ps (x + 1);
+                match p with
+                | None -> rest
+                | Some p ->
+                    if p == ch then
+                        Cons (Pos x y) rest
+                    else
+                        rest
+                end
+            end;
+        let getAll = \fold list -> \y ->
+            match list with
+            | Nil -> Nil
+            | Cons p ps ->
+                let this = getRow y p 0;
+                let rest = ps (y + 1);
+                Cons this rest
+            end;
+        getAll grid 0 |> list.flatten;
+
+let pairs : (a -> a -> b) -> List a -> List b =
+    \make -> \l ->
+        l
+        |> list.flatMap (\i ->
+            l
+            |> list.map (\i2 -> make i i2));
+
+let mark : Pos -> Array (Array int) -> Array (Array int) =
+    let empty = strings.charAt 0 ".";
+    let mark = strings.charAt 0 "#";
+    \pos -> \grid ->
+        match pos with
+        | Pos x y ->
+            array.mapIdx y (array.mapIdx x (\c -> mark)) grid
+        end;
+
+let mark : Pos -> Array (Array bool) -> Array (Array bool) =
+    \pos -> \grid ->
+        match pos with
+        | Pos x y ->
+            array.mapIdx y (array.set x true) grid
+        end;
+
+let isAlphanumeric : int -> bool =
+    let lowerA = strings.charAt 0 "a";
+    let lowerZ = strings.charAt 0 "z";
+    let upperA = strings.charAt 0 "A";
+    let upperZ = strings.charAt 0 "Z";
+    let zero = strings.charAt 0 "0";
+    let nine = strings.charAt 0 "9";
+    \ch ->
+        if ch >= lowerA then
+            ch <= lowerZ
+        else if ch >= upperA then
+            ch <= upperZ
+        else if ch >= zero then
+            ch <= nine
+        else
+            false;
+
+let antinodeForPair : int -> int -> Pos -> Pos -> Option Pos =
+    let same = \x1 -> \y1 -> \x2 -> \y2 ->
+        if x1 == x2 then
+            y1 == y2
+        else
+            false;
+    \w -> \h -> \a -> \b ->
+        match a with
+        | Pos x1 y1 ->
+            match b with
+            | Pos x2 y2 ->
+                if same x1 y1 x2 y2 then
+                    None
+                else
+                    let x = x2 * 2 - x1;
+                    let y = y2 * 2 - y1;
+                    if x < w then
+                        if y < h then
+                            Some (Pos x y)
+                        else
+                            None
+                    else
+                        None
+            end
+        end;
+
+let part1 : List (List (Option int)) -> string =
+    \grid ->
+        let width = list.head grid |> option.unwrapOr Nil |> list.length;
+        let height = list.length grid;
+        let result =
+            grid
+            |> list.map (list.map (\_ -> false))
+            |> list.map array.fromList
+            |> array.fromList;
+        list.range 0 256
+        |> list.filter isAlphanumeric
+        |> list.map (\ch -> positions ch grid)
+        |> list.map (pairs (antinodeForPair width height))
+        |> list.map (list.filterMap (\x -> x))
+        |> list.flatten
+        |> list.foldr mark result
+        |> array.toList
+        |> list.map array.toList
+        |> list.flatten
+        |> list.filter (\x -> x)
+        |> list.length
+        |> ints.toString;
+
+let antinodesForPair : int -> int -> Pos -> Pos -> List Pos =
+    let same = \x1 -> \y1 -> \x2 -> \y2 ->
+        if x1 == x2 then
+            y1 == y2
+        else
+            false;
+    \w -> \h -> \a -> \b ->
+        match a with
+        | Pos x1 y1 ->
+            match b with
+            | Pos x2 y2 ->
+                if same x1 y1 x2 y2 then
+                    Nil
+                else
+                    let maxSteps = if w > h then w else h;
+                    list.range 0 maxSteps
+                    |> list.filterMap (\s ->
+                        let x = x2 + (x2 - x1) * s;
+                        let y = y2 + (y2 - y1) * s;
+                        if x < w then
+                            if y < h then
+                                Some (Pos x y)
+                            else
+                                None
+                        else
+                            None)
+            end
+        end;
+
+let part2 : List (List (Option int)) -> string =
+    \grid ->
+        let width = list.head grid |> option.unwrapOr Nil |> list.length;
+        let height = list.length grid;
+        let result =
+            grid
+            |> list.map (list.map (\_ -> false))
+            |> list.map array.fromList
+            |> array.fromList;
+        list.range 0 256
+        |> list.filter isAlphanumeric
+        |> list.map (\ch -> positions ch grid)
+        |> list.map (pairs (antinodesForPair width height))
+        |> list.map (list.flatten)
+        |> list.flatten
+        |> list.foldr mark result
+        |> array.toList
+        |> list.map array.toList
+        |> list.flatten
+        |> list.filter (\x -> x)
+        |> list.length
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
