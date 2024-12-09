@@ -1,0 +1,251 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import (Result, Ok, Err) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+let parseInput : string -> Result (List int) string =
+    \input ->
+        -- let input = "15201";
+        input
+        |> strings.chars
+        |> list.map (\c ->
+            if c < 48 then
+                Err "bad digit"
+            else if c > 57 then
+                Err "bad digit"
+            else
+                Ok (c - 48))
+        |> list.allOk;
+
+let unpack : List int -> List (Option int) =
+    \packed ->
+        let step = option.map (\x -> x + 1);
+        let go = \fold list -> \cur -> \next ->
+            match list with
+            | Nil -> Nil
+            | Cons x xs -> ints.iterate x (Cons cur) (xs next (step cur))
+            end;
+        go packed (Some 0) None;
+
+let compact : List (Option int) -> List int =
+    \l ->
+        let r =
+            l
+            |> list.reverse
+            |> list.filterMap (\x -> x);
+        let go = \fold l -> \t ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs ->
+                match x with
+                | Some x -> Cons x (xs t)
+                | None ->
+                    match t with
+                    | Nil -> xs Nil -- unreachable
+                    | Cons t ts -> Cons t (xs ts)
+                    end
+                end
+            end;
+        go l r
+        |> list.take (list.length r);
+
+let checksum : List int -> int =
+    \l ->
+        let go = \fold l -> \idx ->
+            match l with
+            | Nil -> 0
+            | Cons x xs -> x * idx + xs (idx + 1)
+            end;
+        go l 0;
+
+let part1 : List int -> string =
+    \input ->
+        input
+        |> unpack
+        |> compact
+        |> checksum
+        |> ints.toString;
+        -- |> list.map (option.map ints.toString)
+        -- |> list.map (option.unwrapOr ".")
+        -- |> list.join "";
+
+type Space = Space (Option int) int;
+
+let unpack : List int -> List Space =
+    \packed ->
+        let step = option.map (\x -> x + 1);
+        let go = \fold list -> \cur -> \next ->
+            match list with
+            | Nil -> Nil
+            | Cons x xs -> Cons (Space cur x) (xs next (step cur))
+            end;
+        go packed (Some 0) None;
+
+let size : Space -> int =
+    \s ->
+        match s with
+        | Space _ x -> x
+        end;
+
+let remove : int -> List Space -> List Space =
+    \id -> \fold spaces ->
+        match spaces with
+        | Nil -> Nil
+        | Cons x xs ->
+            match x with
+            | Space i sz ->
+                match i with
+                | Some i ->
+                    if i == id then
+                        match xs with
+                        | Nil -> Nil
+                        | Cons _ _ -> Cons (Space None sz) xs
+                        end
+                    else
+                        Cons x xs
+                | None ->
+                    match xs with
+                    | Nil -> Nil
+                    | Cons _ _ -> Cons x xs
+                    end
+                end
+            end
+        end;
+
+let remove : Space -> List Space -> List Space =
+    \s -> \ss ->
+        match s with
+        | Space id _ ->
+            match id with
+            | Some id -> remove id ss
+            | None -> ss
+            end
+        end;
+
+let placeholder : int -> List Space -> List Space =
+    \id -> \spaces ->
+        let replace = \s ->
+            match s with
+            | Space i sz ->
+                match i with
+                | None -> s
+                | Some i ->
+                    if i == id then
+                        Space (Some (0-1)) sz
+                    else
+                        s
+                end
+            end;
+        list.map replace spaces;
+
+let isPlaceholder : Space -> bool =
+    \s ->
+        match s with
+        | Space id _ ->
+            match id with
+            | Some id -> id < 0
+            | None -> false
+            end
+        end;
+
+let sameId : Space -> Space -> bool =
+    \s1 -> \s2 ->
+        match s1 with
+        | Space i1 _ ->
+            match s2 with
+            | Space i2 _ ->
+                match i1 with
+                | Some i1 ->
+                    match i2 with
+                    | Some i2 -> i1 == i2
+                    | None -> false
+                    end
+                | None -> false
+                end
+            end
+        end;
+
+let isEmpty : Space -> bool =
+    \s ->
+        match s with
+        | Space id _ -> option.isNone id
+        end;
+
+let insert : Space -> List Space -> List Space =
+    \s -> \ss ->
+        let go = \fold ss -> \s ->
+            match ss with
+            | Nil ->
+                match s with
+                | Some s -> Cons s Nil
+                | None -> Nil
+                end
+            | Cons x xs ->
+                match s with
+                | None -> Cons x (xs None)
+                | Some s ->
+                    match x with
+                    | Space id sz ->
+                        if sameId s x then
+                            Cons x (xs None)
+                        else if option.isSome id then
+                            Cons x (xs (Some s))
+                        else
+                            if size s < sz then
+                                let rest = xs None |> remove s;
+                                Cons s (Cons (Space None (sz - size s)) rest)
+                            else if size s == sz then
+                                let rest = xs None |> remove s;
+                                Cons s rest
+                            else
+                                Cons x (xs (Some s))
+                    end
+                end
+            end;
+        go ss (Some s);
+
+let compact : List Space -> List Space =
+    \l ->
+        let go = \fold i -> \dst ->
+            match i with
+            | Nil -> dst
+            | Cons x xs ->
+                match x with
+                | Space id _ ->
+                    match id with
+                    | Some id -> xs (insert x dst)
+                    | None -> xs dst
+                    end
+                end
+            end;
+        go (list.reverse l) l;
+        -- |> list.take (list.length l);
+
+let expand : List Space -> List (Option int) =
+    \fold spaces ->
+        match spaces with
+        | Nil -> Nil
+        | Cons x xs ->
+            match x with
+            | Space id size -> ints.iterate size (Cons id) xs
+            end
+        end;
+
+let part2 : List int -> string =
+    \input ->
+        input
+        |> unpack
+        |> compact
+        |> expand
+        -- |> list.map (option.map ints.toString)
+        -- |> list.map (option.unwrapOr ".")
+        -- |> list.join "";
+        |> list.map (option.unwrapOr 0)
+        |> checksum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
