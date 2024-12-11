@@ -1,0 +1,241 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import (Result, Ok, Err) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+let parseInput : string -> Result (List (List int)) string =
+    let parseDigit = \ch ->
+        if ch < 48 then
+            Err "bad digit"
+        else if ch > 57 then
+            Err "bad digit"
+        else
+            Ok (ch - 48);
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseDigit)
+        |> list.map list.allOk
+        |> list.allOk;
+
+type Pos = Pos int int;
+
+let eq : Pos -> Pos -> bool =
+    \a -> \b ->
+        match a with
+        | Pos x1 y1 ->
+            match b with
+            | Pos x2 y2 ->
+                if x1 == x2 then
+                    y1 == y2
+                else
+                    false
+            end
+        end;
+
+let less : Pos -> Pos -> bool =
+    \a -> \b ->
+        match a with
+        | Pos x1 y1 ->
+            match b with
+            | Pos x2 y2 ->
+                if x1 == x2 then
+                    y1 < y2
+                else
+                    x1 < x2
+            end
+        end;
+
+let dedup : List Pos -> List Pos =
+    let dedup = \fold ps ->
+        match ps with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons x xs
+            | Cons y ys ->
+                if eq x y then
+                    Cons x ys
+                else
+                    Cons x xs
+            end
+        end;
+    \ps ->
+        ps
+        |> list.sortBy less
+        |> dedup;
+
+let step : Array (Array int) -> Pos -> List Pos =
+    \cells -> \at ->
+        match at with
+        | Pos x y ->
+            let current = cells
+                |> array.get y
+                |> option.unwrapOr array.empty
+                |> array.get x
+                |> option.unwrapOr 10;
+            let adj =
+                Nil
+                |> Cons (Pos (x - 1) y)
+                |> Cons (Pos (x + 1) y)
+                |> Cons (Pos x (y - 1))
+                |> Cons (Pos x (y + 1));
+            adj
+            |> list.filterMap (\adj ->
+                match adj with
+                | Pos x y ->
+                    cells
+                    |> array.get y
+                    |> option.unwrapOr array.empty
+                    |> array.get x
+                    |> option.andThen (\v ->
+                        if v == current + 1 then
+                            Some adj
+                        else
+                            None)
+                end)
+        end;
+
+let check : int -> int -> Array (Array int) -> int =
+    \x -> \y -> \cells ->
+        cells
+        |> array.get y
+        |> option.unwrapOr array.empty
+        |> array.get x
+        |> option.andThen (\x -> if x == 0 then Some x else None)
+        |> option.map (\_ ->
+            let init = Cons (Pos x y) Nil;
+            let advance = \ps ->
+                ps
+                |> list.flatMap (step cells)
+                |> dedup;
+            ints.iterate 9 advance init)
+        |> option.map list.length
+        |> option.unwrapOr 0;
+
+let part1 : List (List int) -> string =
+    \input ->
+        let width = input |> list.head |> option.unwrapOr Nil |> list.length;
+        let height = list.length input;
+        let cells = input |> list.map array.fromList |> array.fromList;
+        list.range 0 width
+        |> list.map (\x ->
+            list.range 0 height
+            |> list.map (\y -> check x y cells))
+        |> list.map list.sum
+        |> list.sum
+        |> ints.toString;
+
+type Trail = Trail Pos int;
+
+let sum : Trail -> Trail -> Option Trail =
+    \a -> \b ->
+        match a with
+        | Trail pa ca ->
+            match b with
+            | Trail pb cb ->
+                if eq pa pb then
+                    Some (Trail pa (ca + cb))
+                else
+                    None
+            end
+        end;
+
+let dedup : List Trail -> List Trail =
+    let dedup = \fold ps ->
+        match ps with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons x xs
+            | Cons y ys ->
+                match sum x y with
+                | Some s -> Cons s ys
+                | None -> Cons x xs
+                end
+            end
+        end;
+    \ps ->
+        ps
+        |> list.sortBy (\a -> \b ->
+            match a with
+            | Trail p1 _ ->
+                match b with
+                | Trail p2 _ ->
+                    less p1 p2
+                end
+            end)
+        |> dedup;
+
+let step : Array (Array int) -> Trail -> List Trail =
+    \cells -> \at ->
+        match at with
+        | Trail at cnt ->
+            match at with
+            | Pos x y ->
+                let current = cells
+                    |> array.get y
+                    |> option.unwrapOr array.empty
+                    |> array.get x
+                    |> option.unwrapOr 10;
+                let adj =
+                    Nil
+                    |> Cons (Pos (x - 1) y)
+                    |> Cons (Pos (x + 1) y)
+                    |> Cons (Pos x (y - 1))
+                    |> Cons (Pos x (y + 1));
+                adj
+                |> list.filterMap (\adj ->
+                    match adj with
+                    | Pos x y ->
+                        cells
+                        |> array.get y
+                        |> option.unwrapOr array.empty
+                        |> array.get x
+                        |> option.andThen (\v ->
+                            if v == current + 1 then
+                                Some (Trail adj cnt)
+                            else
+                                None)
+                    end)
+            end
+        end;
+
+let check : int -> int -> Array (Array int) -> int =
+    \x -> \y -> \cells ->
+        cells
+        |> array.get y
+        |> option.unwrapOr array.empty
+        |> array.get x
+        |> option.andThen (\x -> if x == 0 then Some x else None)
+        |> option.map (\_ ->
+            let init = Cons (Trail (Pos x y) 1) Nil;
+            let advance = \ps ->
+                ps
+                |> list.flatMap (step cells)
+                |> dedup;
+            ints.iterate 9 advance init)
+        |> option.unwrapOr Nil
+        |> list.map (\t -> match t with | Trail _ x -> x end)
+        |> list.sum;
+
+let part2 : List (List int) -> string =
+    \input ->
+        let width = input |> list.head |> option.unwrapOr Nil |> list.length;
+        let height = list.length input;
+        let cells = input |> list.map array.fromList |> array.fromList;
+        list.range 0 width
+        |> list.map (\x ->
+            list.range 0 height
+            |> list.map (\y -> check x y cells))
+        |> list.map list.sum
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
