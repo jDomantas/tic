@@ -52,86 +52,6 @@ let less : Pos -> Pos -> bool =
             end
         end;
 
-let dedup : List Pos -> List Pos =
-    let dedup = \fold ps ->
-        match ps with
-        | Nil -> Nil
-        | Cons x xs ->
-            match xs with
-            | Nil -> Cons x xs
-            | Cons y ys ->
-                if eq x y then
-                    Cons x ys
-                else
-                    Cons x xs
-            end
-        end;
-    \ps ->
-        ps
-        |> list.sortBy less
-        |> dedup;
-
-let step : Array (Array int) -> Pos -> List Pos =
-    \cells -> \at ->
-        match at with
-        | Pos x y ->
-            let current = cells
-                |> array.get y
-                |> option.unwrapOr array.empty
-                |> array.get x
-                |> option.unwrapOr 10;
-            let adj =
-                Nil
-                |> Cons (Pos (x - 1) y)
-                |> Cons (Pos (x + 1) y)
-                |> Cons (Pos x (y - 1))
-                |> Cons (Pos x (y + 1));
-            adj
-            |> list.filterMap (\adj ->
-                match adj with
-                | Pos x y ->
-                    cells
-                    |> array.get y
-                    |> option.unwrapOr array.empty
-                    |> array.get x
-                    |> option.andThen (\v ->
-                        if v == current + 1 then
-                            Some adj
-                        else
-                            None)
-                end)
-        end;
-
-let check : int -> int -> Array (Array int) -> int =
-    \x -> \y -> \cells ->
-        cells
-        |> array.get y
-        |> option.unwrapOr array.empty
-        |> array.get x
-        |> option.andThen (\x -> if x == 0 then Some x else None)
-        |> option.map (\_ ->
-            let init = Cons (Pos x y) Nil;
-            let advance = \ps ->
-                ps
-                |> list.flatMap (step cells)
-                |> dedup;
-            ints.iterate 9 advance init)
-        |> option.map list.length
-        |> option.unwrapOr 0;
-
-let part1 : List (List int) -> string =
-    \input ->
-        let width = input |> list.head |> option.unwrapOr Nil |> list.length;
-        let height = list.length input;
-        let cells = input |> list.map array.fromList |> array.fromList;
-        list.range 0 width
-        |> list.map (\x ->
-            list.range 0 height
-            |> list.map (\y -> check x y cells))
-        |> list.map list.sum
-        |> list.sum
-        |> ints.toString;
-
 type Trail = Trail Pos int;
 
 let sum : Trail -> Trail -> Option Trail =
@@ -207,7 +127,7 @@ let step : Array (Array int) -> Trail -> List Trail =
             end
         end;
 
-let check : int -> int -> Array (Array int) -> int =
+let trailsFrom : int -> int -> Array (Array int) -> (List Trail) =
     \x -> \y -> \cells ->
         cells
         |> array.get y
@@ -221,9 +141,19 @@ let check : int -> int -> Array (Array int) -> int =
                 |> list.flatMap (step cells)
                 |> dedup;
             ints.iterate 9 advance init)
-        |> option.unwrapOr Nil
-        |> list.map (\t -> match t with | Trail _ x -> x end)
-        |> list.sum;
+        |> option.unwrapOr Nil;
+
+let part1 : List (List int) -> string =
+    \input ->
+        let width = input |> list.head |> option.unwrapOr Nil |> list.length;
+        let height = list.length input;
+        let cells = input |> list.map array.fromList |> array.fromList;
+        list.range 0 width
+        |> list.flatMap (\x ->
+            list.range 0 height
+            |> list.flatMap (\y -> trailsFrom x y cells))
+        |> list.length
+        |> ints.toString;
 
 let part2 : List (List int) -> string =
     \input ->
@@ -231,10 +161,10 @@ let part2 : List (List int) -> string =
         let height = list.length input;
         let cells = input |> list.map array.fromList |> array.fromList;
         list.range 0 width
-        |> list.map (\x ->
+        |> list.flatMap (\x ->
             list.range 0 height
-            |> list.map (\y -> check x y cells))
-        |> list.map list.sum
+            |> list.flatMap (\y -> trailsFrom x y cells))
+        |> list.map (\t -> match t with | Trail _ x -> x end)
         |> list.sum
         |> ints.toString;
 
