@@ -1,0 +1,74 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List) from "std/list";
+import (Result) from "std/result";
+import array from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+let parseInput : string -> Result (List int) string =
+    \input ->
+        input
+        |> strings.split 32
+        |> list.map ints.parse
+        |> list.allOk
+        |> result.mapErr (\_ -> "bad number");
+
+let numDigits : int -> int =
+    \x -> strings.length (ints.toString x);
+
+let expandsToInZeroSteps : int -> int =
+    \_ -> 1;
+
+let expandsToInOneMoreStep : (int -> int) -> int -> int =
+    \recurse ->
+        let compute = \x ->
+            if x == 0 then
+                recurse 1
+            else
+                let len = numDigits x;
+                if len % 2 == 1 then
+                    recurse (x * 2024)
+                else
+                    let p = ints.iterate (len / 2) (\x -> x * 10) 1;
+                    let hi = x / p;
+                    let lo = x % p;
+                    recurse hi + recurse lo;
+        let cache =
+            list.range 0 10
+            |> list.map (\x -> compute x)
+            |> array.fromList;
+        \x ->
+            match array.get x cache with
+            | Some res -> res
+            | None -> compute x
+            end;
+
+let expandsTo : int -> int -> int =
+    \steps ->
+        let compute = ints.iterate steps expandsToInOneMoreStep expandsToInZeroSteps;
+        \x -> compute x;
+
+let countAfterSteps : int -> List int -> int =
+    \steps -> \input ->
+        input
+        |> list.map (expandsTo steps)
+        |> list.sum;
+
+let part1 : List int -> string =
+    \input ->
+        input
+        |> countAfterSteps 25
+        |> ints.toString;
+
+let part2 : List int -> string =
+    \input ->
+        input
+        |> countAfterSteps 75
+        |> ints.toString;
+
+export let thing : int -> int = expandsTo 75;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
