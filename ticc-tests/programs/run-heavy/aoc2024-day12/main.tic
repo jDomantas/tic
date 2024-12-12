@@ -1,0 +1,203 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import (Result, Ok) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Dsu = Dsu (Array int) (Array int) int;
+
+let disconnected : int -> Dsu =
+    let log = \x ->
+        let step = \recurse -> \x ->
+            if x > 1 then
+                recurse (x / 2) + 1
+            else
+                1;
+        ints.iterate x step (\_ -> 1) x;
+    \size ->
+        Dsu
+            (list.range 0 size |> array.fromList)
+            (list.range 0 size |> list.map (\_ -> 1) |> array.fromList)
+            (log size + 1);
+
+let root : Array int -> int -> int -> int =
+    let step = \arr -> \recurse -> \x ->
+        match array.get x arr with
+        | None -> x
+        | Some parent ->
+            if x == parent then
+                x
+            else
+                recurse parent
+        end;
+    \arr -> \depth -> \x ->
+        ints.iterate depth (step arr) (\_x -> ?depthNotSufficient) x;
+
+let connect : int -> int -> Dsu -> Dsu =
+    \a -> \b -> \dsu ->
+        match dsu with
+        | Dsu parent size depth ->
+            let a = root parent depth a;
+            let b = root parent depth b;
+            let sizeA = array.get a size |> option.unwrapOr 1;
+            let sizeB = array.get b size |> option.unwrapOr 1;
+            if sizeA > sizeB then
+                let size = array.set a (sizeA + sizeB) size;
+                let parent = array.set b a parent;
+                Dsu parent size depth
+            else
+                let size = array.set b (sizeA + sizeB) size;
+                let parent = array.set a b parent;
+                Dsu parent size depth
+        end;
+
+let root : int -> Dsu -> int =
+    \a -> \dsu ->
+        match dsu with
+        | Dsu parent _ depth -> root parent depth a
+        end;
+
+let parseInput : string -> Result (List (List int)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> Ok;
+
+let compose : List (a -> a) -> a -> a =
+    \fns -> list.foldr (\f -> \g -> \x -> f (g x)) (\x -> x) fns;
+
+let apply : a -> (a -> b) -> b =
+    \x -> \f -> f x;
+
+let buildDsu : List (List int) -> Dsu =
+    \grid ->
+        let width = grid |> list.head |> option.unwrapOr Nil |> list.length;
+        let height = grid |> list.length;
+        let grid = grid |> list.map array.fromList |> array.fromList;
+        list.range 0 width
+        |> list.flatMap (\x ->
+            list.range 0 height
+            |> list.map (\y ->
+                let id = y * width + x;
+                let cell = grid |> array.get y |> option.unwrapOr array.empty |> array.get x |> option.unwrapOr 99990;
+                let below = grid |> array.get (y + 1) |> option.unwrapOr array.empty |> array.get x |> option.unwrapOr 9999;
+                let next = grid |> array.get y |> option.unwrapOr array.empty |> array.get (x + 1) |> option.unwrapOr 9999;
+                let connectH =
+                    if cell == next then
+                        connect id (id + 1)
+                    else
+                        \x -> x;
+                let connectV =
+                    if cell == below then
+                        connect id (id + width)
+                    else
+                        \x -> x;
+                \x -> x |> connectH |> connectV))
+        |> compose
+        |> apply (disconnected (width * height));
+
+let areas : int -> int -> Dsu -> Array int =
+    let add = \id -> \result -> array.mapIdx id (\size -> size + 1) result;
+    \w -> \h -> \dsu ->
+        list.range 0 w
+        |> list.flatMap (\x ->
+            list.range 0 h
+            |> list.map (\y ->
+                let cell = x + y * w;
+                let root = root cell dsu;
+                add root))
+        |> compose
+        |> apply (array.new (w * h) 0);
+
+let perimeters : int -> int -> Dsu -> Array int =
+    let add = \id -> \result -> array.mapIdx id (\size -> size + 1) result;
+    \w -> \h -> \dsu ->
+        list.range 0 w
+        |> list.flatMap (\x ->
+            list.range 0 h
+            |> list.flatMap (\y ->
+                let cell = x + y * w;
+                let v = root cell dsu;
+                let u = root (cell - w) dsu;
+                let d = root (cell + w) dsu;
+                let l = if x == 0 then 99999 else root (cell - 1) dsu;
+                let r = if x == w - 1 then 99999 else root (cell + 1) dsu;
+                Cons u (Cons d (Cons l (Cons r Nil)))
+                |> list.map (\ng ->
+                    if v == ng then
+                        \x -> x
+                    else
+                        add v)))
+        |> compose
+        |> apply (array.new (w * h) 0);
+
+let part1 : List (List int) -> string =
+    \grid ->
+        let dsu = buildDsu grid;
+        let width = grid |> list.head |> option.unwrapOr Nil |> list.length;
+        let height = grid |> list.length;
+        let areas = areas width height dsu |> array.toList;
+        let perimeters = perimeters width height dsu |> array.toList;
+        list.zip (\a -> \b -> a * b) areas perimeters
+        |> list.sum
+        |> ints.toString;
+
+let sides : int -> int -> Dsu -> Array int =
+    let add = \id -> \delta -> \result -> array.mapIdx id (\size -> size + delta) result;
+    let checkInc = \a -> \b -> \c ->
+        if a then
+            if b then
+                if c then
+                    \x -> x + 1
+                else
+                    \x -> x
+            else
+                \x -> x
+        else
+            \x -> x;
+    \w -> \h -> \dsu ->
+        list.range 0 w
+        |> list.flatMap (\x ->
+            list.range 0 h
+            |> list.map (\y ->
+                let cell = x + y * w;
+                let v = root cell dsu;
+                let u = root (cell - w) dsu;
+                let d = root (cell + w) dsu;
+                let l = if x == 0 then 99999 else root (cell - 1) dsu;
+                let r = if x == w - 1 then 99999 else root (cell + 1) dsu;
+                let ul = if x == 0 then 99999 else root (cell - w - 1) dsu;
+                let ur = if x == w - 1 then 99999 else root (cell - w + 1) dsu;
+                let dl = if x == 0 then 99999 else root (cell + w - 1) dsu;
+                let dr = if x == w - 1 then 99999 else root (cell + w + 1) dsu;
+                let corners =
+                    0
+                    |> checkInc (u != v) (r != v) true
+                    |> checkInc (u != v) (l != v) true
+                    |> checkInc (d != v) (r != v) true
+                    |> checkInc (d != v) (l != v) true
+                    |> checkInc (u == v) (r == v) (ur != v)
+                    |> checkInc (u == v) (l == v) (ul != v)
+                    |> checkInc (d == v) (r == v) (dr != v)
+                    |> checkInc (d == v) (l == v) (dl != v);
+                add v corners))
+        |> compose
+        |> apply (array.new (w * h) 0);
+
+let part2 : List (List int) -> string =
+    \grid ->
+        let dsu = buildDsu grid;
+        let width = grid |> list.head |> option.unwrapOr Nil |> list.length;
+        let height = grid |> list.length;
+        let areas = areas width height dsu |> array.toList;
+        let sides = sides width height dsu |> array.toList;
+        list.zip (\a -> \b -> a * b) areas sides
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
