@@ -135,3 +135,5 @@ export let trim : string -> string =
         let s = substring 0 (length s - t) s;
         let l = leadingSpaces s;
         substring l (length s - l) s;
+
+export let newline : string = fromChar 10;

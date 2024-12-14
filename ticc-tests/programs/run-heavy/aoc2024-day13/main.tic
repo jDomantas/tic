@@ -1,0 +1,164 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import (Result, Ok) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Vec = Vec int int;
+
+type Machine = Machine Vec Vec Vec;
+
+let buttonVec : string -> Parse Vec =
+    \name ->
+        parse.ok Vec
+        |> parse.ignore (parse.literal "Button ")
+        |> parse.ignore (parse.literal name)
+        |> parse.ignore (parse.literal ": X+")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ", Y+")
+        |> parse.apply parse.integer;
+
+let targetVec : Parse Vec =
+    parse.ok Vec
+    |> parse.ignore (parse.literal "Prize: X=")
+    |> parse.apply parse.integer
+    |> parse.ignore (parse.literal ", Y=")
+    |> parse.apply parse.integer;
+
+type SplitState = SplitState int int (List string);
+
+let matchAt : string -> int -> string -> bool =
+    \needle -> \pos -> \haystack ->
+        let sub = strings.substring pos (strings.length needle) haystack;
+        strings.equal sub needle;
+
+let split : string -> string -> List string =
+    \by -> \s ->
+        let needleLen = strings.length by;
+        let step : SplitState -> SplitState =
+            \state ->
+                match state with
+                | SplitState start cur res ->
+                    if cur == strings.length s then
+                        state
+                    else if matchAt by cur s then
+                        let item = strings.substring start (cur - start) s;
+                        let res = Cons item res;
+                        SplitState (cur + needleLen) (cur + needleLen) res
+                    else
+                        SplitState start (cur + 1) res
+                end;
+        let final = ints.iterate (strings.length s) step (SplitState 0 0 Nil);
+        match final with
+        | SplitState start cur res ->
+            let item = strings.substring start (cur - start) s;
+            list.reverse (Cons item res)
+        end;
+
+let machine : Parse Machine =
+    parse.ok Machine
+    |> parse.apply (buttonVec "A")
+    |> parse.ignore (parse.literal strings.newline)
+    |> parse.apply (buttonVec "B")
+    |> parse.ignore (parse.literal strings.newline)
+    |> parse.apply targetVec;
+
+let parseInput : string -> Result (List Machine) string =
+    \input ->
+        input
+        |> split (strings.concat strings.newline strings.newline)
+        |> list.map (\s -> parse.run s machine)
+        |> list.allOk;
+
+type SignedInt = Nonnegative int | Negative int;
+
+let sub : int -> int -> SignedInt =
+    \a -> \b ->
+        if a >= b then
+            Nonnegative (a - b)
+        else
+            Negative (b - a);
+
+let positiveQuotent : SignedInt -> SignedInt -> Option int =
+    \a -> \b ->
+        match a with
+        | Nonnegative a ->
+            match b with
+            | Nonnegative b ->
+                if b == 0 then
+                    None
+                else if a % b == 0 then
+                    Some (a / b)
+                else
+                    None
+            | Negative _ -> None
+            end
+        | Negative a ->
+            match b with
+            | Nonnegative _ -> None
+            | Negative b ->
+                if a % b == 0 then
+                    Some (a / b)
+                else
+                    None
+            end
+        end;
+
+let solveMachine : Machine -> Option int =
+    \m ->
+        match m with
+        | Machine a b target ->
+            match a with
+            | Vec ax ay ->
+                match b with
+                | Vec bx by ->
+                    match target with
+                    | Vec tx ty ->
+                        -- p * ax + q * bx = tx
+                        -- p * ay + q * by = ty
+                        -- p * ax * ay + q * ay * bx = ay * tx
+                        -- p * ax * ay + q * ax * by = ax * ty
+                        -- q * (ay * bx - ax * by) = ay * tx - ax * ty
+                        let pt = sub (by * tx) (bx * ty);
+                        let pb = sub (ax * by) (ay * bx);
+                        let qt = sub (ay * tx) (ax * ty);
+                        let qb = sub (ay * bx) (ax * by);
+                        let p = positiveQuotent pt pb;
+                        let q = positiveQuotent qt qb;
+                        Some (\a -> \b -> a * 3 + b)
+                        |> option.apply p
+                        |> option.apply q
+                    end
+                end
+            end
+        end;
+
+let part1 : List Machine -> string =
+    \machines ->
+        machines
+        |> list.filterMap solveMachine
+        |> list.sum
+        |> ints.toString;
+
+let shift : Machine -> Machine =
+    \m ->
+        match m with
+        | Machine a b t ->
+            match t with
+            | Vec x y -> Machine a b (Vec (x + 10000000000000) (y + 10000000000000))
+            end
+        end;
+
+let part2 : List Machine -> string =
+    \machines ->
+        machines
+        |> list.map shift
+        |> list.filterMap solveMachine
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
