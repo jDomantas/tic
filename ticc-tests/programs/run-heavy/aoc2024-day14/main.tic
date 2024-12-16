@@ -1,0 +1,237 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import (Result) from "std/result";
+import array from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type SignedInt = Nonnegative int | Negative int;
+
+type Bot = Bot SignedInt SignedInt SignedInt SignedInt;
+
+let parseInt : Parse SignedInt =
+    parse.integer
+    |> parse.map Nonnegative
+    |> parse.or (
+        parse.ok Negative
+        |> parse.ignore (parse.literal "-")
+        |> parse.apply parse.integer);
+
+let parseBot : string -> Result Bot string =
+    \line ->
+        parse.ok Bot
+        |> parse.ignore (parse.literal "p=")
+        |> parse.apply parseInt
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parseInt
+        |> parse.ignore (parse.literal " v=")
+        |> parse.apply parseInt
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parseInt
+        |> parse.run line;
+
+let parseInput : string -> Result (List Bot) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parseBot|> list.allOk;
+
+let add : SignedInt -> SignedInt -> SignedInt =
+    \a -> \b ->
+        match a with
+        | Nonnegative a ->
+            match b with
+            | Nonnegative b -> Nonnegative (a + b)
+            | Negative b -> if a >= b then Nonnegative (a - b) else Negative (b - a)
+            end
+        | Negative a ->
+            match b with
+            | Nonnegative b -> if a > b then Nonnegative (b - a) else Negative (a - b)
+            | Negative b -> Negative (a + b)
+            end
+        end;
+
+let mul : int -> SignedInt -> SignedInt =
+    \a -> \b ->
+        match b with
+        | Nonnegative b -> Nonnegative (a * b)
+        | Negative b -> if a == 0 then Nonnegative 0 else Negative (a * b)
+        end;
+
+let modulo : int -> SignedInt -> int =
+    \a -> \b ->
+        match b with
+        | Nonnegative b -> b % a
+        | Negative b -> (a - b % a) % a
+        end;
+
+type Pos = Pos int int;
+
+let finalQuadrant : int -> int -> Bot -> Option int =
+    \w -> \h -> \bot ->
+        match bot with
+        | Bot x y vx vy ->
+            let x = add x (mul 100 vx) |> modulo w;
+            let y = add y (mul 100 vy) |> modulo h;
+            let qh =
+                if x < w / 2 then
+                    Some 0
+                else if x > w / 2 then
+                    Some 1
+                else
+                    None;
+            let qv =
+                if y < h / 2 then
+                    Some 0
+                else if y > h / 2 then
+                    Some 1
+                else
+                    None;
+            Some (\a -> \b -> a * 2 + b)
+            |> option.apply qh
+            |> option.apply qv
+        end;
+
+let part1 : List Bot -> string =
+    \bots ->
+        let example = list.length bots == 12;
+        let w = if example then 11 else 101;
+        let h = if example then 7 else 103;
+        let res = array.new 4 0;
+        bots
+        |> list.filterMap (finalQuadrant w h)
+        |> list.foldr (\q -> array.mapIdx q (\c -> c + 1)) res
+        |> array.toList
+        |> list.product
+        |> ints.toString;
+
+let finalPos : int -> int -> int -> Bot -> Pos =
+    \w -> \h -> \t -> \bot ->
+        match bot with
+        | Bot x y vx vy ->
+            let x = add x (mul t vx) |> modulo w;
+            let y = add y (mul t vy) |> modulo h;
+            Pos x y
+        end;
+
+let enumerateMap : (int -> a -> b) -> List a -> List b =
+    \f -> \l ->
+        let go = \fold l -> \idx ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs -> Cons (f idx x) (xs (idx + 1))
+            end;
+        go l 0;
+
+type Score = Score int int;
+
+let combinePairs : (a -> List a -> b) -> List a -> List b =
+    let tails =
+        \fold l ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs ->
+                match xs with
+                | Nil -> Cons (Cons x Nil) Nil
+                | Cons y _ -> Cons (Cons x y) xs
+                end
+            end;
+    \f -> \l ->
+        l
+        |> tails
+        |> list.filterMap (\l ->
+            match l with
+            | Nil -> None
+            | Cons x xs -> Some (f x xs)
+            end);
+
+let scoreBots : List Pos -> int =
+    let close = \a -> \b ->
+        if a > b then
+            a <= b + 1
+        else
+            b <= a + 1;
+    let close = \a -> \b ->
+        match a with
+        | Pos ax ay ->
+            match b with
+            | Pos bx by ->
+                if close ax bx then
+                    close ay by
+                else
+                    false
+            end
+        end;
+
+    let scoreBot = \b -> \fold bots ->
+        match bots with
+        | Nil -> 0
+        | Cons x xs ->
+            if close b x then
+                1 + xs
+            else
+                xs
+        end;
+    \bots ->
+        bots
+        |> combinePairs scoreBot
+        |> list.sum;
+
+let scoreTime : int -> List Bot -> int =
+    \t -> \bots ->
+        let example = list.length bots == 12;
+        let w = if example then 11 else 101;
+        let h = if example then 7 else 103;
+        bots
+        |> list.map (finalPos w h t)
+        |> scoreBots;
+
+let part2 : List Bot -> string =
+    \bots ->
+        let example = list.length bots == 12;
+        let w = if example then 11 else 101;
+        let h = if example then 7 else 103;
+        list.range 0 (w * h)
+        |> list.map (\t -> scoreTime t bots)
+        |> enumerateMap Score
+        |> list.sortBy (\a -> \b ->
+            match a with
+            | Score _ a ->
+                match b with
+                | Score _ b ->
+                    a > b
+                end
+            end)
+        |> list.head
+        |> option.map (\s ->
+            match s with
+            | Score t _ -> ints.toString t
+            end)
+        |> option.unwrapOr "";
+
+        -- let t = 8179;
+        -- let example = list.length bots == 12;
+        -- let w = if example then 11 else 101;
+        -- let h = if example then 7 else 103;
+        -- let grid = array.new w 0 |> array.new h;
+        -- bots
+        -- |> list.map (finalPos w h t)
+        -- |> list.foldr (\pos -> \res ->
+        --     match pos with
+        --     | Pos x y -> array.mapIdx y (array.mapIdx x (\c -> c + 1)) res
+        --     end) grid
+        -- |> array.toList
+        -- |> list.map array.toList
+        -- |> list.map (list.map (\x -> if x == 0 then "." else ints.toString x))
+        -- |> list.map (list.join "")
+        -- |> list.join strings.newline
+        -- |> strings.concat strings.newline;
+
+-- 8179->1856 18582->1856 6159->546 16562->546 2725->538 13128->538 19289->530 12017->530 1614->530 8886->530 10603->528 200->528 13027->524 2624->524 16259->522 5856->522 907->520 11310->520 1715->516 14037->516 12118->516 3634->516 12421->514 8785->514 2018->514 19188->514 99->512 10502->512 16663->510 18279->510 6260->510 7876->510 19693->508 13633->508 3230->508 9290->508 9391->506 5553->506 19794->506 15956->506 13229->504 16865->504 7169->504 6462->504 9694->504 2826->504 17572->504 14643->502 4240->502 3735->500
+
+-- 200->528 907->520 99->512 503->490 806->488 604->484 402->468 763->464 705->458 42->454 866->448 248->448 301->442 351->434 969->426 660->418 454->412 145->410 557->402 662->258 726->242 496->242 303->238 597->238 344->236 583->234 667->234 250->234 628->234 836->234 875->232 275->232 506->232 794->232 420->232 368->232 939->230 115->230 249->230 673->230 290->230 968->230 864->230 982->228 388->228 955->226 595->226 924->226 376->226 360->226
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
