@@ -1,0 +1,357 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+
+type Cell = Wall | Empty | Start | Finish;
+
+let parseCell : int -> Result Cell string =
+    let wall = strings.charAt 0 "#";
+    let empty = strings.charAt 0 ".";
+    let start = strings.charAt 0 "S";
+    let finish = strings.charAt 0 "E";
+    \ch ->
+        if ch == wall then
+            Ok Wall
+        else if ch == empty then
+            Ok Empty
+        else if ch == start then
+            Ok Start
+        else if ch == finish then
+            Ok Finish
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (Array (Array Cell)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk
+        |> result.map (list.map array.fromList)
+        |> result.map array.fromList;
+
+type Queue a = Queue (List a) (List a);
+
+let push : a -> Queue a -> Queue a =
+    \x -> \q ->
+        match q with
+        | Queue now next -> Queue now (Cons x next)
+        end;
+
+let peek : Queue a -> Option a =
+    \q ->
+        match q with
+        | Queue now next ->
+            match now with
+            | Nil -> next |> list.reverse |> list.head
+            | Cons x _ -> Some x
+            end
+        end;
+
+let pop : Queue a -> Queue a =
+    \q ->
+        match q with
+        | Queue now next ->
+            match now with
+            | Nil -> Queue (list.reverse next |> list.tail |> option.unwrapOr Nil) Nil
+            | Cons _ xs -> Queue xs next
+            end
+        end;
+
+let emptyQueue : Queue a = Queue Nil Nil;
+
+type Dir = Left | Right | Up | Down;
+
+type State = State int int Dir;
+
+type CostWithParent = CostWithParent int (List State);
+
+type Costs = Costs (Array (Array CostWithParent)) (Array (Array CostWithParent)) (Array (Array CostWithParent)) (Array (Array CostWithParent));
+
+let getCost : State -> Costs -> int =
+    let get = \x -> \y -> \arr ->
+        arr
+        |> array.get y
+        |> option.unwrapOr array.empty
+        |> array.get x
+        |> option.map (\x -> match x with | CostWithParent x _ -> x end)
+        |> option.unwrapOr 0;
+    \s -> \c ->
+        match c with
+        | Costs left right up down ->
+            match s with
+            | State x y dir ->
+                match dir with
+                | Left -> get x y left
+                | Right -> get x y right
+                | Up -> get x y up
+                | Down -> get x y down
+                end
+            end
+        end;
+
+let getParents : State -> Costs -> List State =
+    let get = \x -> \y -> \arr ->
+        arr
+        |> array.get y
+        |> option.unwrapOr array.empty
+        |> array.get x
+        |> option.map (\x -> match x with | CostWithParent _ x -> x end)
+        |> option.unwrapOr Nil;
+    \s -> \c ->
+        match c with
+        | Costs left right up down ->
+            match s with
+            | State x y dir ->
+                match dir with
+                | Left -> get x y left
+                | Right -> get x y right
+                | Up -> get x y up
+                | Down -> get x y down
+                end
+            end
+        end;
+
+let setCost : State -> int -> List State -> Costs -> Costs =
+    let set = \x -> \y -> \c -> \arr ->
+        array.mapIdx y (\row -> array.set x c row) arr;
+    \s -> \c -> \parents -> \costs ->
+        let c = CostWithParent c parents;
+        match costs with
+        | Costs left right up down ->
+            match s with
+            | State x y dir ->
+                match dir with
+                | Left -> Costs (set x y c left) right up down
+                | Right -> Costs left (set x y c right) up down
+                | Up -> Costs left right (set x y c up) down
+                | Down -> Costs left right up (set x y c down)
+                end
+            end
+        end;
+
+let addParent : State -> State -> Costs -> Costs =
+    let add = \parent -> \c -> match c with | CostWithParent c p -> CostWithParent c (Cons parent p) end;
+    let add = \x -> \y -> \p -> \arr ->
+        array.mapIdx y (\row -> array.mapIdx x (add p) row) arr;
+    \s -> \parent -> \costs ->
+        match costs with
+        | Costs left right up down ->
+            match s with
+            | State x y dir ->
+                match dir with
+                | Left -> Costs (add x y parent left) right up down
+                | Right -> Costs left (add x y parent right) up down
+                | Up -> Costs left right (add x y parent up) down
+                | Down -> Costs left right up (add x y parent down)
+                end
+            end
+        end;
+
+type StateWithCost = StateWithCost State int (Option State);
+
+type BfsState = BfsState Costs (Queue StateWithCost) (Queue StateWithCost);
+
+let turnLeft : State -> State =
+    \s ->
+        match s with
+        | State x y dir ->
+            let dir =
+                match dir with
+                | Left -> Down
+                | Down -> Right
+                | Right -> Up
+                | Up -> Left
+                end;
+            State x y dir
+        end;
+
+let turnRight : State -> State =
+    \s -> s |> turnLeft |> turnLeft |> turnLeft;
+
+let forward : State -> State =
+    \s ->
+        match s with
+        | State x y dir ->
+            match dir with
+            | Left -> State (x - 1) y dir
+            | Right -> State (x + 1) y dir
+            | Up -> State x (y - 1) dir
+            | Down -> State x (y + 1) dir
+            end
+        end;
+
+let optToList : Option a -> List a =
+    \o ->
+        match o with
+        | None -> Nil
+        | Some x -> Cons x Nil
+        end;
+
+let step : Array (Array Cell) -> BfsState -> BfsState =
+    \cells -> \state ->
+        match state with
+        | BfsState costs queue nextTurnQueue ->
+            match peek queue with
+            | Some step ->
+                let queue = pop queue;
+                match step with
+                | StateWithCost state cost parent ->
+                    let current = getCost state costs;
+                    if cost < current then
+                        let costs = setCost state cost (optToList parent) costs;
+                        let left = StateWithCost (turnLeft state) (cost + 1000) (Some state);
+                        let right = StateWithCost (turnRight state) (cost + 1000) (Some state);
+                        let nextTurnQueue = nextTurnQueue |> push left |> push right;
+                        let forward = forward state;
+                        match forward with
+                        | State x y _ ->
+                            let forward = StateWithCost forward (cost + 1) (Some state);
+                            let cell = cells |> array.get y |> option.unwrapOr array.empty |> array.get x |> option.unwrapOr Wall;
+                            match cell with
+                            | Wall -> BfsState costs queue nextTurnQueue
+                            | Empty -> BfsState costs (queue |> push forward) nextTurnQueue
+                            | Start -> BfsState costs (queue |> push forward) nextTurnQueue
+                            | Finish -> BfsState costs (queue |> push forward) nextTurnQueue
+                            end
+                        end
+                    else if cost == current then
+                        match parent with
+                        | None -> BfsState costs queue nextTurnQueue
+                        | Some parent ->
+                            let costs = addParent state parent costs;
+                            BfsState costs queue nextTurnQueue
+                        end
+                    else
+                        BfsState costs queue nextTurnQueue
+                end
+            | None ->
+                BfsState costs nextTurnQueue emptyQueue
+            end
+        end;
+
+let startState : Array (Array Cell) -> Option StateWithCost =
+    \grid ->
+        let w = grid |> array.get 0 |> option.unwrapOr array.empty |> array.length;
+        let h = grid |> array.length;
+        list.range 0 w
+        |> list.flatMap (\x ->
+            list.range 0 h
+            |> list.filterMap (\y ->
+                let cell = grid |> array.get y |> option.unwrapOr array.empty |> array.get x |> option.unwrapOr Wall;
+                match cell with
+                | Start -> Some (StateWithCost (State x y Right) 0 None)
+                | Finish -> None
+                | Empty -> None
+                | Wall -> None
+                end))
+        |> list.head;
+
+type Path = Path Costs (List State) int;
+
+let path : Array (Array Cell) -> Option Path =
+    \grid ->
+        let w = grid |> array.get 0 |> option.unwrapOr array.empty |> array.length;
+        let h = grid |> array.length;
+        let queue = startState grid |> option.map (\s -> push s emptyQueue) |> option.unwrapOr emptyQueue;
+        let costs = array.new w (CostWithParent 999999 Nil) |> array.new h;
+        let costs = Costs costs costs costs costs;
+        let state = BfsState costs queue emptyQueue;
+        let state = ints.iterate (w * h * 4 * 3) (step grid) state;
+        let costs =
+            match state with
+            | BfsState costs _ _ -> costs
+            end;
+        let finalStates =
+            list.range 0 w
+            |> list.flatMap (\x ->
+                list.range 0 h
+                |> list.flatMap (\y ->
+                    let cell = grid |> array.get y |> option.unwrapOr array.empty |> array.get x |> option.unwrapOr Wall;
+                    match cell with
+                    | Empty -> Nil
+                    | Wall -> Nil
+                    | Start -> Nil
+                    | Finish ->
+                        Cons Left (Cons Right (Cons Up (Cons Down Nil)))
+                        |> list.map (State x y)
+                    end));
+        let bestCost =
+            finalStates
+            |> list.map (\s -> getCost s costs)
+            |> list.min;
+        match bestCost with
+        | Some bestCost ->
+            let states =
+                finalStates
+                |> list.filter (\s -> getCost s costs == bestCost);
+            Some (Path costs states bestCost)
+        | None -> None
+        end;
+
+let part1 : Array (Array Cell) -> string =
+    \grid ->
+        match path grid with
+        | Some path ->
+            match path with
+            | Path _ _ x -> ints.toString x
+            end
+        | None -> "unreachable"
+        end;
+
+type MarkState = MarkState (Array (Array bool)) (Queue State);
+
+let markStep : Costs -> MarkState -> MarkState =
+    \costs -> \state ->
+        match state with
+        | MarkState marks queue ->
+            match peek queue with
+            | Some state ->
+                let queue = pop queue;
+                let parents = getParents state costs;
+                let marks =
+                    match state with
+                    | State x y _ -> array.mapIdx y (\row -> array.set x true row) marks
+                    end;
+                let queue = list.foldr push queue parents;
+                MarkState marks queue
+            | None -> state
+            end
+        end;
+
+let part2 : Array (Array Cell) -> string =
+    \grid ->
+        match path grid with
+        | Some path ->
+            match path with
+            | Path costs states _ ->
+                let w = grid |> array.get 0 |> option.unwrapOr array.empty |> array.length;
+                let h = grid |> array.length;
+                let marks = array.new w false |> array.new h;
+                let state = MarkState marks (Queue states Nil);
+                let state = ints.iterate (w * h * 4) (markStep costs) state;
+                let marks =
+                    match state with
+                    | MarkState x _ -> x
+                    end;
+                list.range 0 h
+                |> list.flatMap (\y ->
+                    list.range 0 w
+                    |> list.map (\x ->
+                        let mark = marks |> array.get y |> option.unwrapOr array.empty |> array.get x |> option.unwrapOr false;
+                        mark))
+                |> list.filter (\x -> x)
+                |> list.length
+                |> ints.toString
+            end
+        | None -> "unreachable"
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
