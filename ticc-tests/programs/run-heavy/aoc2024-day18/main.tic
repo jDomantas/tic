@@ -1,0 +1,205 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Pos = Pos int int;
+
+let parseLine : string -> Result Pos string =
+    \line ->
+        parse.ok Pos
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parse.integer
+        |> parse.run line;
+
+let parseInput : string -> Result (List Pos) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parseLine
+        |> list.allOk;
+
+type Queue a = Queue (List a) (List a);
+
+let push : a -> Queue a -> Queue a =
+    \x -> \q ->
+        match q with
+        | Queue now next -> Queue now (Cons x next)
+        end;
+
+let peek : Queue a -> Option a =
+    \q ->
+        match q with
+        | Queue now next ->
+            match now with
+            | Nil -> next |> list.reverse |> list.head
+            | Cons x _ -> Some x
+            end
+        end;
+
+let pop : Queue a -> Queue a =
+    \q ->
+        match q with
+        | Queue now next ->
+            match now with
+            | Nil -> Queue (list.reverse next |> list.tail |> option.unwrapOr Nil) Nil
+            | Cons _ xs -> Queue xs next
+            end
+        end;
+
+let emptyQueue : Queue a = Queue Nil Nil;
+
+let getCost : Pos -> Array (Array int) -> int =
+    \p -> \c ->
+        match p with
+        | Pos x y ->
+            c
+            |> array.get y
+            |> option.unwrapOr array.empty
+            |> array.get x
+            |> option.unwrapOr 0
+        end;
+
+let setCost : Pos -> int -> Array (Array int) -> Array (Array int) =
+    \p -> \c -> \costs ->
+        match p with
+        | Pos x y -> array.mapIdx y (\row -> array.set x c row) costs
+        end;
+
+type StateWithCost = StateWithCost Pos int;
+
+type BfsState = BfsState (Array (Array int)) (Queue StateWithCost);
+
+let move : Pos -> int -> int -> Pos =
+    \p -> \dx -> \dy ->
+        match p with
+        | Pos x y -> Pos (x + dx) (y + dy)
+        end;
+
+let step : Array (Array bool) -> BfsState -> BfsState =
+    \cells -> \state ->
+        match state with
+        | BfsState costs queue ->
+            match peek queue with
+            | Some step ->
+                let queue = pop queue;
+                match step with
+                | StateWithCost pos cost ->
+                    let wall =
+                        match pos with
+                        | Pos x y ->
+                            cells
+                            |> array.get y
+                            |> option.unwrapOr array.empty
+                            |> array.get x
+                            |> option.unwrapOr true
+                        end;
+                    let current = getCost pos costs;
+                    if wall then
+                        BfsState costs queue
+                    else if cost < current then
+                        let costs = setCost pos cost costs;
+                        let adj = Nil
+                            |> Cons (move pos 0 1)
+                            |> Cons (move pos 1 0)
+                            |> Cons (move pos (0-1) 0)
+                            |> Cons (move pos 0 (0-1))
+                            |> list.map (\p -> StateWithCost p (cost + 1));
+                        let queue = list.foldr push queue adj;
+                        BfsState costs queue
+                    else
+                        BfsState costs queue
+                end
+            | None -> BfsState costs queue
+            end
+        end;
+
+let isSample : List Pos -> bool =
+    \p -> list.length p == 25;
+
+let gridSize : List Pos -> int =
+    \p -> 1 + (if isSample p then 6 else 70);
+
+let pathCost : int -> Array (Array bool) -> Option int =
+    \size -> \grid ->
+        let maxCost = 999999999;
+        let costs = array.new size maxCost |> array.new size;
+        let state = BfsState costs (push (StateWithCost (Pos 0 0) 0) emptyQueue);
+        let state = ints.iterate (size * size * 4) (step grid) state;
+        let costs =
+            match state with
+            | BfsState costs _ -> costs
+            end;
+        let cost = getCost (Pos (size - 1) (size - 1)) costs;
+        if cost == maxCost then
+            None
+        else
+            Some cost;
+
+let makeGrid : int -> List Pos -> Array (Array bool) =
+    \size -> \mark ->
+        let grid = array.new size false |> array.new size;
+        mark
+        |> list.foldr (\p ->
+            match p with
+            | Pos x y -> array.mapIdx y (array.set x true)
+            end) grid;
+
+
+let part1 : List Pos -> string =
+    \positions ->
+        let size = gridSize positions;
+        let positions = list.take (if isSample positions then 12 else 1024) positions;
+        let grid = makeGrid size positions;
+        match pathCost size grid with
+        | Some x -> ints.toString x
+        | None -> "unreachable"
+        end;
+
+type BinarySearchState = Searching (List Pos) (List Pos) (List Pos) | Solved (List Pos) (List Pos);
+
+let step : int -> BinarySearchState -> BinarySearchState =
+    \size -> \state ->
+        match state with
+        | Solved good bad -> Solved good bad
+        | Searching good unknown bad ->
+            if list.length unknown == 0 then
+                Solved good bad
+            else
+                let take = list.length unknown / 2 + 1;
+                let check = list.take take unknown;
+                let newGood = list.concat good check;
+                match pathCost size (makeGrid size newGood) with
+                | Some _ -> Searching newGood (list.skip take unknown) bad
+                | None ->
+                    let bad = list.concat (list.skip (take - 1) unknown) bad;
+                    let unknown = list.take (take - 1) unknown;
+                    Searching good unknown bad
+                end
+        end;
+
+let part2 : List Pos -> string =
+    \positions ->
+        let size = gridSize positions;
+        let state = Searching Nil positions Nil;
+        let state = ints.iterate (list.length positions + 1) (step size) state;
+        let bad =
+            match state with
+            | Searching _ _ bad -> bad
+            | Solved _ bad -> bad
+            end;
+        bad
+        |> list.head
+        |> option.map (\p ->
+            match p with
+            | Pos x y -> strings.concat (ints.toString x) (strings.concat "," (ints.toString y))
+            end)
+        |> option.unwrapOr "path always exists";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
