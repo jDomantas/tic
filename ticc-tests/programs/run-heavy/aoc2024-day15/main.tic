@@ -1,0 +1,376 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import (Result, Ok, Err) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+
+type Cell = Wall | Box | Empty | Robot | West | East;
+
+let parseCell : int -> Result Cell string =
+    let wall = strings.charAt 0 "#";
+    let box = strings.charAt 0 "O";
+    let empty = strings.charAt 0 ".";
+    let robot = strings.charAt 0 "@";
+    \ch ->
+        if ch == wall then
+            Ok Wall
+        else if ch == box then
+            Ok Box
+        else if ch == empty then
+            Ok Empty
+        else if ch == robot then
+            Ok Robot
+        else
+            Err "bad cell";
+
+type Dir = Up | Down | Left | Right;
+
+let parseDir : int -> Result Dir string =
+    let up = strings.charAt 0 "^";
+    let down = strings.charAt 0 "v";
+    let left = strings.charAt 0 "<";
+    let right = strings.charAt 0 ">";
+    \ch ->
+        if ch == up then
+            Ok Up
+        else if ch == down then
+            Ok Down
+        else if ch == left then
+            Ok Left
+        else if ch == right then
+            Ok Right
+        else
+            Err "bad dir";
+
+let takeWhile : (a -> bool) -> List a -> List a =
+    \f -> \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            if f x then
+                Cons x xs
+            else
+                Nil
+        end;
+
+let skipWhile : (a -> bool) -> List a -> List a =
+    \f -> \l ->
+        let go = \fold l -> \f ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs ->
+                if f x then
+                    xs f
+                else
+                    Cons x (xs (\_ -> false))
+            end;
+        go l f;
+
+type Input = Input (List (List Cell)) (List Dir);
+
+let parseInput : string -> Result Input string =
+    \input ->
+        let lines = strings.lines input;
+        let grid =
+            lines
+            |> takeWhile (\l -> strings.length l > 0)
+            |> list.map strings.chars
+            |> list.map (list.map parseCell)
+            |> list.map list.allOk
+            |> list.allOk;
+        let dirs =
+            lines
+            |> skipWhile (\l -> strings.length l > 0)
+            |> list.flatMap strings.chars
+            |> list.map parseDir
+            |> list.allOk;
+        Ok Input
+        |> result.apply grid
+        |> result.apply dirs;
+
+let isEmpty : Cell -> bool =
+    \c ->
+        match c with
+        | Empty -> true
+        | Wall -> false
+        | Box -> false
+        | Robot -> false
+        | East -> false
+        | West -> false
+        end;
+
+let get : int -> int -> Array (Array Cell) -> Cell =
+    \x -> \y -> \grid ->
+        grid
+        |> array.get y
+        |> option.unwrapOr array.empty
+        |> array.get x
+        |> option.unwrapOr Wall;
+
+let set : int -> int -> Cell -> Array (Array Cell) -> Array (Array Cell) =
+    \x -> \y -> \c -> \grid ->
+        grid
+        |> array.mapIdx y (\row ->
+            row
+            |> array.set x c);
+
+let and : bool -> bool -> bool =
+    \a -> \b -> if a then b else false;
+
+let shiftVertical : (int -> int -> int -> Array (Array Cell) -> Array (Array Cell)) -> int -> int -> int -> Array (Array Cell) -> Array (Array Cell) =
+    \recurse -> \dy -> \x -> \y -> \grid ->
+        match get x y grid with
+        | Wall -> grid
+        | Empty -> grid
+        | Box ->
+            let next = recurse dy x (y + dy) grid;
+            if isEmpty (get x (y + dy) next) then
+                next
+                |> set x (y + dy) Box
+                |> set x y Empty
+            else
+                grid
+        | Robot ->
+            let next = recurse dy x (y + dy) grid;
+            if isEmpty (get x (y + dy) next) then
+                next
+                |> set x (y + dy) Robot
+                |> set x y Empty
+            else
+                grid
+        | West ->
+            let next =
+                grid
+                |> recurse dy x (y + dy)
+                |> recurse dy (x + 1) (y + dy);
+            if and (isEmpty (get x (y + dy) next)) (isEmpty (get (x + 1) (y + dy) next)) then
+                next
+                |> set x (y + dy) West
+                |> set (x + 1) (y + dy) East
+                |> set x y Empty
+                |> set (x + 1) y Empty
+            else
+                grid
+        | East ->
+            let next =
+                grid
+                |> recurse dy x (y + dy)
+                |> recurse dy (x - 1) (y + dy);
+            if and (isEmpty (get x (y + dy) next)) (isEmpty (get (x - 1) (y + dy) next)) then
+                next
+                |> set x (y + dy) East
+                |> set (x - 1) (y + dy) West
+                |> set x y Empty
+                |> set (x - 1) y Empty
+            else
+                grid
+        end;
+
+let shiftUp : int -> int -> Array (Array Cell) -> Array (Array Cell) =
+    \x -> \y -> \grid ->
+        let depth = array.length grid;
+        ints.iterate depth shiftVertical (\_ -> \_ -> \_ -> \g -> g) (0 - 1) x y grid;
+
+let shiftDown : int -> int -> Array (Array Cell) -> Array (Array Cell) =
+    \x -> \y -> \grid ->
+        let depth = array.length grid;
+        ints.iterate depth shiftVertical (\_ -> \_ -> \_ -> \g -> g) 1 x y grid;
+
+let stepRowRight : List Cell -> List Cell =
+    let doPush = \c -> \n ->
+        match n true with
+        | Nil -> Cons c Nil
+        | Cons x xs ->
+            if isEmpty x then
+                Cons Empty (Cons c xs)
+            else
+                Cons c (Cons x xs)
+        end;
+    \row ->
+        let go = \fold row -> \push ->
+            match row with
+            | Nil -> Nil
+            | Cons x xs ->
+                match x with
+                | Wall -> Cons x (xs false)
+                | Empty -> Cons x (xs false)
+                | Box ->
+                    if push then
+                        doPush Box xs
+                    else
+                        Cons x (xs false)
+                | East ->
+                    if push then
+                        doPush East xs
+                    else
+                        Cons x (xs false)
+                | West ->
+                    if push then
+                        doPush West xs
+                    else
+                        Cons x (xs false)
+                | Robot ->
+                    doPush Robot xs
+                end
+            end;
+        go row false;
+
+let stepRowLeft : List Cell -> List Cell =
+    \row ->
+        row
+        |> list.reverse
+        |> stepRowRight
+        |> list.reverse;
+
+type State = State int int (Array (Array Cell));
+
+let initState : Array (Array Cell) -> Option State =
+    \grid ->
+        let w = grid |> array.get 0 |> option.unwrapOr array.empty |> array.length;
+        let h = grid |> array.length;
+        list.range 0 w
+        |> list.flatMap (\x ->
+            list.range 0 h
+            |> list.filterMap (\y ->
+                match get x y grid with
+                | Robot -> Some (State x y grid)
+                | Wall -> None
+                | Empty -> None
+                | Box -> None
+                | East -> None
+                | West -> None
+                end))
+        |> list.head;
+
+let step : State -> Dir -> State =
+    \state -> \dir ->
+        match state with
+        | State x y grid ->
+            match dir with
+            | Left ->
+                let next =
+                    grid
+                    |> array.mapIdx y (\r -> r |> array.toList |> stepRowLeft |> array.fromList);
+                if isEmpty (get x y next) then
+                    State (x - 1) y next
+                else
+                    State x y next
+            | Right ->
+                let next =
+                    grid
+                    |> array.mapIdx y (\r -> r |> array.toList |> stepRowRight |> array.fromList);
+                if isEmpty (get x y next) then
+                    State (x + 1) y next
+                else
+                    State x y next
+            | Up ->
+                let next = shiftUp x y grid;
+                if isEmpty (get x y next) then
+                    State x (y - 1) next
+                else
+                    State x y next
+            | Down ->
+                let next = shiftDown x y grid;
+                if isEmpty (get x y next) then
+                    State x (y + 1) next
+                else
+                    State x y next
+            end
+        end;
+
+let getGrid : State -> Array (Array Cell) =
+    \st ->
+        match st with
+        | State _ _ g -> g
+        end;
+
+let enumerateMap : (int -> a -> b) -> List a -> List b =
+    \f -> \l ->
+        let go = \fold l -> \idx ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs -> Cons (f idx x) (xs (idx + 1))
+            end;
+        go l 0;
+
+let scoreCell : int -> int -> Cell -> int =
+    \y -> \x -> \c ->
+        match c with
+        | Empty -> 0
+        | Wall -> 0
+        | Robot -> 0
+        | East -> 0
+        | Box -> y * 100 + x
+        | West -> y * 100 + x
+        end;
+
+let scoreRow : int -> List Cell -> int =
+    \y -> \row ->
+        row
+        |> enumerateMap (scoreCell y)
+        |> list.sum;
+
+let score : List (List Cell) -> int =
+    \grid ->
+        grid
+        |> enumerateMap scoreRow
+        |> list.sum;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input grid dirs ->
+            let grid = grid |> list.map array.fromList |> array.fromList;
+            match initState grid with
+            | Some state ->
+                dirs
+                |> list.foldl state step
+                |> getGrid
+                |> array.toList
+                |> list.map array.toList
+                |> score
+                |> ints.toString
+            | None -> "no robot"
+            end
+        end;
+
+let expand : List Cell -> List Cell =
+    \fold row ->
+        match row with
+        | Nil -> Nil
+        | Cons x xs ->
+            let doubled = Cons x (Cons x Nil);
+            let expanded =
+                match x with
+                | Empty -> doubled
+                | Wall -> doubled
+                | Robot -> Cons Robot (Cons Empty Nil)
+                | Box -> Cons West (Cons East Nil)
+                | East -> Cons Empty (Cons Empty Nil)
+                | West -> Cons Empty (Cons Empty Nil)
+                end;
+            list.concat expanded xs
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input grid dirs ->
+            let grid = grid |> list.map expand |> list.map array.fromList |> array.fromList;
+            match initState grid with
+            | Some state ->
+                dirs
+                |> list.foldl state step
+                |> getGrid
+                |> array.toList
+                |> list.map array.toList
+                |> score
+                |> ints.toString
+            | None -> "no robot"
+            end
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
