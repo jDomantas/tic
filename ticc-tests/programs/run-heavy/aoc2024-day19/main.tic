@@ -1,0 +1,74 @@
+import ints from "std/int";
+import option from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Input = Input (List string) (List string);
+
+let parseList : string -> List string =
+    \line ->
+        line
+        |> strings.split (strings.charAt 0 ",")
+        |> list.map strings.trim;
+
+let parseInput : string -> Result Input string =
+    \input ->
+        let lines = strings.lines input;
+        match lines with
+        | Nil -> Err "no input"
+        | Cons x xs ->
+            let parts = parseList x;
+            let designs = xs |> list.filter (\x -> strings.length x > 0);
+            Ok (Input parts designs)
+        end;
+
+let startsWith : string -> string -> bool =
+    \needle -> \haystack ->
+        if strings.length needle > strings.length haystack then
+            false
+        else
+            strings.equal needle (strings.substring 0 (strings.length needle) haystack);
+
+let tryMake : List string -> string -> List int -> int =
+    \parts -> \goal -> \dp ->
+        parts
+        |> list.filter (\p -> startsWith p goal)
+        |> list.map strings.length
+        |> list.map (\s -> dp |> list.skip (s - 1) |> list.head |> option.unwrapOr 1)
+        |> list.sum;
+
+let possibleArrangements : List string -> string -> int =
+    \parts -> \goal ->
+        list.range 1 (strings.length goal + 1)
+        |> list.foldl Nil (\dp -> \tailLen ->
+            let subgoal = strings.substring (strings.length goal - tailLen) tailLen goal;
+            let subgoalPossible = tryMake parts subgoal dp;
+            Cons subgoalPossible dp)
+        |> list.head
+        |> option.unwrapOr 1;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input parts designs ->
+            designs
+            |> list.filter (\d -> possibleArrangements parts d > 0)
+            |> list.length
+            |> ints.toString
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input parts designs ->
+            designs
+            |> list.map (possibleArrangements parts)
+            |> list.sum
+            |> ints.toString
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
