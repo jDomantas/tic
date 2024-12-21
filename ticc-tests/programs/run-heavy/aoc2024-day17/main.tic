@@ -1,0 +1,233 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import result from "std/result";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+let parseRegister : string -> Parse int =
+    \name ->
+        parse.ok (\x -> x)
+        |> parse.ignore (parse.literal "Register ")
+        |> parse.ignore (parse.literal name)
+        |> parse.ignore (parse.literal ": ")
+        |> parse.apply parse.integer;
+
+let parseProgram : Parse (List int) =
+    let comma = strings.charAt 0 ",";
+    parse.ok (\x -> x)
+    |> parse.ignore (parse.literal "Program: ")
+    |> parse.apply parse.remainder
+    |> parse.map (strings.split comma)
+    |> parse.map (list.map ints.parse)
+    |> parse.andThen (\x -> x |> list.allOk |> result.mapErr (\_ -> "bad int"));
+
+type Input = Input int int int (List int);
+
+let parseInput : string -> Result Input string =
+    \input ->
+        parse.ok Input
+        |> parse.apply (parseRegister "A")
+        |> parse.ignore (parse.literal strings.newline)
+        |> parse.apply (parseRegister "B")
+        |> parse.ignore (parse.literal strings.newline)
+        |> parse.apply (parseRegister "C")
+        |> parse.ignore (parse.literal strings.newline)
+        |> parse.ignore (parse.literal strings.newline)
+        |> parse.apply parseProgram
+        |> parse.run input;
+
+type State = Running int int int int (List int) | Halted (List int);
+
+type Value = Lit int | RegA | RegB | RegC;
+
+type Command =
+    | DivideIntoA Value
+    | BXor Value
+    | SetB Value
+    | JumpNotZero Value
+    | Out Value
+    | DivideIntoB Value
+    | DivideIntoC Value;
+
+let decodeComboArg : int -> Value =
+    \x ->
+        if x < 4 then
+            Lit x
+        else if x == 4 then
+            RegA
+        else if x == 5 then
+            RegB
+        else if x == 6 then
+            RegC
+        else
+            ?todoBadVal;
+
+let decodeCommand : int -> int -> Command =
+    \a -> \b ->
+        if a == 0 then
+            DivideIntoA (decodeComboArg b)
+        else if a == 1 then
+            BXor (Lit b)
+        else if a == 2 then
+            SetB (decodeComboArg b)
+        else if a == 3 then
+            JumpNotZero (Lit b)
+        else if a == 4 then
+            BXor RegC
+        else if a == 5 then
+            Out (decodeComboArg b)
+        else if a == 6 then
+            DivideIntoB (decodeComboArg b)
+        else if a == 7 then
+            DivideIntoC (decodeComboArg b)
+        else
+            ?todoBadOp;
+
+let getCommand : List int -> int -> Option Command =
+    \program -> \pc ->
+        let p = list.skip pc program;
+        Some decodeCommand
+        |> option.apply (list.head p)
+        |> option.apply (p |> list.skip 1 |> list.head);
+
+let eval : Value -> int -> int -> int -> int =
+    \v -> \a -> \b -> \c ->
+        match v with
+        | Lit x -> x
+        | RegA -> a
+        | RegB -> b
+        | RegC -> c
+        end;
+
+let powerOfTwo : int -> int =
+    \x -> ints.iterate x (\x -> x * 2) 1;
+
+let xor : int -> int -> int =
+    let go = \recurse -> \a -> \b ->
+        let low = (a + b) % 2;
+        recurse (a / 2) (b / 2) * 2 + low;
+    ints.iterate 64 go (\_ -> \_ -> 0);
+
+let step : List int -> State -> State =
+    \program -> \state ->
+        match state with
+        | Halted _ -> state
+        | Running pc a b c out ->
+            match getCommand program pc with
+            | None ->
+                Halted out
+            | Some command ->
+                match command with
+                | DivideIntoA x ->
+                    let x = eval x a b c |> powerOfTwo;
+                    Running (pc + 2) (a / x) b c out
+                | DivideIntoB x ->
+                    let x = eval x a b c |> powerOfTwo;
+                    Running (pc + 2) a (a / x) c out
+                | DivideIntoC x ->
+                    let x = eval x a b c |> powerOfTwo;
+                    Running (pc + 2) a b (a / x) out
+                | BXor x ->
+                    let x = eval x a b c;
+                    Running (pc + 2) a (xor b x) c out
+                | SetB x ->
+                    let x = eval x a b c % 8;
+                    Running (pc + 2) a x c out
+                | JumpNotZero x ->
+                    let x = eval x a b c;
+                    if a == 0 then
+                        Running (pc + 2) a b c out
+                    else
+                        Running x a b c out
+                | Out x ->
+                    let x = eval x a b c % 8;
+                    Running (pc + 2) a b c (Cons x out)
+                end
+            end
+        end;
+
+let run : int -> Input -> List int =
+    \a -> \input ->
+        match input with
+        | Input _ b c program ->
+            let maxSteps = a |> ints.toString |> strings.length;
+            let maxSteps = (maxSteps * 4 + 1) * list.length program;
+            let state = Running 0 a b c Nil;
+            let finalState = ints.iterate maxSteps (step program) state;
+            match finalState with
+            | Running _ _ _ _ _ -> ?didNotHalt
+            | Halted out -> list.reverse out
+            end
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input a _ _ _ ->
+            run a input
+            |> list.map ints.toString
+            |> list.join ","
+        end;
+
+let eq : List int -> List int -> bool =
+    \fold a -> \b ->
+        match a with
+        | Nil ->
+            match b with
+            | Nil -> true
+            | Cons _ _ -> false
+            end
+        | Cons a as ->
+            match b with
+            | Nil -> false
+            | Cons b bs ->
+                if a == b then
+                    as bs
+                else
+                    false
+            end
+        end;
+
+let searchStep : Input -> List int -> int -> List int =
+    \input -> \target -> \next ->
+        list.range 0 8
+        |> list.filterMap (\low ->
+            let a = next * 8 + low;
+            let result = run a input;
+            if eq target result then
+                Some a
+            else
+                None);
+
+let tails : List a -> List (List a) =
+    \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons (Cons x Nil) Nil
+            | Cons y _ -> Cons (Cons x y) xs
+            end
+        end;
+
+let search : Input -> List int -> List int =
+    \input -> \target ->
+        tails target
+        |> list.foldr (\target -> \followingOptions ->
+            followingOptions
+            |> list.flatMap (searchStep input target)) (Cons 0 Nil);
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input _ _ _ program ->
+            search input program
+            |> list.min
+            |> option.map ints.toString
+            |> option.unwrapOr "impossible"
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
