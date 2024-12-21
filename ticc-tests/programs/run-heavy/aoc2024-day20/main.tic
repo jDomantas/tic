@@ -1,0 +1,259 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Pos = Pos int int;
+
+type Cell = Wall | Empty | Start | Finish;
+
+let parseCell : int -> Result Cell string =
+    let wall = strings.charAt 0 "#";
+    let empty = strings.charAt 0 ".";
+    let start = strings.charAt 0 "S";
+    let finish = strings.charAt 0 "E";
+    \ch ->
+        if ch == wall then
+            Ok Wall
+        else if ch == empty then
+            Ok Empty
+        else if ch == start then
+            Ok Start
+        else if ch == finish then
+            Ok Finish
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (Array (Array Cell)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.allOk
+        |> result.map (list.map array.fromList)
+        |> result.map array.fromList;
+
+type Queue a = Queue (List a) (List a);
+
+let push : a -> Queue a -> Queue a =
+    \x -> \q ->
+        match q with
+        | Queue now next -> Queue now (Cons x next)
+        end;
+
+let peek : Queue a -> Option a =
+    \q ->
+        match q with
+        | Queue now next ->
+            match now with
+            | Nil -> next |> list.reverse |> list.head
+            | Cons x _ -> Some x
+            end
+        end;
+
+let pop : Queue a -> Queue a =
+    \q ->
+        match q with
+        | Queue now next ->
+            match now with
+            | Nil -> Queue (list.reverse next |> list.tail |> option.unwrapOr Nil) Nil
+            | Cons _ xs -> Queue xs next
+            end
+        end;
+
+let emptyQueue : Queue a = Queue Nil Nil;
+
+let maxCost : int = 999999999;
+
+let getCost : Pos -> Array (Array int) -> int =
+    \p -> \c ->
+        match p with
+        | Pos x y ->
+            c
+            |> array.get y
+            |> option.unwrapOr array.empty
+            |> array.get x
+            |> option.unwrapOr maxCost
+        end;
+
+let setCost : Pos -> int -> Array (Array int) -> Array (Array int) =
+    \p -> \c -> \costs ->
+        match p with
+        | Pos x y -> array.mapIdx y (\row -> array.set x c row) costs
+        end;
+
+type StateWithCost = StateWithCost Pos int;
+
+type BfsState = BfsState (Array (Array int)) (Queue StateWithCost);
+
+let move : Pos -> int -> int -> Pos =
+    \p -> \dx -> \dy ->
+        match p with
+        | Pos x y -> Pos (x + dx) (y + dy)
+        end;
+
+let step : Array (Array Cell) -> BfsState -> BfsState =
+    \cells -> \state ->
+        match state with
+        | BfsState costs queue ->
+            match peek queue with
+            | Some step ->
+                let queue = pop queue;
+                match step with
+                | StateWithCost pos cost ->
+                    let cell =
+                        match pos with
+                        | Pos x y ->
+                            cells
+                            |> array.get y
+                            |> option.unwrapOr array.empty
+                            |> array.get x
+                            |> option.unwrapOr Wall
+                        end;
+                    let wall =
+                        match cell with
+                        | Wall -> true
+                        | Empty -> false
+                        | Start -> false
+                        | Finish -> false
+                        end;
+                    let current = getCost pos costs;
+                    if wall then
+                        BfsState costs queue
+                    else if cost < current then
+                        let costs = setCost pos cost costs;
+                        let adj = Nil
+                            |> Cons (move pos 0 1)
+                            |> Cons (move pos 1 0)
+                            |> Cons (move pos (0-1) 0)
+                            |> Cons (move pos 0 (0-1))
+                            |> list.map (\p -> StateWithCost p (cost + 1));
+                        let queue = list.foldr push queue adj;
+                        BfsState costs queue
+                    else
+                        BfsState costs queue
+                end
+            | None -> BfsState costs queue
+            end
+        end;
+
+let width : Array (Array Cell) -> int =
+    \grid -> grid |> array.get 0 |> option.unwrapOr array.empty |> array.length;
+
+let height : Array (Array Cell) -> int =
+    \grid -> grid |> array.length;
+
+let costGrid : Array (Array Cell) -> Pos -> Array (Array int) =
+    \grid -> \start ->
+        let w = width grid;
+        let h = height grid;
+        let costs = array.new w maxCost |> array.new h;
+        let state = BfsState costs (push (StateWithCost start 0) emptyQueue);
+        let state = ints.iterate (w * h * 4) (step grid) state;
+        match state with
+        | BfsState costs _ -> costs
+        end;
+
+let absDiff : int -> int -> int =
+    \a -> \b ->
+        if a > b then
+            a - b
+        else
+            b - a;
+
+let solve : Array (Array Cell) -> (int -> int -> List Pos) -> Pos -> Pos -> List int =
+    \grid -> \hackDestinations -> \start -> \finish ->
+        let w = width grid;
+        let h = height grid;
+        let startCosts = costGrid grid start;
+        let finishCosts = costGrid grid finish;
+        let bestPath =
+            list.range 0 w
+            |> list.flatMap (\x ->
+                list.range 0 h
+                |> list.map (\y ->
+                    let p = Pos x y;
+                    getCost p startCosts + getCost p finishCosts))
+            |> list.filter (\c -> c < maxCost)
+            |> list.min
+            |> option.unwrapOr maxCost;
+        list.range 0 w
+        |> list.flatMap (\x ->
+            list.range 0 h
+            |> list.flatMap (\y ->
+                let startCost = getCost (Pos x y) startCosts;
+                hackDestinations x y
+                |> list.map (\p ->
+                    match p with
+                    | Pos xx yy -> getCost p finishCosts + startCost + absDiff x xx + absDiff y yy
+                    end)
+                |> list.filter (\c -> c < bestPath)
+                |> list.map (\c -> bestPath - c)));
+
+let find : Array (Array Cell) -> bool -> Option Pos =
+    \grid -> \start ->
+        let w = width grid;
+        let h = height grid;
+        list.range 0 w
+        |> list.flatMap (\x ->
+            list.range 0 h
+            |> list.filterMap (\y ->
+                let c = grid |> array.get y |> option.unwrapOr array.empty |> array.get x |> option.unwrapOr Wall;
+                let good =
+                    match c with
+                    | Wall -> false
+                    | Empty -> false
+                    | Start -> start
+                    | Finish -> if start then false else true
+                    end;
+                if good then
+                    Some (Pos x y)
+                else None))
+        |> list.head;
+
+let saturatingSub : int -> int -> int =
+    \a -> \b ->
+        if a > b then
+            a - b
+        else
+            0;
+
+let hackDestinations : int -> int -> int -> List Pos =
+    \dist -> \x -> \y ->
+        list.range (saturatingSub x dist) (x + dist + 1)
+        |> list.flatMap (\xx ->
+            list.range (saturatingSub y dist) (y + dist + 1)
+            |> list.filterMap (\yy ->
+                let d = absDiff x xx + absDiff y yy;
+                if d <= dist then
+                    Some (Pos xx yy)
+                else
+                    None));
+
+let part1 : Array (Array Cell) -> string =
+    \grid ->
+        Some (solve grid (hackDestinations 2))
+        |> option.apply (find grid true)
+        |> option.apply (find grid false)
+        |> option.map (list.filter (\x -> x >= 100))
+        |> option.map list.length
+        |> option.map ints.toString
+        |> option.unwrapOr "no start or end";
+
+let part2 : Array (Array Cell) -> string =
+    \grid ->
+        Some (solve grid (hackDestinations 20))
+        |> option.apply (find grid true)
+        |> option.apply (find grid false)
+        |> option.map (list.filter (\x -> x >= 100))
+        |> option.map list.length
+        |> option.map ints.toString
+        |> option.unwrapOr "no start or end";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
