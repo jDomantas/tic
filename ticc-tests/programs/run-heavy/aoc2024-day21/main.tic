@@ -1,0 +1,455 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+
+type Pos = Pos int int;
+
+type Dir = Up | Down | Left | Right;
+
+type Button = Digit int | Action | Empty | Dir Dir;
+
+let parseButton : int -> Result Button string =
+    let a = strings.charAt 0 "A";
+    let d0 = strings.charAt 0 "0";
+    let d9 = strings.charAt 0 "9";
+    let up = strings.charAt 0 "^";
+    let down = strings.charAt 0 "v";
+    let left = strings.charAt 0 "<";
+    let right = strings.charAt 0 ">";
+    \ch ->
+        if ch == a then
+            Ok Action
+        else if ch == up then
+            Ok (Dir Up)
+        else if ch == down then
+            Ok (Dir Down)
+        else if ch == left then
+            Ok (Dir Left)
+        else if ch == right then
+            Ok (Dir Right)
+        else if ch >= d0 then
+            if ch <= d9 then
+                Ok (Digit (ch - d0))
+            else
+                Err "bad button"
+        else
+            Err "bad button";
+
+let parseInput : string -> Result (List (List Button)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseButton)
+        |> list.map list.allOk
+        |> list.allOk;
+
+type Keyboard = Keyboard (List (List Button)) Pos;
+
+let getButton : Pos -> List (List Button) -> Button =
+    \p -> \kb ->
+        match p with
+        | Pos x y ->
+            if x > 1000 then
+                Empty
+            else if y > 1000 then
+                Empty
+            else
+                kb
+                |> list.skip y
+                |> list.head
+                |> option.unwrapOr Nil
+                |> list.skip x
+                |> list.head
+                |> option.unwrapOr Empty
+        end;
+
+let row : Button -> Button -> Button -> List Button =
+    \a -> \b -> \c -> Cons a (Cons b (Cons c Nil));
+
+let numpad : Keyboard =
+    let a = row (Digit 7) (Digit 8) (Digit 9);
+    let b = row (Digit 4) (Digit 5) (Digit 6);
+    let c = row (Digit 1) (Digit 2) (Digit 3);
+    let d = row Empty (Digit 0) Action;
+    Keyboard (Cons a (Cons b (Cons c (Cons d Nil)))) (Pos 2 3);
+
+let arrows : Keyboard =
+    let a = row Empty (Dir Up) Action;
+    let b = row (Dir Left) (Dir Down) (Dir Right);
+    Keyboard (Cons a (Cons b Nil)) (Pos 2 0);
+
+type AfterPress = NewKeyboards (List Keyboard) | Pressed Button;
+
+let posIn : Keyboard -> Pos =
+    \k ->
+        match k with
+        | Keyboard _ p -> p
+        end;
+
+let current : Keyboard -> Button =
+    \kb ->
+        match kb with
+        | Keyboard btns pos -> getButton pos btns
+        end;
+
+type Pair a b = Pair a b;
+
+let first : Pair a b -> a =
+    \p -> match p with | Pair a _ -> a end;
+
+let second : Pair a b -> b =
+    \p -> match p with | Pair _ b -> b end;
+
+let press : List Keyboard -> Pair (Button -> Result AfterPress string) (List Keyboard) =
+    \fold kbs ->
+        let this =
+            match kbs with
+            | Nil -> Nil
+            | Cons x b -> Cons x (second b)
+            end;
+        let go = \b ->
+            match kbs with
+            | Nil ->
+                match b with
+                | Empty -> Ok (NewKeyboards Nil)
+                | Action -> Ok (Pressed b)
+                | Digit _ -> Ok (Pressed b)
+                | Dir _ -> Ok (Pressed b)
+                end
+            | Cons kb kbs ->
+                let recurse = first kbs;
+                let kbs = second kbs;
+                match b with
+                | Empty -> Ok (NewKeyboards (Cons kb kbs))
+                | Action ->
+                    let btn = current kb;
+                    recurse btn
+                    |> result.map (\rest ->
+                        match rest with
+                        | NewKeyboards kbs -> NewKeyboards (Cons kb kbs)
+                        | Pressed _ -> rest
+                        end)
+                | Digit _ -> Err "pressed digit in non-last keyboard"
+                | Dir d ->
+                    let p = posIn kb;
+                    let x = match p with | Pos x _ -> x end;
+                    let y = match p with | Pos _ y -> y end;
+                    let btns = match kb with | Keyboard btns _ -> btns end;
+                    let next =
+                        match d with
+                        | Up -> Pos x (y - 1)
+                        | Down -> Pos x (y + 1)
+                        | Left -> Pos (x - 1) y
+                        | Right -> Pos (x + 1) y
+                        end;
+                    match getButton next btns with
+                    | Empty -> Err "went out of bounds"
+                    | Action -> Ok (NewKeyboards (Cons (Keyboard btns next) kbs))
+                    | Digit _ -> Ok (NewKeyboards (Cons (Keyboard btns next) kbs))
+                    | Dir _ -> Ok (NewKeyboards (Cons (Keyboard btns next) kbs))
+                    end
+                end
+            end;
+        Pair go this;
+
+let press : List Keyboard -> Button -> Result AfterPress string =
+    \kbs -> \b -> (press kbs |> first) b;
+
+let initialState : List Keyboard =
+    Cons arrows (Cons arrows (Cons numpad Nil));
+
+let showButton : Button -> string =
+    \b ->
+        match b with
+        | Action -> "A"
+        | Digit d -> strings.fromChar (d + 48)
+        | Empty -> "empty"
+        | Dir d ->
+            match d with
+            | Up -> "^"
+            | Down -> "v"
+            | Left -> "<"
+            | Right -> ">"
+            end
+        end;
+
+let kbsEq : List Keyboard -> List Keyboard -> bool =
+    \fold a -> \b ->
+        match a with
+        | Nil ->
+            match b with
+            | Nil -> true
+            | Cons _ _ -> false
+            end
+        | Cons a as ->
+            match b with
+            | Nil -> false
+            | Cons b bs ->
+                match posIn a with
+                | Pos ax ay ->
+                    match posIn b with
+                    | Pos bx by ->
+                        if ax != bx then
+                            false
+                        else if ay != by then
+                            false
+                        else
+                            as bs
+                    end
+                end
+            end
+        end;
+
+type State = State (List Button) (List Keyboard);
+
+let buttonEq : Button -> Button -> bool =
+    let dirId = \a ->
+        match a with
+        | Up -> 0
+        | Down -> 1
+        | Left -> 2
+        | Right -> 3
+        end;
+    \a -> \b ->
+        match a with
+        | Action ->
+            match b with
+            | Action -> true
+            | Digit _ -> false
+            | Dir _ -> false
+            | Empty -> false
+            end
+        | Digit a ->
+            match b with
+            | Action -> false
+            | Digit b -> a == b
+            | Dir _ -> false
+            | Empty -> false
+            end
+        | Dir a ->
+            match b with
+            | Action -> false
+            | Digit _ -> false
+            | Dir b -> dirId a == dirId b
+            | Empty -> false
+            end
+        | Empty ->
+            match b with
+            | Action -> false
+            | Digit _ -> false
+            | Dir _ -> false
+            | Empty -> true
+            end
+        end;
+
+let listEq : (a -> a -> bool) -> List a -> List a -> bool =
+    \f -> \fold a -> \b ->
+        match a with
+        | Nil ->
+            match b with
+            | Nil -> true
+            | Cons _ _ -> false
+            end
+        | Cons a as ->
+            match b with
+            | Nil -> false
+            | Cons b bs ->
+                if f a b then
+                    as bs
+                else
+                    false
+            end
+        end;
+
+let stateEq : State -> State -> bool =
+    \a -> \b ->
+        match a with
+        | State ab ak ->
+            match b with
+            | State bb bk ->
+                if listEq buttonEq ab bb then
+                    kbsEq ak bk
+                else
+                    false
+            end
+        end;
+
+type StateMap a = NilMap | ConsMap State a rec;
+
+let get : State -> StateMap a -> Option a =
+    \p -> \fold map ->
+        match map with
+        | NilMap -> None
+        | ConsMap k v xs ->
+            if stateEq k p then
+                Some v
+            else
+                xs
+        end;
+
+type Queue a = Queue (List a) (List a);
+
+let push : a -> Queue a -> Queue a =
+    \x -> \q ->
+        match q with
+        | Queue now next -> Queue now (Cons x next)
+        end;
+
+let peek : Queue a -> Option a =
+    \q ->
+        match q with
+        | Queue now next ->
+            match now with
+            | Nil -> next |> list.reverse |> list.head
+            | Cons x _ -> Some x
+            end
+        end;
+
+let pop : Queue a -> Queue a =
+    \q ->
+        match q with
+        | Queue now next ->
+            match now with
+            | Nil -> Queue (list.reverse next |> list.tail |> option.unwrapOr Nil) Nil
+            | Cons _ xs -> Queue xs next
+            end
+        end;
+
+let emptyQueue : Queue a = Queue Nil Nil;
+
+let step : State -> Button -> Option State =
+    \s -> \b ->
+        match s with
+        | State pending kbs ->
+            match press kbs b with
+            | Err _ -> None
+            | Ok x ->
+                match x with
+                | NewKeyboards kbs -> Some (State pending kbs)
+                | Pressed b ->
+                    match pending with
+                    | Nil -> None
+                    | Cons bb rest ->
+                        if buttonEq b bb then
+                            Some (State rest kbs)
+                        else
+                            None
+                    end
+                end
+            end
+        end;
+
+type WithCost c a = WithCost c a;
+
+type BfsState c = BfsState (StateMap c) (Queue (WithCost c State));
+
+let isFinal : State -> bool =
+    \s ->
+        match s with
+        | State pending _ -> list.length pending == 0
+        end;
+
+let stepBfs : BfsState (List Button) -> BfsState (List Button) =
+    \bfs ->
+        match bfs with
+        | BfsState visited queue ->
+            match peek queue with
+            | None -> bfs
+            | Some state ->
+                let queue = pop queue;
+                match state with
+                | WithCost currentCost state ->
+                    if get state visited |> option.isSome then
+                        BfsState visited queue
+                    else if isFinal state then
+                        BfsState (ConsMap state currentCost visited) queue
+                    else
+                        let options =
+                            Nil
+                            |> Cons (Dir Left)
+                            |> Cons (Dir Right)
+                            |> Cons (Dir Up)
+                            |> Cons (Dir Down)
+                            |> Cons Action;
+                        let queue =
+                            options
+                            |> list.filterMap (\b ->
+                                match step state b with
+                                | None -> None
+                                | Some s -> WithCost (Cons b currentCost) s |> Some
+                                end)
+                            |> list.foldr push queue;
+                        BfsState (ConsMap state currentCost visited) queue
+                end
+            end
+        end;
+
+let findFinal : StateMap (List Button) -> Option (List Button) =
+    \fold map ->
+        match map with
+        | NilMap -> None
+        | ConsMap k v xs ->
+            if isFinal k then
+                match xs with
+                | None -> Some v
+                | Some vv ->
+                    if list.length v < list.length vv then
+                        Some v
+                    else
+                        Some vv
+                end
+            else
+                xs
+        end;
+
+let codeNum : List Button -> int =
+    \bs ->
+        let go = \fold bs -> \acc ->
+            match bs with
+            | Nil -> acc
+            | Cons x xs ->
+                match x with
+                | Digit d -> xs (acc * 10 + d)
+                | Action -> xs acc
+                | Empty -> xs acc
+                | Dir _ -> xs acc
+                end
+            end;
+        go bs 0;
+
+let solveCode : List Button -> Option int =
+    \code ->
+        let start = State code initialState;
+        let bfs = BfsState NilMap (push (WithCost Nil start) emptyQueue);
+        let bfs = ints.iterate 100000 stepBfs bfs;
+        match bfs with
+        | BfsState visited _ ->
+            match findFinal visited with
+            | None -> None
+            | Some x -> x |> list.length |> Some
+            end
+        end;
+
+let part1 : List (List Button) -> string =
+    \codes ->
+        codes
+        |> list.map (\code ->
+            let num = codeNum code;
+            match solveCode code with
+            | Some presses -> Some (num * presses)
+            | None -> None
+            end)
+        |> list.allSome
+        |> option.map list.sum
+        |> option.map ints.toString
+        |> option.unwrapOr "no solution for code";
+
+let part2 : List (List Button) -> string =
+    \codes ->
+        "todo";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
