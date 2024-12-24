@@ -1,0 +1,214 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Edge = Edge int int;
+
+let parseNode : Parse int =
+    let a = strings.charAt 0 "a";
+    let z = strings.charAt 0 "z";
+    let isLetter =
+        \ch ->
+            if ch >= a then
+                ch <= z
+            else
+                false;
+    let parseLetter =
+        parse.char
+        |> parse.andThen (\ch ->
+            if isLetter ch then
+                Ok (ch - a)
+            else
+                Err "bad node");
+    parse.ok (\a -> \b -> a * 26 + b)
+    |> parse.apply parseLetter
+    |> parse.apply parseLetter;
+
+let parseEdge : string -> Result Edge string =
+    \line ->
+        parse.ok Edge
+        |> parse.apply parseNode
+        |> parse.ignore (parse.literal "-")
+        |> parse.apply parseNode
+        |> parse.run line;
+
+let parseInput : string -> Result (List Edge) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parseEdge
+        |> list.allOk;
+
+let neighbourLists : List Edge -> Array (List int) =
+    \edges ->
+        let lists = array.new (26 * 26) Nil;
+        let add = \lists -> \edge ->
+            match edge with
+            | Edge a b ->
+                lists
+                |> array.mapIdx a (Cons b)
+                |> array.mapIdx b (Cons a)
+            end;
+        list.foldl lists add edges;
+
+let intesection : List int -> List int -> List int =
+    \a -> \b ->
+        let mark =
+            a
+            |> list.foldl (array.new (26 * 26) false) (\arr -> \x -> array.set x true arr);
+        list.filter (\x -> array.get x mark |> option.unwrapOr false) b;
+
+type Triple = Triple int int int;
+
+let canonicalTriple : int -> int -> int -> Triple =
+    \a -> \b -> \c ->
+        if a >= b then
+            if a >= c then
+                if b >= c then
+                    Triple a b c
+                else
+                    Triple a c b
+            else
+                Triple c a b
+        else if a >= c then
+            Triple b a c
+        else if b >= c then
+            Triple b c a
+        else
+            Triple c b a;
+
+let eqTriple : Triple -> Triple -> bool =
+    \a -> \b ->
+        match a with
+        | Triple p q r ->
+            match b with
+            | Triple x y z ->
+                if p != x then
+                    false
+                else if q != y then
+                    false
+                else
+                    r == z
+            end
+        end;
+
+let tripleLess : Triple -> Triple -> bool =
+    \a -> \b ->
+        match a with
+        | Triple p q r ->
+            match b with
+            | Triple x y z ->
+                if p != x then
+                    p < x
+                else if q != y then
+                    q < y
+                else
+                    r < z
+            end
+        end;
+
+let dedupBy : (a -> a -> bool) -> List a -> List a =
+    \eq -> \fold ps ->
+        match ps with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons x xs
+            | Cons y _ ->
+                if eq x y then
+                    xs
+                else
+                    Cons x xs
+            end
+        end;
+
+let elems : Triple -> List int =
+    \a ->
+        match a with
+        | Triple a b c -> Cons a (Cons b (Cons c Nil))
+        end;
+
+let isT : int -> bool =
+    let t = strings.charAt 0 "t" - strings.charAt 0 "a";
+    \x -> x / 26 == t;
+
+let part1 : List Edge -> string =
+    \edges ->
+        let lists = neighbourLists edges;
+        edges
+        |> list.flatMap (\e ->
+            match e with
+            | Edge a b ->
+                let an = lists |> array.get a |> option.unwrapOr Nil;
+                let bn = lists |> array.get b |> option.unwrapOr Nil;
+                intesection an bn
+                |> list.map (canonicalTriple a b)
+            end)
+        |> list.sortBy tripleLess
+        |> dedupBy eqTriple
+        |> list.filter (\x -> x |> elems |> list.map isT |> list.any)
+        |> list.length
+        |> ints.toString;
+
+let subsets : List a -> List (List a) =
+    \fold l ->
+        match l with
+        | Nil -> Cons Nil Nil
+        | Cons x xs -> list.concat xs (list.map (Cons x) xs)
+        end;
+
+let contains : int -> List int -> bool =
+    \x -> \fold l ->
+        match l with
+        | Nil -> false
+        | Cons y ys ->
+            if x == y then
+                true
+            else
+                ys
+        end;
+
+let isClique : Array (List int) -> List int -> bool =
+    \adj -> \nodes ->
+        nodes
+        |> list.flatMap (\n ->
+            nodes
+            |> list.map (\n2 ->
+                if n2 == n then
+                    true
+                else
+                    adj |> array.get n2 |> option.unwrapOr Nil |> contains n))
+        |> list.all;
+
+let nodeToString : int -> string =
+    let a = strings.charAt 0 "a";
+    \x ->
+        let hi = x / 26 + a;
+        let lo = x % 26 + a;
+        strings.concat (strings.fromChar hi) (strings.fromChar lo);
+
+let part2 : List Edge -> string =
+    \edges ->
+        let lists = neighbourLists edges;
+        list.range 0 (26 * 26)
+        |> list.filter (\idx -> (array.get idx lists |> option.unwrapOr Nil |> list.length) > 0)
+        |> list.map (\idx ->
+            let adj = array.get idx lists |> option.unwrapOr Nil;
+            adj
+            |> subsets
+            |> list.filter (isClique lists)
+            |> list.maxBy (\a -> \b -> list.length a < list.length b)
+            |> option.unwrapOr Nil
+            |> Cons idx)
+        |> list.maxBy (\a -> \b -> list.length a < list.length b)
+        |> option.unwrapOr Nil
+        |> list.sortBy (\a -> \b -> a < b)
+        |> list.map nodeToString
+        |> list.join ",";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
