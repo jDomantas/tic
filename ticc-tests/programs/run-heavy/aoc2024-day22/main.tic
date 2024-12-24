@@ -1,0 +1,115 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import array from "std/array";
+import utils from "../shared/aoc-utils.tic";
+
+let parseInput : string -> Result (List int) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map ints.parse
+        |> list.allOk
+        |> result.mapErr (\_ -> "bad int");
+
+let next : int -> int =
+    let step  = \f -> \x -> (ints.bitXor (f x) x) % 16777216;
+    \state ->
+        state
+        |> step (\x -> x * 64)
+        |> step (\x -> x / 32)
+        |> step (\x -> x * 2048);
+
+let nth : int -> int -> int =
+    \seed -> \idx ->
+        ints.iterate idx next seed;
+
+let part1 : List int -> string =
+    \seeds ->
+        seeds
+        |> list.map (\s -> nth s 2000)
+        |> list.sum
+        |> ints.toString;
+
+let changeId : List int -> int =
+    \costs ->
+        list.zip (\a -> \b -> a + 9 - b) (list.skip 1 costs) costs
+        |> list.foldl 0 (\acc -> \b -> acc * 20 + b);
+
+type Sale = Sale int int;
+
+let tails : List a -> List (List a) =
+    \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons (Cons x Nil) Nil
+            | Cons y _ -> Cons (Cons x y) xs
+            end
+        end;
+
+let sales : List int -> List Sale =
+    \prices ->
+        tails prices
+        |> list.map (list.take 5)
+        |> list.filter (\l -> list.length l == 5)
+        |> list.map (\c -> Sale (changeId c) (c |> list.reverse |> list.head |> option.unwrapOr 0));
+
+let filterSales : List Sale -> List Sale =
+    \sales ->
+        let go = \fold sales -> \mark ->
+            match sales with
+            | Nil -> Nil
+            | Cons s ss ->
+                match s with
+                | Sale id _ ->
+                    if id >= array.length mark then
+                        ?bad
+                    else if array.get id mark |> option.unwrapOr false then
+                        ss mark
+                    else
+                        let mark = array.set id true mark;
+                        Cons s (ss mark)
+                end
+            end;
+        go sales (array.new (20 * 20 * 20 * 20) false);
+
+let iterate : int -> a -> (a -> a) -> List a =
+    \count -> \init -> \f ->
+        if count == 0 then
+            Nil
+        else
+            let addOne = \l ->
+                match l with
+                | Nil -> Nil
+                | Cons x _ -> Cons (f x) l
+                end;
+            ints.iterate (count - 1) addOne (Cons init Nil)
+            |> list.reverse;
+
+let prices : int -> List int =
+    \seed ->
+        iterate 2001 seed next
+        |> list.map (\x -> x % 10);
+
+let part2 : List int -> string =
+    \seeds ->
+        seeds
+        |> list.flatMap (\s ->
+            s
+            |> prices
+            |> sales
+            |> filterSales)
+        |> list.foldl (array.new (20 * 20 * 20 * 20) 0) (\arr -> \sale ->
+            match sale with
+            | Sale id cost -> array.mapIdx id (\x -> x + cost) arr
+            end)
+        |> array.toList
+        |> list.max
+        |> option.unwrapOr 0
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

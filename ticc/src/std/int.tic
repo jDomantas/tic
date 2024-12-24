@@ -66,3 +66,21 @@ export let gcd : int -> int -> int =
 
 export let lcm : int -> int -> int =
     \a -> \b -> a / (gcd a b) * b;
+
+export let bitXor : int -> int -> int =
+    let go = \recurse -> \a -> \b ->
+        let low = (a + b) % 2;
+        recurse (a / 2) (b / 2) * 2 + low;
+    iterate 64 go (\_ -> \_ -> 0);
+
+export let bitAnd : int -> int -> int =
+    let go = \recurse -> \a -> \b ->
+        let low = a % 2 * b % 2;
+        recurse (a / 2) (b / 2) * 2 + low;
+    iterate 64 go (\_ -> \_ -> 0);
+
+export let bitOr : int -> int -> int =
+    let go = \recurse -> \a -> \b ->
+        let low = if a % 2 == 1 then 1 else b % 2;
+        recurse (a / 2) (b / 2) * 2 + low;
+    iterate 64 go (\_ -> \_ -> 0);
