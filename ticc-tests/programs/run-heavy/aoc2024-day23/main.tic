@@ -173,17 +173,33 @@ let contains : int -> List int -> bool =
                 ys
         end;
 
+let all : (a -> bool) -> List a -> bool =
+    \f -> \fold l ->
+        match l with
+        | Nil -> true
+        | Cons x xs ->
+            if f x then
+                xs
+            else
+                false
+        end;
+
+let allPairs : (a -> a -> bool) -> List a -> bool =
+    \f -> \l ->
+        let go = \fold l -> \pred ->
+            match l with
+            | Nil -> true
+            | Cons x xs ->
+                if all (f x) pred then
+                    xs (Cons x pred)
+                else
+                    false
+            end;
+        go l Nil;
+
 let isClique : Array (List int) -> List int -> bool =
     \adj -> \nodes ->
-        nodes
-        |> list.flatMap (\n ->
-            nodes
-            |> list.map (\n2 ->
-                if n2 == n then
-                    true
-                else
-                    adj |> array.get n2 |> option.unwrapOr Nil |> contains n))
-        |> list.all;
+        allPairs (\a -> \b -> adj |> array.get a |> option.unwrapOr Nil |> contains b) nodes;
 
 let nodeToString : int -> string =
     let a = strings.charAt 0 "a";
