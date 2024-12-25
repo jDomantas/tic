@@ -1,0 +1,8 @@
+import foo from "child.tic";
+
+let x : foo.Foo = foo.Foo;
+
+let y : int =
+    match x with
+    | foo.Foo -> 3
+    end;

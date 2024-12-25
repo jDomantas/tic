@@ -86,7 +86,7 @@ fn add_exports(completions: &mut Vec<Completion>, unit: &CompleteUnit, for_usage
             ir::DefKind::Module { .. } => resolve::NameUsage::Module,
         };
         if kind == for_usage {
-            completions.push(Completion { name: name.clone() })
+            completions.push(Completion { name: name.name.clone() })
         }
     }
 }

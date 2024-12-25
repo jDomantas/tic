@@ -1,0 +1,4 @@
+import child from "child.tic";
+
+let foo : child.value = ?todo;
+--              ^^^^^ ERROR: value is not a type

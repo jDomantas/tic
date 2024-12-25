@@ -1,14 +1,25 @@
 use std::collections::HashMap;
 
-use crate::{CompilationUnit, compiler::ir};
+use crate::{compiler::ir, CompilationUnit, NamespacedName};
 
-pub(crate) fn collect_exports(unit: &CompilationUnit) -> HashMap<String, ir::Def> {
+pub(crate) fn collect_exports(unit: &CompilationUnit) -> HashMap<NamespacedName, ir::Def> {
     let mut exports = HashMap::new();
     for item in &unit.items {
         for def in &item.defs {
             if def.vis == ir::Visibility::Export {
-                let name = unit.src[def.span.source_range()].to_owned();
-                exports.insert(name, def.clone());
+                let namespaces: &[_] = match def.kind {
+                    ir::DefKind::Value { .. } => &[crate::Namespace::Value],
+                    ir::DefKind::Ctor { .. } => &[crate::Namespace::Pattern, crate::Namespace::Value],
+                    ir::DefKind::Type { .. } => &[crate::Namespace::Type],
+                    ir::DefKind::Module { .. } => &[crate::Namespace::Module],
+                };
+                for &namespace in namespaces {
+                    let name = NamespacedName {
+                        name: unit.src[def.span.source_range()].to_owned(),
+                        namespace,
+                    };
+                    exports.insert(name, def.clone());
+                }
             }
         }
     }

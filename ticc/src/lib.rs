@@ -172,8 +172,55 @@ impl fmt::Debug for CompleteUnit {
 
 struct CompleteUnitProps {
     unit: CompilationUnit,
-    exports: HashMap<String, ir::Def>,
+    exports: HashMap<NamespacedName, ir::Def>,
     types: HashMap<ir::Symbol, ir::Def>,
+}
+
+impl CompleteUnitProps {
+    fn find_export(&self, namespace: Namespace, name: &str) -> Result<&ir::Def, ExportLookupError> {
+        let mut name = NamespacedName {
+            name: name.to_owned(),
+            namespace,
+        };
+        if let Some(def) = self.exports.get(&name) {
+            return Ok(def);
+        }
+        let mut available_in = Vec::new();
+        for ns in [Namespace::Value, Namespace::Type, Namespace::Pattern, Namespace::Module] {
+            name.namespace = ns;
+            if self.exports.get(&name).is_some() {
+                available_in.push(ns);
+            }
+        }
+        if available_in.len() > 0 {
+            Err(ExportLookupError::WrongNamespace { available_in })
+        } else {
+            Err(ExportLookupError::NoExport)
+        }
+    }
+}
+
+enum ExportLookupError {
+    NoExport,
+    WrongNamespace { available_in: Vec<Namespace> },
+}
+
+#[derive(PartialEq, Eq, Debug, Hash, Clone)]
+struct NamespacedName {
+    namespace: Namespace,
+    name: String,
+}
+
+#[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
+enum Namespace {
+    Value,
+    Type,
+    Pattern,
+    Module,
+}
+
+impl Namespace {
+    const ALL: [Namespace; 4] = [Namespace::Value, Namespace::Type, Namespace::Pattern, Namespace::Module];
 }
 
 pub trait ModuleResolver {

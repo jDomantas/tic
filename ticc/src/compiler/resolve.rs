@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{CompleteUnit, ImportError, ModuleKey, ModuleResolver, RawDiagnostic, Severity};
+use crate::{CompleteUnit, ExportLookupError, ImportError, ModuleKey, ModuleResolver, RawDiagnostic, Severity};
 use crate::compiler::{ir, syntax::{ItemSyntax, node}, Scope};
 
 use super::syntax::AstNode;
@@ -150,21 +150,27 @@ fn resolve_import_item(sink: &mut impl ResolveSink, module: ModuleKey, item: nod
 
     if let Some(exposed) = item.exposed_list() {
         for name in exposed.imported_names() {
-            let Some(def) = unit.props.exports.get(name.token().text()).cloned() else {
+            let mut found = false;
+            for ns in crate::Namespace::ALL {
+                let Ok(def) = unit.props.find_export(ns, name.token().text()).cloned() else {
+                    continue;
+                };
+                found = true;
+                sink.record_def(ir::Def::new(
+                    module,
+                    def.symbol,
+                    def.kind,
+                    ir::Visibility::Module,
+                    name,
+                ));
+            }
+            if !found {
                 sink.record_error(RawDiagnostic {
                     span: name.token().span(),
                     severity: Severity::Error,
                     message: err_fmt!("module does not export ", name.token().text().to_owned()),
                 });
-                continue;
-            };
-            sink.record_def(ir::Def::new(
-                module,
-                def.symbol,
-                def.kind,
-                ir::Visibility::Module,
-                name,
-            ));
+            }
         }
     };
 }
@@ -317,16 +323,27 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
                     if let Some(module) = scope.lookup_module(namespace.token().text()) {
                         sink.on_name(name, NameUsage::Value, scope, Namespace::Module(module.clone()));
                         // TODO: sink.record_ref for the module usage
-                        if let Some(def) = module.props.exports.get(name.token().text()) {
-                            sink.record_ref(ir::Ref::new(def.symbol, name));
-                            Some(def.symbol)
-                        } else {
-                            sink.record_error(RawDiagnostic {
-                                span: namespace.token().span(),
-                                severity: Severity::Error,
-                                message: err_fmt!("module does not export ", name.token().text().to_owned()),
-                            });
-                            None
+                        match module.props.find_export(crate::Namespace::Type, name.token().text()) {
+                            Ok(def) => {
+                                sink.record_ref(ir::Ref::new(def.symbol, name));
+                                Some(def.symbol)
+                            }
+                            Err(ExportLookupError::NoExport) => {
+                                sink.record_error(RawDiagnostic {
+                                    span: namespace.token().span(),
+                                    severity: Severity::Error,
+                                    message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                                });
+                                None
+                            }
+                            Err(ExportLookupError::WrongNamespace { available_in: _ }) => {
+                                sink.record_error(RawDiagnostic {
+                                    span: name.token().span(),
+                                    severity: Severity::Error,
+                                    message: err_fmt!(name.token().text().to_owned(), " is not a type"),
+                                });
+                                None
+                            }
                         }
                     } else {
                         sink.on_name(name, NameUsage::Value, scope, Namespace::UnresolvedModule);
@@ -396,16 +413,27 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, module: ModuleKey, ty
                     if let Some(module) = scope.lookup_module(namespace.token().text()) {
                         sink.on_name(name, NameUsage::Value, scope, Namespace::Module(module.clone()));
                         // TODO: sink.record_ref for the module usage
-                        if let Some(def) = module.props.exports.get(name.token().text()) {
-                            sink.record_ref(ir::Ref::new(def.symbol, name));
-                            Some(def.symbol)
-                        } else {
-                            sink.record_error(RawDiagnostic {
-                                span: namespace.token().span(),
-                                severity: Severity::Error,
-                                message: err_fmt!("module does not export ", name.token().text().to_owned()),
-                            });
-                            None
+                        match module.props.find_export(crate::Namespace::Type, name.token().text()) {
+                            Ok(def) => {
+                                sink.record_ref(ir::Ref::new(def.symbol, name));
+                                Some(def.symbol)
+                            }
+                            Err(ExportLookupError::NoExport) => {
+                                sink.record_error(RawDiagnostic {
+                                    span: namespace.token().span(),
+                                    severity: Severity::Error,
+                                    message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                                });
+                                None
+                            }
+                            Err(ExportLookupError::WrongNamespace { available_in: _ }) => {
+                                sink.record_error(RawDiagnostic {
+                                    span: name.token().span(),
+                                    severity: Severity::Error,
+                                    message: err_fmt!(name.token().text().to_owned(), " is not a type"),
+                                });
+                                None
+                            }
                         }
                     } else {
                         sink.on_name(name, NameUsage::Value, scope, Namespace::UnresolvedModule);
@@ -519,14 +547,24 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
                 if let Some(module) = scope.lookup_module(namespace.token().text()) {
                     sink.on_name(name, NameUsage::Value, scope, Namespace::Module(module.clone()));
                     // TODO: sink.record_ref for the module usage
-                    if let Some(def) = module.props.exports.get(name.token().text()) {
-                        sink.record_ref(ir::Ref::new(def.symbol, name))
-                    } else {
-                        sink.record_error(RawDiagnostic {
-                            span: namespace.token().span(),
-                            severity: Severity::Error,
-                            message: err_fmt!("module does not export ", name.token().text().to_owned()),
-                        });
+                    match module.props.find_export(crate::Namespace::Value, name.token().text()) {
+                        Ok(def) => {
+                            sink.record_ref(ir::Ref::new(def.symbol, name))
+                        }
+                        Err(ExportLookupError::NoExport) => {
+                            sink.record_error(RawDiagnostic {
+                                span: namespace.token().span(),
+                                severity: Severity::Error,
+                                message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                            });
+                        }
+                        Err(ExportLookupError::WrongNamespace { available_in: _ }) => {
+                            sink.record_error(RawDiagnostic {
+                                span: name.token().span(),
+                                severity: Severity::Error,
+                                message: err_fmt!(name.token().text().to_owned(), " is not a value"),
+                            });
+                        }
                     }
                 } else {
                     sink.on_name(name, NameUsage::Value, scope, Namespace::UnresolvedModule);
@@ -642,14 +680,24 @@ fn resolve_match_case(sink: &mut impl ResolveSink, module: ModuleKey, case: node
             if let Some(module) = scope.lookup_module(namespace.token().text()) {
                 sink.on_name(name, NameUsage::Ctor, scope, Namespace::Module(module.clone()));
                 // TODO: sink.record_ref for the module usage
-                if let Some(def) = module.props.exports.get(name.token().text()) {
-                    sink.record_ref(ir::Ref::new(def.symbol, name));
-                } else {
-                    sink.record_error(RawDiagnostic {
-                        span: namespace.token().span(),
-                        severity: Severity::Error,
-                        message: err_fmt!("module does not export ", name.token().text().to_owned()),
-                    });
+                match module.props.find_export(crate::Namespace::Pattern, name.token().text()) {
+                    Ok(def) => {
+                        sink.record_ref(ir::Ref::new(def.symbol, name));
+                    }
+                    Err(ExportLookupError::NoExport) => {
+                        sink.record_error(RawDiagnostic {
+                            span: namespace.token().span(),
+                            severity: Severity::Error,
+                            message: err_fmt!("module does not export ", name.token().text().to_owned()),
+                        });
+                    }
+                    Err(ExportLookupError::WrongNamespace { available_in: _ }) => {
+                        sink.record_error(RawDiagnostic {
+                            span: name.token().span(),
+                            severity: Severity::Error,
+                            message: err_fmt!(name.token().text().to_owned(), " is not a constructor"),
+                        });
+                    }
                 }
             } else {
                 sink.on_name(name, NameUsage::Ctor, scope, Namespace::UnresolvedModule);
