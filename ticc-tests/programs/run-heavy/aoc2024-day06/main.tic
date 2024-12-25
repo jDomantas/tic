@@ -1,12 +1,12 @@
 import ints from "std/int";
-import option(Some, None) from "std/option";
-import result from "std/result";
+import option(Option, Some, None) from "std/option";
+import result(Result, Ok, Err) from "std/result";
 import strings from "std/string";
 import list(List, Nil, Cons) from "std/list";
 import array(Array) from "std/array";
-import (Result, Ok, Err) from "std/result";
 import utils from "../shared/aoc-utils.tic";
 import parse from "../shared/parse.tic";
+import tree from "../shared/tree.tic";
 
 type Cell = Empty | Guard | Wall | Visited | Outside;
 
@@ -102,8 +102,9 @@ let solveState : State -> int =
             countVisited cells
         end;
 
+type Pos = Pos int int;
 
-let part1 : List (List Cell) -> string =
+let guardPosition : List (List Cell) -> Option Pos =
     \grid ->
         let width = list.head grid |> option.unwrapOr Nil |> list.length;
         let height = list.length grid;
@@ -113,20 +114,324 @@ let part1 : List (List Cell) -> string =
             list.range 0 height
             |> list.filterMap (\y ->
                 match get x y grid with
-                | Guard -> Some (Walking width height grid x y 0 (0-1))
+                | Guard -> Some (Pos x y)
                 | Empty -> None
                 | Wall -> None
                 | Visited -> None
                 | Outside -> None
                 end))
-        |> list.head
+        |> list.head;
+
+let getX : Pos -> int =
+    \p ->
+        match p with
+        | Pos x _ -> x
+        end;
+
+let getY : Pos -> int =
+    \p ->
+        match p with
+        | Pos _ y -> y
+        end;
+
+let part1 : List (List Cell) -> string =
+    \grid ->
+        let width = list.head grid |> option.unwrapOr Nil |> list.length;
+        let height = list.length grid;
+        let gridArray = grid |> list.map array.fromList |> array.fromList;
+        guardPosition grid
+        |> option.map (\p -> Walking width height gridArray (getX p) (getY p) 0 (0-1))
         |> option.map solveState
         |> result.okOr "no guard"
         |> result.map ints.toString
         |> result.join;
 
+let groupByY : List Pos -> List (List Pos) =
+    \fold ps ->
+        match ps with
+        | Nil -> Nil
+        | Cons x xs ->
+            match xs with
+            | Nil -> Cons (Cons x Nil) Nil
+            | Cons y ys ->
+                match y with
+                | Nil -> ?emptyGroup
+                | Cons g _ ->
+                    if getY g == getY x then
+                        Cons (Cons x y) ys
+                    else
+                        Cons (Cons x Nil) xs
+                end
+            end
+        end;
+
+let toLeftLookup : List Pos -> int -> Option int =
+    \walls ->
+        let tree =
+            walls
+            |> list.map getX
+            |> tree.balanced;
+        let makeLookup = \fold tree ->
+            match tree with
+            | tree.Empty -> \_val -> None
+            | tree.Node l v r -> \val ->
+                if v > val then
+                    l val
+                else
+                    let r = r val;
+                    match r with
+                    | None -> Some v
+                    | Some _ -> r
+                    end
+            end;
+        makeLookup tree;
+
+let toLeft : List Pos -> int -> int -> Option int =
+    \walls ->
+        let wallGroups =
+            walls
+            |> list.sortBy (\a -> \b ->
+                if getY a != getY b then
+                    getY a < getY b
+                else
+                    getX a < getX b)
+            |> groupByY
+            |> tree.balanced;
+        let makeLookup = \fold tree ->
+            match tree with
+            | tree.Empty -> \_x -> \_y -> None
+            | tree.Node l lst r ->
+                match lst with
+                | Nil -> ?emptyGroup
+                | Cons p _ ->
+                    let v = getY p;
+                    let rowLookup = toLeftLookup lst;
+                    \x -> \y ->
+                        if v > y then
+                            l x y
+                        else if v < y then
+                            r x y
+                        else
+                            rowLookup x
+                end
+            end;
+        makeLookup wallGroups;
+
+let toRightLookup : List Pos -> int -> Option int =
+    \walls ->
+        let tree =
+            walls
+            |> list.map getX
+            |> tree.balanced;
+        let makeLookup = \fold tree ->
+            match tree with
+            | tree.Empty -> \_val -> None
+            | tree.Node l v r -> \val ->
+                if v < val then
+                    r val
+                else
+                    let l = l val;
+                    match l with
+                    | None -> Some v
+                    | Some _ -> l
+                    end
+            end;
+        makeLookup tree;
+
+let toRight : List Pos -> int -> int -> Option int =
+    \walls ->
+        let wallGroups =
+            walls
+            |> list.sortBy (\a -> \b ->
+                if getY a != getY b then
+                    getY a < getY b
+                else
+                    getX a < getX b)
+            |> groupByY
+            |> tree.balanced;
+        let makeLookup = \fold tree ->
+            match tree with
+            | tree.Empty -> \_x -> \_y -> None
+            | tree.Node l lst r ->
+                match lst with
+                | Nil -> ?emptyGroup
+                | Cons p _ ->
+                    let v = getY p;
+                    let rowLookup = toRightLookup lst;
+                    \x -> \y ->
+                        if v > y then
+                            l x y
+                        else if v < y then
+                            r x y
+                        else
+                            rowLookup x
+                end
+            end;
+        makeLookup wallGroups;
+
+let toUp : List Pos -> int -> int -> Option int =
+    \walls ->
+        let flipped =
+            walls
+            |> list.map (\p -> match p with | Pos x y -> Pos y x end)
+            |> toLeft;
+        \x -> \y -> flipped y x;
+
+let toDown : List Pos -> int -> int -> Option int =
+    \walls ->
+        let flipped =
+            walls
+            |> list.map (\p -> match p with | Pos x y -> Pos y x end)
+            |> toRight;
+        \x -> \y -> flipped y x;
+
+let enumerateMap : (int -> a -> b) -> List a -> List b =
+    \f -> \l ->
+        let go = \fold l -> \idx ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs -> Cons (f idx x) (xs (idx + 1))
+            end;
+        go l 0;
+
+let wallPositions : List (List Cell) -> List Pos =
+    \grid ->
+        grid
+        |> enumerateMap (\y -> \row ->
+            row
+            |> enumerateMap (\x -> \c ->
+                match c with
+                | Wall -> Some (Pos x y)
+                | Empty -> None
+                | Guard -> None
+                | Visited -> None
+                | Outside -> None
+                end))
+        |> list.flatten
+        |> list.filterMap (\x -> x);
+
+type Lookups = Lookups
+    (int -> int -> Option int)
+    (int -> int -> Option int)
+    (int -> int -> Option int)
+    (int -> int -> Option int);
+
+let makeLookups : List Pos -> Lookups =
+    \walls -> Lookups
+        (toUp walls)
+        (toDown walls)
+        (toLeft walls)
+        (toRight walls);
+
+let simulateSteps : int -> Pos -> Lookups -> Option Pos =
+    \steps -> \start -> \lookups ->
+        match lookups with
+        | Lookups toUp toDown toLeft toRight ->
+            let move = \start ->
+                match start with
+                | Pos x y ->
+                    match toUp x y with
+                    | None -> None
+                    | Some y ->
+                        let y = y + 1;
+                        match toRight x y with
+                        | None -> None
+                        | Some x ->
+                            let x = x - 1;
+                            match toDown x y with
+                            | None -> None
+                            | Some y ->
+                                let y = y - 1;
+                                match toLeft x y with
+                                | None -> None
+                                | Some x ->
+                                    let x = x + 1;
+                                    Some (Pos x y)
+                                end
+                            end
+                        end
+                    end
+                end;
+            ints.iterate steps (option.andThen move) (Some start)
+        end;
+
+let addWall : int -> int -> Lookups -> Lookups =
+    \wx -> \wy -> \lookups ->
+        match lookups with
+        | Lookups toUp toDown toLeft toRight ->
+            Lookups
+                (\x -> \y ->
+                    if x != wx then
+                        toUp x y
+                    else if y < wy then
+                        toUp x y
+                    else
+                        match toUp x y with
+                        | None -> Some wy
+                        | Some yy -> Some (ints.max yy wy)
+                        end)
+                (\x -> \y ->
+                    if x != wx then
+                        toDown x y
+                    else if y > wy then
+                        toDown x y
+                    else
+                        match toDown x y with
+                        | None -> Some wy
+                        | Some yy -> Some (ints.min yy wy)
+                        end)
+                (\x -> \y ->
+                    if y != wy then
+                        toLeft x y
+                    else if x < wx then
+                        toLeft x y
+                    else
+                        match toLeft x y with
+                        | None -> Some wx
+                        | Some xx -> Some (ints.max xx wx)
+                        end)
+                (\x -> \y ->
+                    if y != wy then
+                        toRight x y
+                    else if x > wx then
+                        toRight x y
+                    else
+                        match toRight x y with
+                        | None -> Some wx
+                        | Some xx -> Some (ints.min xx wx)
+                        end)
+        end;
+
 let part2 : List (List Cell) -> string =
     \grid ->
-        "todo";
+        let width = list.head grid |> option.unwrapOr Nil |> list.length;
+        let height = list.length grid;
+        let walls = wallPositions grid;
+        let lookups = makeLookups walls;
+        let maxSteps = list.length walls;
+        match guardPosition grid with
+        | Some p ->
+            list.range 0 width
+            |> list.flatMap (\x ->
+                let positions =
+                    if x == getX p then
+                        list.range 0 height
+                        |> list.filter (\y -> y != getY p)
+                    else
+                        list.range 0 height;
+                positions
+                |> list.filterMap (\y ->
+                    let lookups = addWall x y lookups;
+                    let loop =
+                        simulateSteps maxSteps p lookups
+                        |> option.isSome;
+                    if loop then
+                        Some (Pos x y)
+                    else
+                        None))
+            |> list.length
+            |> ints.toString
+        | None -> "no guard"
+        end;
 
 export let main : string -> string = utils.makeSolution parseInput part1 part2;
