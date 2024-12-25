@@ -1,0 +1,160 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Op = Xor | And | Or;
+
+type Gate = Gate int Op int int;
+
+type Const = Const int bool;
+
+type Input = Input (List Const) (List Gate);
+
+let parseWire : Parse int =
+    let a = strings.charAt 0 "a";
+    let z = strings.charAt 0 "z";
+    let d0 = strings.charAt 0 "0";
+    let d9 = strings.charAt 0 "9";
+    let parseSym =
+        parse.char
+        |> parse.andThen (\c ->
+            if c >= a then
+                if c <= z then
+                    Ok (c - a)
+                else
+                    Err "bad wire name"
+            else if c >= d0 then
+                if c <= d9 then
+                    Ok (c - d0 + 26)
+                else
+                    Err "bad gate name"
+            else
+                Err "bad wire name");
+    parse.ok (\a -> \b -> \c -> a * 36 * 36 + b * 36 + c)
+    |> parse.apply parseSym
+    |> parse.apply parseSym
+    |> parse.apply parseSym;
+
+let parseOp : Parse Op =
+    let op = \s -> \o -> parse.literal s |> parse.map (\_ -> o);
+    op "XOR" Xor
+    |> parse.or (op "AND" And)
+    |> parse.or (op "OR" Or);
+
+let parseGate : Parse Gate =
+    parse.ok Gate
+    |> parse.apply parseWire
+    |> parse.ignore (parse.literal " ")
+    |> parse.apply parseOp
+    |> parse.ignore (parse.literal " ")
+    |> parse.apply parseWire
+    |> parse.ignore (parse.literal " -> ")
+    |> parse.apply parseWire;
+
+let parseConst : Parse Const =
+    let parseBool =
+        parse.literal "1" |> parse.map (\_ -> true)
+        |> parse.or (parse.literal "0" |> parse.map (\_ -> false));
+    parse.ok Const
+    |> parse.apply parseWire
+    |> parse.ignore (parse.literal ": ")
+    |> parse.apply parseBool;
+
+let takeWhile : (a -> bool) -> List a -> List a =
+    \f -> \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            if f x then
+                Cons x xs
+            else
+                Nil
+        end;
+
+let skipWhile : (a -> bool) -> List a -> List a =
+    \f -> \l ->
+        let go = \fold l -> \f ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs ->
+                if f x then
+                    xs f
+                else
+                    Cons x (xs (\_ -> false))
+            end;
+        go l f;
+
+let parseInput : string -> Result Input string =
+    \input ->
+        let lines = strings.lines input;
+        let consts = takeWhile (\l -> strings.length l > 0) lines;
+        let gates = skipWhile (\l -> strings.length l > 0) lines |> list.skip 1;
+        let consts =
+            consts
+            |> list.map (\l -> parse.run l parseConst)
+            |> list.allOk;
+        let gates =
+            gates
+            |> list.map (\l -> parse.run l parseGate)
+            |> list.allOk;
+        Ok Input
+        |> result.apply consts
+        |> result.apply gates;
+
+let eval : Op -> bool -> bool -> bool =
+    \op -> \a -> \b ->
+        match op with
+        | Xor -> if a then if b then false else true else b
+        | And -> if a then b else false
+        | Or -> if a then true else b
+        end;
+
+let markConst : Const -> Array bool -> Array bool =
+    \c -> \arr ->
+        match c with
+        | Const id val -> array.set id val arr
+        end;
+
+let applyOp : Gate -> Array bool -> Array bool =
+    \g -> \arr ->
+        match g with
+        | Gate lhs op rhs dst ->
+            let lhs = array.get lhs arr |> option.unwrapOr false;
+            let rhs = array.get rhs arr |> option.unwrapOr false;
+            let v = eval op lhs rhs;
+            array.set dst v arr
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input consts gates ->
+            let values = array.new (36 * 36 * 36) false;
+            let steps = list.length gates;
+            let step = \values ->
+                let values = list.foldr markConst values consts;
+                let values = list.foldr applyOp values gates;
+                values;
+            let values = ints.iterate steps step values;
+            let zGates =
+                gates
+                |> list.map (\g -> match g with | Gate _ _ _ x -> x end)
+                |> list.filter (\g -> g / 36 / 36 == 25)
+                |> list.sortBy (\a -> \b -> a < b);
+            zGates
+            |> list.filterMap (\id -> array.get id values)
+            |> list.map (\x -> if x then 1 else 0)
+            |> list.foldr (\a -> \b -> a + b * 2) 0
+            |> ints.toString
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        "todo";
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
