@@ -336,7 +336,7 @@ fn resolve_type(sink: &mut impl ResolveSink, ty: node::Type<'_>, scope: &Scope<'
                                 });
                                 None
                             }
-                            Err(ExportLookupError::WrongNamespace { available_in: _ }) => {
+                            Err(ExportLookupError::WrongNamespace) => {
                                 sink.record_error(RawDiagnostic {
                                     span: name.token().span(),
                                     severity: Severity::Error,
@@ -426,7 +426,7 @@ fn resolve_type_with_vars<'a>(sink: &mut impl ResolveSink, module: ModuleKey, ty
                                 });
                                 None
                             }
-                            Err(ExportLookupError::WrongNamespace { available_in: _ }) => {
+                            Err(ExportLookupError::WrongNamespace) => {
                                 sink.record_error(RawDiagnostic {
                                     span: name.token().span(),
                                     severity: Severity::Error,
@@ -558,7 +558,7 @@ fn resolve_expr(sink: &mut impl ResolveSink, module: ModuleKey, expr: node::Expr
                                 message: err_fmt!("module does not export ", name.token().text().to_owned()),
                             });
                         }
-                        Err(ExportLookupError::WrongNamespace { available_in: _ }) => {
+                        Err(ExportLookupError::WrongNamespace) => {
                             sink.record_error(RawDiagnostic {
                                 span: name.token().span(),
                                 severity: Severity::Error,
@@ -691,7 +691,7 @@ fn resolve_match_case(sink: &mut impl ResolveSink, module: ModuleKey, case: node
                             message: err_fmt!("module does not export ", name.token().text().to_owned()),
                         });
                     }
-                    Err(ExportLookupError::WrongNamespace { available_in: _ }) => {
+                    Err(ExportLookupError::WrongNamespace) => {
                         sink.record_error(RawDiagnostic {
                             span: name.token().span(),
                             severity: Severity::Error,

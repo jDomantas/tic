@@ -213,20 +213,20 @@ impl<'a> TypeField<'a> {
 }
 
 impl<'a> IntType<'a> {
-    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Int).unwrap() }
+    pub(crate) fn token(&self) -> SyntaxToken<'_> { child_token(&self.syntax, TokenKind::Int).unwrap() }
 }
 
 impl<'a> BoolType<'a> {
-    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Bool).unwrap() }
+    pub(crate) fn token(&self) -> SyntaxToken<'_> { child_token(&self.syntax, TokenKind::Bool).unwrap() }
 }
 
 impl<'a> StringType<'a> {
-    pub(crate) fn token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::StringTy).unwrap() }
+    pub(crate) fn token(&self) -> SyntaxToken<'_> { child_token(&self.syntax, TokenKind::StringTy).unwrap() }
 }
 
 impl<'a> FnType<'a> {
     pub(crate) fn from(&self) -> Option<Type<'a>> { child(&self.syntax) }
-    pub(crate) fn arrow_token(&self) -> SyntaxToken { child_token(&self.syntax, TokenKind::Arrow).unwrap() }
+    pub(crate) fn arrow_token(&self) -> SyntaxToken<'_> { child_token(&self.syntax, TokenKind::Arrow).unwrap() }
     pub(crate) fn to(&self) -> Option<Type<'a>> { child2(&self.syntax) }
 }
 
@@ -304,19 +304,19 @@ impl<'a> IfExpr<'a> {
 }
 
 impl<'a> BoolExpr<'a> {
-    pub(crate) fn token(&self) -> SyntaxToken {
+    pub(crate) fn token(&self) -> SyntaxToken<'_> {
         self.syntax.all_children().find_map(|c| c.into_token()).unwrap()
     }
 }
 
 impl<'a> NumberExpr<'a> {
-    pub(crate) fn token(&self) -> SyntaxToken {
+    pub(crate) fn token(&self) -> SyntaxToken<'_> {
         self.syntax.all_children().find_map(|c| c.into_token()).unwrap()
     }
 }
 
 impl<'a> StringExpr<'a> {
-    pub(crate) fn token(&self) -> SyntaxToken {
+    pub(crate) fn token(&self) -> SyntaxToken<'_> {
         self.syntax.all_children().find_map(|c| c.into_token()).unwrap()
     }
 }

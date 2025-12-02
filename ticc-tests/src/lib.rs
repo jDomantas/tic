@@ -383,25 +383,6 @@ impl Test {
     }
 }
 
-struct BuiltinModuleResolver;
-
-impl ModuleResolver for BuiltinModuleResolver {
-    fn lookup(self: Arc<Self>, name: &str) -> Result<ticc::CompleteUnit, ticc::ImportError> {
-        match name {
-            "test-internal" => {
-                let source = "export let a: int = 1; export let b: int = 2;";
-                let compilation = CompilationUnit::new(
-                    source,
-                    ticc::Options::default(),
-                    ticc::NoopModuleResolver::new(),
-                );
-                Ok(compilation.complete())
-            }
-            _ => Err(ticc::ImportError::DoesNotExist),
-        }
-    }
-}
-
 fn run_with_stack<T: Send + 'static>(stack: usize, f: impl (FnOnce() -> T) + Send + 'static) -> T {
     std::thread::Builder::new()
         .stack_size(stack.saturating_mul(1024 * 1024))

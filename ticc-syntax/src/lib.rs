@@ -167,7 +167,7 @@ enum SyntaxElement {
 }
 
 impl SyntaxElement {
-    fn as_cursor<'a>(&'a self, tree: &'a SyntaxTree) -> cursor::SyntaxElement<'_> {
+    fn as_cursor<'a>(&'a self, tree: &'a SyntaxTree) -> cursor::SyntaxElement<'a> {
         match self {
             SyntaxElement::Node(node) => cursor::SyntaxElement::Node(cursor::SyntaxNode {
                 node,

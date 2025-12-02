@@ -193,7 +193,8 @@ impl CompleteUnitProps {
             }
         }
         if available_in.len() > 0 {
-            Err(ExportLookupError::WrongNamespace { available_in })
+            // TODO: consider changing error messages to "foo is not a type, but a value"
+            Err(ExportLookupError::WrongNamespace)
         } else {
             Err(ExportLookupError::NoExport)
         }
@@ -202,7 +203,7 @@ impl CompleteUnitProps {
 
 enum ExportLookupError {
     NoExport,
-    WrongNamespace { available_in: Vec<Namespace> },
+    WrongNamespace,
 }
 
 #[derive(PartialEq, Eq, Debug, Hash, Clone)]

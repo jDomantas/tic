@@ -9,12 +9,6 @@ pub(crate) trait AstNode<'a>: Sized {
     fn syntax(&self) -> &SyntaxNode<'a>;
 }
 
-pub(crate) trait AstToken<'a>: Sized {
-    fn cast(syntax: SyntaxToken<'a>) -> Option<Self>;
-
-    fn syntax(&self) -> &SyntaxToken<'a>;
-}
-
 fn children<'a, T: AstNode<'a>>(node: &SyntaxNode<'a>) -> impl Iterator<Item = T> + 'a {
     node.children().filter_map(|c| T::cast(c))
 }
@@ -48,7 +42,7 @@ impl ItemSyntax {
         }
     }
 
-    pub(crate) fn item(&self) -> Option<node::Item> {
+    pub(crate) fn item(&self) -> Option<node::Item<'_>> {
         child(&self.tree.root())
     }
 }
