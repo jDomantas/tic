@@ -1,0 +1,157 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Range = Range int int;
+
+let parseRange : string -> Result Range string =
+    \input ->
+        parse.ok Range
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal "-")
+        |> parse.apply parse.integer
+        |> parse.run input;
+
+let parseInput : string -> Result (List Range) string =
+    \input ->
+        input
+        |> strings.split (strings.charAt 0 ",")
+        |> list.map parseRange
+        |> list.allOk;
+
+let pow : int -> int -> int =
+    \a -> \x ->
+        ints.iterate x (\t -> t * a) 1;
+
+let lt : List int -> int -> bool =
+    \fold l -> \v ->
+        match l with
+        | Nil -> false
+        | Cons x xs ->
+            if x != v then
+                x < v
+            else
+                xs v
+        end;
+
+let nextSizedInvalidAfter : int -> int -> int =
+    \groups -> \x ->
+        let digits = x |> ints.toString |> strings.length;
+        let groupDigits = digits / groups;
+        if digits % groups != 0 then
+            let nextSize = groupDigits + 1;
+            list.range 0 (nextSize * groups)
+            |> list.filter (\x -> (x + 1) % nextSize == 0)
+            |> list.map (pow 10)
+            |> list.sum
+        else
+            let d = pow 10 groupDigits;
+            let high = x / (pow d (groups - 1));
+            let lowerGroups =
+                list.range 0 (groups - 1)
+                |> list.reverse
+                |> list.map (\i -> x / (pow d i) % d);
+            let mul =
+                list.range 0 digits
+                |> list.filter (\x -> x % groupDigits == 0)
+                |> list.map (pow 10)
+                |> list.sum;
+            if lt lowerGroups high then
+                high * mul
+            else if high + 1 < d then
+                (high + 1) * mul
+            else
+                let nextSize = groupDigits + 1;
+                list.range 0 (nextSize * groups)
+                |> list.filter (\x -> (x + 1) % nextSize == 0)
+                |> list.map (pow 10)
+                |> list.sum;
+
+let nextInvalidAfter : int -> int =
+    \x -> nextSizedInvalidAfter 2 x;
+
+let nextAnyInvalidAfter : int -> int =
+    \x ->
+        let digits = x |> ints.toString |> strings.length;
+        list.range 2 (digits + 2)
+        |> list.map (\g -> nextSizedInvalidAfter g x)
+        |> list.min
+        |> option.unwrapOr (x + 1);
+
+type State a = Done (List a) | Stepping a (List a) int;
+
+let isDone : State a -> bool =
+    \s ->
+        match s with
+        | Done _ -> true
+        | Stepping _ _ _ -> false
+        end;
+
+let toList : Option a -> (a -> Option a) -> int -> List a =
+    \first -> \next -> \limit ->
+        let step = \state ->
+            match state with
+            | Done _ -> state
+            | Stepping elem acc steps ->
+                match next elem with
+                | None -> Done acc
+                | Some x ->
+                    let acc = Cons x acc;
+                    if steps == 1 then
+                        Done acc
+                    else
+                        Stepping x acc (steps - 1)
+                end
+            end;
+        let recStep = \recurse -> \state ->
+            let state = recurse state;
+            if isDone state then
+                state
+            else
+                recurse state;
+        let nestings = 4 * (limit |> ints.toString |> strings.length);
+        match first with
+        | Some x ->
+            let state = Stepping x (Cons x Nil) limit;
+            match ints.iterate nestings recStep step state with
+            | Done x -> x
+            | Stepping _ _ _ -> ?impossible
+            end
+        | None -> Nil
+        end;
+
+let getInRange : (int -> int) -> int -> int -> List int =
+    \getNext -> \s -> \e ->
+        let step = \x ->
+            let x = getNext x;
+            if x <= e then
+                Some x
+            else
+                None;
+        toList (step (s - 1)) step (e - s + 1);
+
+let part1 : List Range -> string =
+    \ranges ->
+        ranges
+        |> list.flatMap (\r ->
+            match r with
+            | Range a b -> getInRange nextInvalidAfter a b
+            end)
+        |> list.sum
+        |> ints.toString;
+
+let part2 : List Range -> string =
+    \ranges ->
+        ranges
+        |> list.flatMap (\r ->
+            match r with
+            | Range a b -> getInRange nextAnyInvalidAfter a b
+            end)
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
