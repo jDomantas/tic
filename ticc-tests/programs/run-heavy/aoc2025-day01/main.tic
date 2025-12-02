@@ -1,0 +1,81 @@
+import ints from "std/int";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse(Parse) from "../shared/parse.tic";
+
+type Op = Left int | Right int;
+
+let parseOp : Parse Op =
+    let left =
+        parse.ok Left
+        |> parse.ignore (parse.literal "L")
+        |> parse.apply parse.integer;
+    let right =
+        parse.ok Right
+        |> parse.ignore (parse.literal "R")
+        |> parse.apply parse.integer;
+    parse.or left right;
+
+let parseInput : string -> Result (List Op) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map (\x -> parse.run x parseOp)
+        |> list.allOk;
+
+let positions : List Op -> int -> List int =
+    \fold ops -> \start ->
+        match ops with
+        | Nil -> Nil
+        | Cons x xs ->
+            let at =
+                match x with
+                | Left x -> (start + 100 - x % 100) % 100
+                | Right x -> (start + x) % 100
+                end;
+            Cons at (xs at)
+        end;
+
+let part1 : List Op -> string =
+    \ops ->
+        ops
+        |> (\x -> positions x 50)
+        -- |> list.map ints.toString
+        -- |> list.join ", ";
+        |> list.filter (\x -> x == 0)
+        |> list.length
+        |> ints.toString;
+
+let and : bool -> bool -> bool = \a -> \b -> if a then b else false;
+
+let part2 : List Op -> string =
+    let go = \fold ops -> \start ->
+        match ops with
+        | Nil -> 0
+        | Cons x xs ->
+            match x with
+            | Left x ->
+                let extra = x / 100;
+                let x = x % 100;
+                let next = (start + 100 - x) % 100;
+                if and (start > 0) (x >= start) then
+                    extra + 1 + xs next
+                else
+                    extra + xs next
+            | Right x ->
+                let extra = x / 100;
+                let x = x % 100;
+                let next = (start + x) % 100;
+                if start + x >= 100 then
+                    extra + 1 + xs next
+                else
+                    extra + xs next
+            end
+        end;
+    \ops ->
+        go ops 50
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
