@@ -1,0 +1,59 @@
+import ints from "std/int";
+import option from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+
+let parseInput : string -> Result (List (List int)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map strings.fromChar)
+        |> list.map (list.map ints.parse)
+        |> list.map list.allOk
+        |> list.allOk
+        |> result.mapErr (\_ -> "invalid digit");
+
+let pow : int -> int -> int =
+    \a -> \x ->
+        ints.iterate x (\t -> t * a) 1;
+
+let dragLargest : List int -> List int =
+    \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs ->
+            let x = list.head xs |> option.map (ints.max x) |> option.unwrapOr x;
+            Cons x xs
+        end;
+
+let nextLargest : int -> List int -> List int -> List int =
+    \size -> \digits -> \prev ->
+        let mul = pow 10 (size - 1);
+        list.zip (\a -> \b -> a * mul + b) digits (list.tail prev |> option.unwrapOr Nil)
+        |> dragLargest;
+
+let largest : int -> List int -> int =
+    \size -> \digits ->
+        list.range 2 (size + 1)
+        |> list.foldl (dragLargest digits) (\res -> \size -> nextLargest size digits res)
+        |> list.head
+        |> option.unwrapOr 0;
+
+let part1 : List (List int) -> string =
+    \banks ->
+        banks
+        |> list.map (largest 2)
+        |> list.sum
+        |> ints.toString;
+
+let part2 : List (List int) -> string =
+    \banks ->
+        banks
+        |> list.map (largest 12)
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
