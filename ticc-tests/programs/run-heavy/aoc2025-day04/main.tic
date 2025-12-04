@@ -1,0 +1,123 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import array(Array) from "std/array";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+let parseCell : int -> Result bool string =
+    let dot = strings.charAt 0 ".";
+    let eta = strings.charAt 0 "@";
+    \c ->
+        if c == dot then
+            Ok false
+        else if c == eta then
+            Ok true
+        else
+            Err "bad cell";
+
+let parseInput : string -> Result (Array (Array bool)) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map strings.chars
+        |> list.map (list.map parseCell)
+        |> list.map list.allOk
+        |> list.map (result.map array.fromList)
+        |> list.allOk
+        |> result.map array.fromList;
+
+let forAdjacent : int -> int -> (int -> int -> a) -> List a =
+    \x -> \y -> \f ->
+        Nil
+        |> Cons (f (x - 1) (y - 1))
+        |> Cons (f (x + 0) (y - 1))
+        |> Cons (f (x + 1) (y - 1))
+        |> Cons (f (x - 1) (y + 0))
+        |> Cons (f (x + 1) (y + 0))
+        |> Cons (f (x - 1) (y + 1))
+        |> Cons (f (x + 0) (y + 1))
+        |> Cons (f (x + 1) (y + 1));
+
+let get : Array (Array bool) -> int -> int -> bool =
+    \grid -> \x -> \y ->
+        grid
+        |> array.get y
+        |> option.unwrapOr array.empty
+        |> array.get x
+        |> option.unwrapOr false;
+
+let removable : Array (Array bool) -> Array (Array bool) =
+    \grid ->
+        let h = array.length grid;
+        let w = grid |> array.get 0 |> option.unwrapOr array.empty |> array.length;
+        list.range 0 h
+        |> list.map (\y ->
+            list.range 0 w
+            |> list.map (\x ->
+                if get grid x y then
+                    let adjacentRolls =
+                        forAdjacent x y (get grid)
+                        |> list.filter (\x -> x)
+                        |> list.length;
+                    adjacentRolls < 4
+                else
+                    false)
+            |> array.fromList)
+        |> array.fromList;
+
+let setCellCount : Array (Array bool) -> int =
+    \grid ->
+        grid
+        |> array.toList
+        |> list.map array.toList
+        |> list.flatMap (\x -> x)
+        |> list.filter (\x -> x)
+        |> list.length;
+
+let part1 : Array (Array bool) -> string =
+    \grid ->
+        grid
+        |> removable
+        |> setCellCount
+        |> ints.toString;
+
+type State = Working (Array (Array bool)) | Done (Array (Array bool));
+
+let removeAll : Array (Array bool) -> Array (Array bool) -> Array (Array bool) =
+    \grid -> \toRemove ->
+        let listify = \x -> x |> array.toList |> list.map array.toList;
+        let grid = listify grid;
+        let toRemove = listify toRemove;
+        list.zip (\g -> \r ->
+            list.zip (\g -> \r -> if r then false else g) g r)
+            grid toRemove
+        |> list.map array.fromList
+        |> array.fromList;
+
+let step : State -> State =
+    \st ->
+        match st with
+        | Done _ -> st
+        | Working grid ->
+            let r = removable grid;
+            if setCellCount r == 0 then
+                Done grid
+            else
+                Working (removeAll grid r)
+        end;
+
+let part2 : Array (Array bool) -> string =
+    \grid ->
+        let initialCells = setCellCount grid;
+        let finalGrid =
+            match ints.iterate initialCells step (Working grid) with
+            | Working x -> x
+            | Done x -> x
+            end;
+        initialCells - setCellCount finalGrid
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
