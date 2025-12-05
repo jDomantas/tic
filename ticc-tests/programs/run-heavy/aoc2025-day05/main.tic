@@ -1,0 +1,117 @@
+import ints from "std/int";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Range = Range int int;
+type Input = Input (List Range) (List int);
+
+let parseRange : string -> Result Range string =
+    \s ->
+        parse.ok Range
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal "-")
+        |> parse.apply parse.integer
+        |> parse.run s;
+
+let takeWhile : (a -> bool) -> List a -> List a =
+    \cond -> \fold list ->
+        match list with
+        | Nil -> Nil
+        | Cons x xs ->
+            if cond x then
+                Cons x xs
+            else
+                Nil
+        end;
+
+let parseInput : string -> Result Input string =
+    \input ->
+        let lines = strings.lines input;
+        let ranges = takeWhile (\x -> strings.length x > 0) lines;
+        let ints = list.skip (list.length ranges) lines |> list.filter (\x -> strings.length x > 0);
+        let ranges = ranges |> list.map parseRange |> list.allOk;
+        let ints = ints |> list.map ints.parse |> list.map (result.mapErr (\_ -> "bad int")) |> list.allOk;
+        Ok Input
+        |> result.apply ranges
+        |> result.apply ints;
+
+let contains : int -> Range -> bool =
+    \x -> \r ->
+        match r with
+        | Range a b ->
+            if x >= a then
+                x <= b
+            else
+                false
+        end;
+
+let part1 : Input -> string =
+    \input ->
+        match input with
+        | Input ranges ints ->
+            ints
+            |> list.filter (\x ->
+                ranges
+                |> list.map (\r -> contains x r)
+                |> list.any)
+            |> list.length
+            |> ints.toString
+        end;
+
+type Endpoint = Start int | End int;
+
+let cmpEndpoints : Endpoint -> Endpoint -> bool =
+    \a -> \b ->
+        match a with
+        | Start a ->
+            match b with
+            | Start b -> a < b
+            | End b -> a < b
+            end
+        | End a ->
+            match b with
+            | Start b -> a <= b
+            | End b -> a < b
+            end
+        end;
+
+let calcTotal : List Endpoint -> int -> int -> int =
+    \fold eps -> \depth -> \curStart ->
+        match eps with
+        | Nil -> 0
+        | Cons x xs ->
+            match x with
+            | Start x ->
+                if depth > 0 then
+                    xs (depth + 1) curStart
+                else
+                    xs (depth + 1) x
+            | End x ->
+                if depth > 1 then
+                    xs (depth - 1) curStart
+                else
+                    (x - curStart) + xs 0 0
+            end
+        end;
+
+let part2 : Input -> string =
+    \input ->
+        match input with
+        | Input ranges _ ->
+            ranges
+            |> list.flatMap (\r ->
+                match r with
+                | Range a b ->
+                    Nil
+                    |> Cons (Start a)
+                    |> Cons (End (b + 1))
+                end)
+            |> list.sortBy cmpEndpoints
+            |> (\x -> calcTotal x 0 0)
+            |> ints.toString
+        end;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
