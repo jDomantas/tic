@@ -1,0 +1,131 @@
+import ints from "std/int";
+import strings from "std/string";
+import option from "std/option";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok, Err) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+let splitLine : string -> List string =
+    \line ->
+        line
+        |> strings.split 32
+        |> list.filter (\x -> strings.length x > 0);
+
+type Column = Add (List int) | Mul (List int);
+
+let zipPrepend : List a -> List (List a) -> List (List a) =
+    \fold p -> \ps ->
+        match p with
+        | Nil -> Nil
+        | Cons x xs ->
+            match ps with
+            | Nil -> Cons (Cons x Nil) (xs Nil)
+            | Cons p ps ->  Cons (Cons x p) (xs ps)
+            end
+        end;
+
+let transpose : List (List a) -> List (List a) =
+    \fold l ->
+        match l with
+        | Nil -> Nil
+        | Cons x xs -> zipPrepend x xs
+        end;
+
+let parseColumn : List string -> Result Column string =
+    \c ->
+        match list.reverse c with
+        | Nil -> Err "empty column"
+        | Cons x xs ->
+            let ctor =
+                if strings.equal x "*" then
+                    Ok Mul
+                else if strings.equal x "+" then
+                    Ok Add
+                else
+                    Err (strings.concat "bad sign: " x);
+                let values =
+                    xs
+                    |> list.reverse
+                    |> list.map ints.parse
+                    |> list.allOk
+                    |> result.mapErr (\_ -> "bad int");
+                result.apply values ctor
+        end;
+
+let parseInput : string -> Result (List Column) string =
+    \s ->
+        s
+        |> strings.lines
+        |> list.map splitLine
+        |> transpose
+        |> list.map parseColumn
+        |> list.allOk;
+
+let part1 : string -> string =
+    let solve = \columns ->
+        columns
+        |> list.map (\c ->
+            match c with
+            | Add xs -> list.sum xs
+            | Mul xs -> list.product xs
+            end)
+        |> list.sum
+        |> ints.toString;
+    \x -> x |> parseInput |> result.map solve |> result.join;
+
+type State = Working int (List int) | Failed string;
+
+let processColumn : List string -> int -> State -> State =
+    let star = strings.charAt 0 "*";
+    let plus = strings.charAt 0 "+";
+    let space = 32;
+    \lines -> \col -> \state ->
+        match state with
+        | Failed _ -> state
+        | Working total values ->
+            let chars = lines |> list.map (strings.charAt col) |> list.reverse;
+            match chars with
+            | Nil -> state
+            | Cons x xs ->
+                let values =
+                    xs
+                    |> list.reverse
+                    |> list.filter (\x -> x != 32)
+                    |> list.map (\x -> if x < 48 then Err "bad digit" else if x >= 58 then Err "bad digit" else Ok (x - 48))
+                    |> list.allOk
+                    |> result.map (\l ->
+                        if list.length l > 0 then
+                            (Cons (list.foldl 0 (\a -> \b -> a * 10 + b) l) values)
+                        else
+                            values);
+                let advance =
+                    if x == space then
+                        Ok (Working total)
+                    else if x == star then
+                        Ok (\x -> Working (total + list.product x) Nil)
+                    else if x == plus then
+                        Ok (\x -> Working (total + list.sum x) Nil)
+                    else
+                        Err "bad op";
+                advance
+                |> result.apply values
+                |> result.mapErr Failed
+                |> result.join
+            end
+        end;
+
+let part2 : string -> string =
+    \x ->
+        let lines = strings.lines x;
+        let columns = lines |> list.head |> option.unwrapOr "" |> strings.length;
+        let finish = \state ->
+            match state with
+            | Working total _ -> ints.toString total
+            | Failed err -> err
+            end;
+        list.range 0 columns
+        |> list.foldr (processColumn lines) (Working 0 Nil)
+        |> finish;
+
+export let main : string -> string = utils.makeSolution Ok part1 part2;
