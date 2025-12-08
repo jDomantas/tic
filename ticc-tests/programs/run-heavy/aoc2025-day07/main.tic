@@ -1,0 +1,112 @@
+import ints from "std/int";
+import option from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result, Ok) from "std/result";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+let parseInput : string -> Result (List string) string =
+    \input ->
+        input
+        |> strings.lines
+        |> Ok;
+
+let accumulate : b -> (b -> a -> b) -> List a -> List b =
+    \init -> \f -> \l ->
+        let go = \fold l -> \acc ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs ->
+                let item = f acc x;
+                Cons item (xs item)
+            end;
+        go l init;
+
+let propagateStream : string -> string -> string =
+    let ch = strings.charAt 0;
+    let pipe = ch "|";
+    let dot = ch ".";
+    let source = ch "S";
+    let split = ch "^";
+    let and = \a -> \b -> if a then b else false;
+    \prev -> \cur ->
+        list.range 0 (strings.length cur)
+        |> list.map (\idx ->
+            let c = strings.charAt idx cur;
+            let up = strings.charAt idx prev;
+            let left = strings.charAt (idx - 1) cur;
+            let upLeft = strings.charAt (idx - 1) prev;
+            let right = strings.charAt (idx + 1) cur;
+            let upRight = strings.charAt (idx + 1) prev;
+            let mapped =
+                if c == dot then
+                    if up == pipe then
+                        pipe
+                    else if up == source then
+                        pipe
+                    else if and (upLeft == pipe) (left == split) then
+                        pipe
+                    else if and (upRight == pipe) (right == split) then
+                        pipe
+                    else
+                        dot
+                else
+                    c;
+            strings.fromChar mapped)
+        |> list.join "";
+
+let splits : string -> string -> int =
+    let ch = strings.charAt 0;
+    let pipe = ch "|";
+    let split = ch "^";
+    let and = \a -> \b -> if a then b else false;
+    \prev -> \cur ->
+        list.range 0 (strings.length cur)
+        |> list.filter (\idx ->
+            let c = strings.charAt idx cur;
+            let up = strings.charAt idx prev;
+            and (c == split) (up == pipe))
+        |> list.length;
+
+let part1 : List string -> string =
+    \input ->
+        let withStreams =
+            input
+            |> accumulate "" propagateStream;
+        list.zip splits (Cons "" withStreams) withStreams
+        |> list.sum
+        |> ints.toString;
+
+let propagateStream : List int -> string -> List int =
+    let ch = strings.charAt 0;
+    let dot = ch ".";
+    let source = ch "S";
+    let split = ch "^";
+    \prev -> \cur ->
+        let get = \idx -> prev |> list.skip idx |> list.head |> option.unwrapOr 0;
+        list.range 0 (strings.length cur)
+        |> list.map (\idx ->
+            let c = strings.charAt idx cur;
+            let left = strings.charAt (idx - 1) cur;
+            let right = strings.charAt (idx + 1) cur;
+            let up = get idx;
+            let upLeft = get (idx - 1);
+            let upRight = get (idx + 1);
+            if c == dot then
+                up +
+                (if left == split then upLeft else 0) +
+                (if right == split then upRight else 0)
+            else if c == source then
+                1
+            else
+                0);
+
+let part2 : List string -> string =
+    \input ->
+        input
+        |> list.foldl Nil propagateStream
+        |> list.sum
+        |> ints.toString;
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;
