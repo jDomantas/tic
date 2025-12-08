@@ -1,0 +1,150 @@
+import ints from "std/int";
+import option(Option, Some, None) from "std/option";
+import strings from "std/string";
+import list(List, Nil, Cons) from "std/list";
+import result(Result) from "std/result";
+import dsu(Dsu) from "../shared/dsu.tic";
+import utils from "../shared/aoc-utils.tic";
+import parse from "../shared/parse.tic";
+
+type Point = Point int int int;
+
+let parsePoint : string -> Result Point string =
+    \line ->
+        parse.ok Point
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parse.integer
+        |> parse.ignore (parse.literal ",")
+        |> parse.apply parse.integer
+        |> parse.run line;
+
+let parseInput : string -> Result (List Point) string =
+    \input ->
+        input
+        |> strings.lines
+        |> list.map parsePoint
+        |> list.allOk;
+
+let distance : Point -> Point -> int =
+    let sq = \a -> \b -> if a > b then (a - b) * (a - b) else (b - a) * (b - a);
+    \a -> \b ->
+        match a with
+        | Point ax ay az ->
+            match b with
+            | Point bx by bz ->
+                sq ax bx + sq ay by + sq az bz
+            end
+        end;
+
+let enumerate : (int -> a -> b) -> List a -> List b =
+    \f -> \l ->
+        let go = \fold l -> \idx ->
+            match l with
+            | Nil -> Nil
+            | Cons x xs -> Cons (f idx x) (xs (idx + 1))
+            end;
+        go l 0;
+
+type PointPair = PointPair int int int;
+
+let groupSizes : List int -> List int =
+    \l ->
+        let go = \fold l -> \prev -> \prevSize ->
+            match l with
+            | Nil ->
+                if prevSize > 0 then
+                    Cons prevSize Nil
+                else
+                    Nil
+            | Cons x xs ->
+                match prev with
+                | None -> xs (Some x) 1
+                | Some prev ->
+                    if x == prev then
+                        xs (Some prev) (prevSize + 1)
+                    else
+                        Cons prevSize (xs (Some x) 1)
+                end
+            end;
+        go l None 0;
+
+let pairsByDistance : List Point -> List PointPair =
+    \points ->
+        points
+        |> enumerate (\idx1 -> \a ->
+            points
+            |> enumerate (\idx2 -> \b ->
+                if idx2 <= idx1 then
+                    None
+                else
+                    Some (PointPair idx1 idx2 (distance a b))))
+        |> list.flatten
+        |> list.filterMap (\x -> x)
+        |> list.sortBy (\a -> \b ->
+            match a with
+            | PointPair _ _ a ->
+                match b with
+                | PointPair _ _ b -> a < b
+                end
+            end);
+
+let part1 : List Point -> string =
+    \points ->
+        let pairsToConnect = if list.length points < 30 then 10 else 1000;
+        points
+        |> pairsByDistance
+        |> list.take pairsToConnect
+        |> list.foldl (dsu.new (list.length points)) (\d -> \p ->
+            match p with
+            | PointPair a b _ -> dsu.connect a b d
+            end)
+        |> (\d ->
+            list.range 0 (list.length points)
+            |> list.map (\idx -> dsu.root idx d))
+        |> list.sortBy (\a -> \b -> a < b)
+        |> groupSizes
+        |> list.sortBy (\a -> \b -> a > b)
+        |> list.take 3
+        |> list.product
+        |> ints.toString;
+
+type ConnectState = Done PointPair | Connecting Dsu;
+
+let part2 : List Point -> string =
+    \points ->
+        let pointCount = list.length points;
+        points
+        |> pairsByDistance
+        |> list.foldl (Connecting (dsu.new pointCount)) (\st -> \pair ->
+            match st with
+            | Done _ -> st
+            | Connecting d ->
+                match pair with
+                | PointPair a b _ ->
+                    let d = dsu.connect a b d;
+                    if dsu.componentSize 0 d == pointCount then
+                        Done pair
+                    else
+                        Connecting d
+                end
+            end)
+        |> (\st ->
+            match st with
+            | Done pair ->
+                match pair with
+                | PointPair a b _ ->
+                    let a = points |> list.skip a |> list.head |> option.unwrapOr (Point 0 0 0);
+                    let b = points |> list.skip b |> list.head |> option.unwrapOr (Point 0 0 0);
+                    match a with
+                    | Point ax _ _ ->
+                        match b with
+                        | Point bx _ _ ->
+                            ints.toString (ax * bx)
+                        end
+                    end
+                end
+            | Connecting _ -> "failed to connect"
+            end);
+
+export let main : string -> string = utils.makeSolution parseInput part1 part2;

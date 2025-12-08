@@ -1,0 +1,69 @@
+import ints from "std/int";
+import option from "std/option";
+import list from "std/list";
+import array(Array) from "std/array";
+
+export type Dsu = Dsu
+    (Array int) -- parents
+    (Array int) -- sizes
+    (Array int -> int -> int); -- find root
+
+let log2ceil : int -> int =
+    let pow2 = \x -> ints.iterate 1 (\x -> x * 2) x;
+    let powers = list.range 0 64 |> list.map pow2;
+    \x ->
+        powers
+        |> list.filter (\p -> p < x)
+        |> list.length;
+
+let rootFinder : int -> (Array int -> int -> int) =
+    \size ->
+        let depth = log2ceil size;
+        let base = \_arr -> \idx -> idx;
+        let next = \r -> \arr -> \idx ->
+            let item = arr |> array.get idx |> option.unwrapOr idx;
+            if item == idx then
+                idx
+            else
+                r arr item;
+        ints.iterate depth next base;
+
+export let new : int -> Dsu =
+    \size ->
+        let parents = list.range 0 size |> array.fromList;
+        let sizes = list.repeat size 1 |> array.fromList;
+        Dsu parents sizes (rootFinder size);
+
+export let root : int -> Dsu -> int =
+    \idx -> \dsu ->
+        match dsu with
+        | Dsu parents _ findRoot -> findRoot parents idx
+        end;
+
+export let connect : int -> int -> Dsu -> Dsu =
+    \a -> \b -> \dsu ->
+        match dsu with
+        | Dsu parents sizes findRoot ->
+            let a = findRoot parents a;
+            let b = findRoot parents b;
+            let as = sizes |> array.get a |> option.unwrapOr 0;
+            let bs = sizes |> array.get b |> option.unwrapOr 0;
+            if a == b then
+                Dsu parents sizes findRoot
+            else if as < bs then
+                let parents = parents |> array.set a b;
+                let sizes = sizes |> array.set b (as + bs);
+                Dsu parents sizes findRoot
+            else
+                let parents = parents |> array.set b a;
+                let sizes = sizes |> array.set a (as + bs);
+                Dsu parents sizes findRoot
+        end;
+
+export let componentSize : int -> Dsu -> int =
+    \idx -> \dsu ->
+        match dsu with
+        | Dsu parents sizes findRoot ->
+            let idx = findRoot parents idx;
+            sizes |> array.get idx |> option.unwrapOr 0
+        end;
