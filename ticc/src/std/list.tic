@@ -168,21 +168,17 @@ export let skip : int -> List a -> List a =
             end;
         i.iterate x step list;
 
-type TakeState a = TakeState (List a) (List a);
-
 export let take : int -> List a -> List a =
     \x -> \list ->
-        let step = \state ->
-            match state with
-            | TakeState a b ->
-                match b with
-                | Nil -> TakeState a b
-                | Cons x xs -> TakeState (Cons x a) xs
-                end
-            end;
-        match i.iterate x step (TakeState Nil list) with
-        | TakeState a _ -> reverse a
-        end;
+        let go = \fold l -> \count ->
+            if count == 0 then
+                Nil
+            else
+                match l with
+                | Nil -> Nil
+                | Cons x xs -> Cons x (xs (count - 1))
+                end;
+        go list x;
 
 export let length : List a -> int =
     \fold list ->
@@ -229,9 +225,6 @@ export let concat : List a -> List a -> List a =
         end;
     \a -> \b -> helper b a;
 
-
-type Tuple a b = Tuple a b;
-
 export let sortBy : (a -> a -> bool) -> List a -> List a =
     let merge : (a -> a -> bool) -> List b -> List a -> List a -> List a =
         \less -> \fold counter -> \a -> \b ->
@@ -251,17 +244,14 @@ export let sortBy : (a -> a -> bool) -> List a -> List a =
                     end
                 end
             end;
-
-    let merge : (a -> a -> bool) -> List a -> List a -> List a =
-        \less -> \a -> \b ->
-            merge less (concat a b) a b;
-    let split : List a -> Tuple (List a) (List a) =
-        \fold list ->
-            match list with
-            | Nil -> Tuple Nil Nil
-            | Cons x xs ->
+    let isShort : List a -> bool =
+        \l ->
+            match l with
+            | Nil -> true
+            | Cons _ xs ->
                 match xs with
-                | Tuple xs ys -> Tuple (Cons x ys) xs
+                | Nil -> true
+                | Cons _ _ -> false
                 end
             end;
     let sort : (a -> a -> bool) -> List b -> List a -> List a =
@@ -269,15 +259,13 @@ export let sortBy : (a -> a -> bool) -> List a -> List a =
             match counter with
             | Nil -> Nil
             | Cons _ recurse ->
-                if length list <= 1 then
+                if isShort list then
                     list
                 else
-                    match split list with
-                    | Tuple as bs ->
-                        let as = recurse as;
-                        let bs = recurse bs;
-                        merge less as bs
-                    end
+                    let half = length list / 2;
+                    let as = recurse (take half list);
+                    let bs = recurse (skip half list);
+                    merge less list as bs
             end;
     \less -> \list -> sort less list list;
 
