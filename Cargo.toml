@@ -1,5 +1,5 @@
 [workspace]
-members = [
+members = ["aoc",
     "formatter",
     "ticc",
     "ticc-core",
